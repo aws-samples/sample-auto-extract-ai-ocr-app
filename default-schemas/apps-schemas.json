@@ -1,0 +1,138 @@
+{
+  "apps": [
+    {
+      "name": "expense_report",
+      "display_name": "経費精算書",
+      "description": "社員の経費精算情報を抽出します",
+      "input_methods": {
+        "file_upload": true,
+        "s3_sync": false
+      },
+      "fields": [
+        {
+          "name": "application_date",
+          "display_name": "申請日",
+          "type": "string"
+        },
+        {
+          "name": "applicant_info",
+          "display_name": "申請者情報",
+          "type": "map",
+          "fields": [
+            {
+              "name": "department",
+              "display_name": "所属",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "display_name": "氏名",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "expense_items",
+          "display_name": "経費明細",
+          "type": "list",
+          "items": {
+            "type": "map",
+            "fields": [
+              {
+                "name": "date",
+                "display_name": "日付",
+                "type": "string"
+              },
+              {
+                "name": "content",
+                "display_name": "内容",
+                "type": "string"
+              },
+              {
+                "name": "payee",
+                "display_name": "支払先",
+                "type": "string"
+              },
+              {
+                "name": "amount",
+                "display_name": "金額",
+                "type": "string"
+              },
+              {
+                "name": "remarks",
+                "display_name": "備考",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "shipping_ocr",
+      "display_name": "運送発注書",
+      "description": "運送発注書の情報を抽出します",
+      "input_methods": {
+        "file_upload": true,
+        "s3_sync": false
+      },
+      "fields": [
+        {
+          "name": "order_date",
+          "display_name": "注文日",
+          "type": "string"
+        },
+        {
+          "name": "order_company",
+          "display_name": "依頼会社",
+          "type": "string"
+        },
+        {
+          "name": "shipment_details",
+          "display_name": "配送明細",
+          "type": "list",
+          "items": {
+            "type": "map",
+            "fields": [
+              {
+                "name": "order_name",
+                "display_name": "製品名",
+                "type": "string"
+              },
+              {
+                "name": "order_id",
+                "display_name": "製品ID",
+                "type": "string"
+              },
+              {
+                "name": "reception_number",
+                "display_name": "注文番号",
+                "type": "string"
+              },
+              {
+                "name": "number",
+                "display_name": "数量",
+                "type": "string"
+              },
+              {
+                "name": "destination",
+                "display_name": "着地",
+                "type": "string"
+              },
+              {
+                "name": "origin",
+                "display_name": "発地",
+                "type": "string"
+              },
+              {
+                "name": "dest_date",
+                "display_name": "納品日",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

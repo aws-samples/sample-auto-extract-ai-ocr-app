@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+setuptools
+# paddleocr
+python-multipart
+# yomitoku
+psycopg2-binary
+boto3
+python-jose[cryptography]
+PyMuPDF
+Pillow
+opencv-python
+requests
+python-magic

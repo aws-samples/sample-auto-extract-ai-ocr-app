@@ -1,0 +1,19 @@
+# Node.js
+node_modules
+
+# TypeScript
+lib/**/*.d.ts
+dist/**/*.d.ts
+
+# CDK
+.cdk.staging
+cdk.out
+
+# Python
+__pycache__/
+
+# Environment
+.env
+
+# macOS
+.DS_Store

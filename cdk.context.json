@@ -1,0 +1,27 @@
+{
+  "acknowledged-issue-numbers": [
+    32775,
+    34892,
+    34892
+  ],
+  "availability-zones:account=108782079339:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ],
+  "availability-zones:account=881490112721:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ],
+  "availability-zones:account=804652329395:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ],
+  "availability-zones:account=297403833140:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ]
+}

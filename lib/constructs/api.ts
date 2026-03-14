@@ -36,6 +36,8 @@ export interface ApiProps {
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
   agentRuntimeArn?: string;
+  modelId: string;
+  modelRegion: string;
 }
 
 export class Api extends Construct {
@@ -49,11 +51,7 @@ export class Api extends Construct {
 
     const { imagesTable, jobsTable } = props;
 
-    // cdk.jsonからモデルIDとリージョンを取得
-    const modelId =
-      this.node.tryGetContext("model_id") ||
-      "us.anthropic.claude-sonnet-4-20250514-v1:0";
-    const modelRegion = this.node.tryGetContext("model_region") || "us-east-1";
+    const { modelId, modelRegion } = props;
 
     // S3バケット（ドキュメント保存用）
     const documentBucket = new Bucket(this, "DocumentBucket", {

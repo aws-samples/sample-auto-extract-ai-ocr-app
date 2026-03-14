@@ -20,6 +20,8 @@ export interface StepFunctionsProps {
   enableOcr: boolean;
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
+  modelId: string;
+  modelRegion: string;
 }
 
 export class StepFunctions extends Construct {
@@ -28,11 +30,7 @@ export class StepFunctions extends Construct {
   constructor(scope: Construct, id: string, props: StepFunctionsProps) {
     super(scope, id);
 
-    // cdk.jsonからモデルIDとリージョンを取得
-    const modelId =
-      this.node.tryGetContext("model_id") ||
-      "us.anthropic.claude-sonnet-4-20250514-v1:0";
-    const modelRegion = this.node.tryGetContext("model_region") || "us-east-1";
+    const { modelId, modelRegion } = props;
 
     const processImage = new DockerImageFunction(this, 'ProcessImage', {
       code: DockerImageCode.fromImageAsset('lambda/api', {

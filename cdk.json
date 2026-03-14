@@ -17,14 +17,6 @@
     ]
   },
   "context": {
-    "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    "model_region": "us-east-1",
-    "enable_ocr": true,
-    "enable_agent": false,
-    "enable_agent_demo": false,
-    "sagemaker_zero_scale": true,
-    "sagemaker_scale_in_cooldown_seconds": 3600,
-    "ocr_engine": "paddle",
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:target-partitions": [

@@ -8,12 +8,17 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "cdk:deploy": "npx cdk deploy",
+    "cdk:synth": "npx cdk synth",
+    "cdk:diff": "npx cdk diff",
+    "web:build": "npm --prefix web run build",
+    "web:dev": "npm --prefix web run dev"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "22.7.9",
-    "aws-cdk": "^2.1002.0",
+    "aws-cdk": "^2.1111.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",

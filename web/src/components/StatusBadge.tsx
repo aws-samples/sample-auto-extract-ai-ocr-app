@@ -10,17 +10,17 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
     switch (status) {
       case 'uploading':
       case 'converting':
-        return 'bg-indigo-100 text-indigo-800';
+        return 'bg-info-light text-info-text';
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-warning-light text-warning-text';
       case 'processing':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-info-light text-info-text';
       case 'completed':
-        return 'bg-green-100 text-green-800';
+        return 'bg-success-light text-success-text';
       case 'failed':
-        return 'bg-red-100 text-red-800';
+        return 'bg-danger-light text-danger-text';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-surface-alt text-default';
     }
   };
 

@@ -160,7 +160,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
   return (
     <div ref={containerRef} className="w-full h-full overflow-auto">
       {!imageSrc ? (
-        <div className="flex justify-center items-center h-full text-gray-500">
+        <div className="flex justify-center items-center h-full text-neutral-500">
           画像が読み込めませんでした
         </div>
       ) : (
@@ -182,7 +182,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
               className={`absolute cursor-pointer ${
                 selectedIndex === index 
                   ? 'border-2 border-rose-500 bg-rose-100 bg-opacity-25' 
-                  : 'border border-blue-400 bg-blue-100 bg-opacity-20'
+                  : 'border border-info-border bg-info-light bg-opacity-20'
               }`}
               style={getBoxStyle(box)}
               onClick={() => onSelectBox(index)}

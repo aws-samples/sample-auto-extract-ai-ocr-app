@@ -45,27 +45,27 @@ const OcrResultEditor: React.FC<OcrResultEditorProps> = ({
     <div className="ocr-result-editor overflow-y-auto" style={{ height: "100%" }}>
       <div className="border rounded-lg overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50 sticky top-0 z-10">
+          <thead className="bg-neutral-50 sticky top-0 z-10">
             <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider w-16">
                 #
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
                 テキスト
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-bg divide-y divide-gray-200">
             {editedResults.map((result, index) => (
               <tr 
                 key={index}
                 ref={selectedIndex === index ? selectedRowRef : null}
-                className={`${selectedIndex === index ? 'bg-blue-100' : index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
+                className={`${selectedIndex === index ? 'bg-info-light' : index % 2 === 0 ? 'bg-neutral-50' : 'bg-bg'}`}
               >
-                <td className="px-6 py-2 text-sm text-gray-500 w-16">
+                <td className="px-6 py-2 text-sm text-neutral-500 w-16">
                   {index}
                 </td>
-                <td className="px-6 py-2 text-sm text-gray-900">
+                <td className="px-6 py-2 text-sm text-neutral-900">
                   <span 
                     className="cursor-pointer" 
                     onClick={() => {

@@ -1,4 +1,6 @@
 import React from "react";
+import { Modal } from "./ui/Modal";
+import { Button } from "./ui/Button";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -19,36 +21,22 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   confirmText = "OK",
   cancelText = "キャンセル",
 }) => {
-  if (!isOpen) return null;
-
   const handleConfirm = () => {
     onConfirm();
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
-          <p className="text-gray-600 whitespace-pre-line mb-6">{message}</p>
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800"
-            >
-              {cancelText}
-            </button>
-            <button
-              onClick={handleConfirm}
-              className="px-4 py-2 rounded bg-blue-500 hover:bg-blue-600 text-white"
-            >
-              {confirmText}
-            </button>
-          </div>
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md w-full">
+      <div className="p-6">
+        <h3 className="text-lg font-semibold text-neutral-900 mb-4">{title}</h3>
+        <p className="text-neutral-600 whitespace-pre-line mb-6">{message}</p>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose}>{cancelText}</Button>
+          <Button variant="primary" onClick={handleConfirm}>{confirmText}</Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

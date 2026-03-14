@@ -2,13 +2,15 @@ import { useState, useEffect, useRef, FormEvent } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../utils/api";
 import { ImageFile } from "../types/ocr";
-import { useAppContext } from "../components/AppContext";
+import { useAppContext } from "../contexts/AppContext";
 import FileList from "../components/FileList";
 import OcrActionBar from "../components/OcrActionBar";
 import S3SyncModal from "../components/S3SyncModal";
 import CustomPromptModal from "../components/CustomPromptModal";
 import ConfirmModal from "../components/ConfirmModal";
 import LoadingToast from "../components/LoadingToast";
+
+import { Alert } from "../components/ui";
 
 function Upload() {
   const { appName } = useParams<{ appName: string }>();
@@ -25,6 +27,8 @@ function Upload() {
   const [s3SyncModalOpen, setS3SyncModalOpen] = useState(false);
   const [customPromptModalOpen, setCustomPromptModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pageProcessingMode, setPageProcessingMode] = useState<'combined' | 'individual'>('combined');
 
   // 現在選択されているアプリの情報
@@ -39,6 +43,15 @@ function Upload() {
   const [isEndpointWarming, setIsEndpointWarming] = useState(false);
   // pollingEnabledは使用されているので削除しない
   const [pollingEnabled] = useState(true);
+
+  // メニュー外クリックで閉じる
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // ファイル一覧を取得
   const fetchFiles = async () => {
@@ -296,81 +309,86 @@ function Upload() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md">
+      <div className="max-w-4xl mx-auto bg-bg rounded-lg shadow-md">
         {/* アップロードフォーム */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-neutral-200">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">{appDisplayName || appName}</h1>
             
-            <div className="flex space-x-2">
-              {/* スキーマ確認・編集ボタン */}
-              <Link 
-                to={`/schema-generator/${appName}`} 
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                スキーマ確認・編集
-              </Link>
-              
-              {/* カスタムプロンプト編集ボタン */}
-              <button
-                onClick={openCustomPromptModal}
-                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                カスタムプロンプト
-              </button>
-              
-              {/* 削除ボタン */}
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                削除
-              </button>
-              
-              {/* S3同期ボタン - s3_syncがtrueの場合のみ表示 */}
-              {s3SyncEnabled && (
+            <div className="relative" ref={menuRef}>
                 <button
-                  onClick={openS3SyncModal}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-200 flex items-center"
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600 transition"
+                  title="その他"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                   </svg>
-                  S3ファイル同期
                 </button>
-              )}
-            </div>
+                {showMenu && (
+                  <div className="absolute right-0 mt-1 w-56 bg-bg rounded-lg shadow-lg border border-neutral-200 z-20 py-1">
+                    <Link
+                      to={`/schema-generator/${appName}`}
+                      className="flex items-center px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                      onClick={() => setShowMenu(false)}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      スキーマ確認・編集
+                    </Link>
+                    <button
+                      onClick={() => { openCustomPromptModal(); setShowMenu(false); }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      カスタムプロンプト
+                    </button>
+                    {s3SyncEnabled && (
+                      <button
+                        onClick={() => { openS3SyncModal(); setShowMenu(false); }}
+                        className="flex items-center w-full px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        S3ファイル同期
+                      </button>
+                    )}
+                    <div className="border-t border-neutral-200 my-1"></div>
+                    <button
+                      onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-danger hover:bg-danger-light"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      削除
+                    </button>
+                  </div>
+                )}
+              </div>
           </div>
 
           {error && (
-            <div
-              className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
-              role="alert"
-            >
+            <Alert type="error" className="mb-4">
               <span className="block sm:inline">{error}</span>
-            </div>
+            </Alert>
           )}
 
           <form onSubmit={handleSubmit}>
             <div
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer mb-4"
+              className="border-2 border-dashed border-neutral-300 rounded-lg p-8 text-center cursor-pointer mb-4"
               onClick={() => fileInputRef.current?.click()}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
             >
               {selectedFiles.length > 0 ? (
                 <div>
-                  <p className="text-green-600 font-medium">
+                  <p className="text-success font-medium">
                     {selectedFiles.length}ファイルが選択されています
                   </p>
                   <ul className="mt-2 text-left max-h-40 overflow-auto">
@@ -380,7 +398,7 @@ function Upload() {
                         className="flex justify-between items-center py-1 border-b"
                       >
                         <span className="truncate max-w-xs">{file.name}</span>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-neutral-500">
                           {(file.size / 1024 / 1024).toFixed(2)} MB
                         </span>
                         <button
@@ -389,7 +407,7 @@ function Upload() {
                             e.stopPropagation();
                             removeSelectedFile(index);
                           }}
-                          className="text-red-500 hover:text-red-700"
+                          className="text-danger hover:text-danger-hover"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -414,7 +432,7 @@ function Upload() {
                 <div>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="mx-auto h-12 w-12 text-gray-400"
+                    className="mx-auto h-12 w-12 text-neutral-400"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -426,14 +444,14 @@ function Upload() {
                       d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                     />
                   </svg>
-                  <p className="mt-2 text-sm text-gray-600">
+                  <p className="mt-2 text-sm text-neutral-600">
                     クリックしてファイルを選択
                     <br />
                     または
                     <br />
                     ファイルをドラッグ＆ドロップ
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-neutral-500">
                     PDF・画像ファイル（JPG、PNG）のみ (最大10MB)
                   </p>
                 </div>
@@ -451,8 +469,8 @@ function Upload() {
 
             {/* ページ処理モード選択 - PDFファイルが選択されている場合のみ表示 */}
             {hasPdfFiles && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">
+              <div className="mb-4 p-4 bg-neutral-50 rounded-lg border">
+                <h3 className="text-sm font-medium text-neutral-700 mb-3">
                   複数ページPDFの処理方法
                 </h3>
                 <div className="space-y-3">
@@ -463,13 +481,13 @@ function Upload() {
                       value="combined"
                       checked={pageProcessingMode === 'combined'}
                       onChange={(e) => setPageProcessingMode(e.target.value as 'combined' | 'individual')}
-                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      className="mt-1 h-4 w-4 text-info focus:ring-primary border-neutral-300"
                     />
                     <div>
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-neutral-900">
                         全ページ統合処理
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-neutral-500">
                         複数ページを1つの画像として結合し、まとめて1つの抽出結果を生成します
                       </div>
                     </div>
@@ -482,13 +500,13 @@ function Upload() {
                       value="individual"
                       checked={pageProcessingMode === 'individual'}
                       onChange={(e) => setPageProcessingMode(e.target.value as 'combined' | 'individual')}
-                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      className="mt-1 h-4 w-4 text-info focus:ring-primary border-neutral-300"
                     />
                     <div>
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-neutral-900">
                         ページ別個別処理
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-neutral-500">
                         各ページを個別に処理し、ページごとに抽出結果を生成します
                       </div>
                     </div>
@@ -500,13 +518,13 @@ function Upload() {
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="bg-primary text-on-primary px-4 py-2 rounded-lg hover:bg-primary-hover transition duration-200 disabled:bg-neutral-300 disabled:cursor-not-allowed"
                 disabled={selectedFiles.length === 0 || uploading}
               >
                 {uploading ? (
                   <span className="flex items-center">
                     <svg
-                      className="animate-spin -ml-1 mr-2 h-5 w-5 text-white"
+                      className="animate-spin -ml-1 mr-2 h-5 w-5 text-on-primary"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
                       viewBox="0 0 24 24"

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { S3SyncFile, S3ImportResponse } from '../types/app-schema';
+import { Alert, Button, Modal } from './ui';
 
 interface S3SyncModalProps {
   isOpen: boolean;
@@ -143,13 +144,12 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] overflow-hidden">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+    <Modal isOpen={isOpen} onClose={onClose} className="w-full max-w-4xl max-h-[80vh] overflow-hidden">
+        <div className="p-4 border-b border-neutral-200 flex justify-between items-center">
           <h2 className="text-xl font-bold">S3ファイル同期</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-neutral-500 hover:text-neutral-700"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -159,14 +159,14 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
 
         <div className="p-4">
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <Alert type="error" className="mb-4">
               <p>{error}</p>
-            </div>
+            </Alert>
           )}
 
           {/* 処理モード選択 */}
-          <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="mb-4 p-4 bg-neutral-50 rounded-lg">
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
               処理モード
             </label>
             <div className="flex space-x-4">
@@ -194,14 +194,14 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
           </div>
 
           <div className="flex justify-between mb-4">
-            <button
+            <Button
               onClick={fetchS3Files}
               disabled={loading}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
+              variant="primary"
             >
               {loading ? (
                 <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-on-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
@@ -215,16 +215,16 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                   更新
                 </span>
               )}
-            </button>
+            </Button>
 
-            <button
+            <Button
               onClick={importSelectedFiles}
               disabled={importing || selectedFiles.size === 0}
-              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50"
+              variant="success"
             >
               {importing ? (
                 <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-on-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
@@ -238,19 +238,19 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                   選択ファイルをインポート ({selectedFiles.size})
                 </span>
               )}
-            </button>
+            </Button>
           </div>
 
           <div className="overflow-y-auto max-h-[50vh]">
             {loading ? (
               <div className="flex justify-center items-center py-8">
-                <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
               </div>
             ) : files.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-neutral-500">
                 S3バケットにファイルが見つかりませんでした
               </div>
             ) : (
@@ -259,7 +259,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                   const selectionState = getPathSelectionState(pathFiles);
                   return (
                     <div key={path} className="border rounded-lg">
-                      <div className="bg-gray-50 px-4 py-2 border-b flex items-center">
+                      <div className="bg-neutral-50 px-4 py-2 border-b flex items-center">
                         <input
                           type="checkbox"
                           checked={selectionState.checked}
@@ -269,11 +269,11 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                           onChange={() => togglePathSelection(pathFiles)}
                           className="mr-2"
                         />
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-5l-2-2H5a2 2 0 00-2 2z" />
                         </svg>
-                        <span className="font-medium text-gray-700">{path}</span>
-                        <span className="ml-2 text-sm text-gray-500">({pathFiles.length} ファイル)</span>
+                        <span className="font-medium text-neutral-700">{path}</span>
+                        <span className="ml-2 text-sm text-neutral-500">({pathFiles.length} ファイル)</span>
                       </div>
                       <div className="divide-y divide-gray-200">
                         {pathFiles.map((file) => (
@@ -288,14 +288,14 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                               />
                               <div>
                                 <div className="flex items-center">
-                                  <span className="text-sm font-medium text-gray-900">{file.filename}</span>
+                                  <span className="text-sm font-medium text-neutral-900">{file.filename}</span>
                                   {file.is_existing && (
-                                    <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                                    <span className="ml-2 px-2 py-1 text-xs bg-surface-alt text-light rounded">
                                       インポート済み
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-xs text-gray-500">
+                                <div className="text-xs text-neutral-500">
                                   {(file.size / 1024).toFixed(1)} KB • {new Date(file.last_modified).toLocaleString()}
                                 </div>
                               </div>
@@ -311,16 +311,15 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
           </div>
         </div>
 
-        <div className="p-4 border-t border-gray-200 flex justify-end">
+        <div className="p-4 border-t border-neutral-200 flex justify-end">
           <button
             onClick={onClose}
-            className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"
+            className="bg-neutral-300 text-neutral-800 px-4 py-2 rounded hover:bg-neutral-400"
           >
             閉じる
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 

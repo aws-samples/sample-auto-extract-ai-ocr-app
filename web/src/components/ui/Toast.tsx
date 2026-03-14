@@ -27,13 +27,13 @@ const Toast: React.FC<ToastProps> = ({
 
   if (!show) return null;
 
-  const bgColor = type === 'success' ? 'bg-green-500' : 
-                 type === 'error' ? 'bg-red-500' : 
-                 'bg-blue-500';
+  const bgColor = type === 'success' ? 'bg-success' : 
+                 type === 'error' ? 'bg-danger' : 
+                 'bg-primary';
 
   return (
     <div 
-      className={`fixed top-4 right-4 px-6 py-3 rounded-md shadow-lg z-[9999] ${bgColor} text-white font-medium animate-fade-in-down`}
+      className={`fixed top-4 right-4 px-6 py-3 rounded-md shadow-lg z-[9999] ${bgColor} text-on-primary font-medium animate-fade-in-down`}
       style={{
         minWidth: '250px',
         textAlign: 'center',
@@ -44,7 +44,7 @@ const Toast: React.FC<ToastProps> = ({
         <span>{message}</span>
         <button 
           onClick={onClose}
-          className="ml-4 text-white hover:text-gray-200 focus:outline-none"
+          className="ml-4 text-on-primary hover:text-neutral-200 focus:outline-none"
         >
           ×
         </button>

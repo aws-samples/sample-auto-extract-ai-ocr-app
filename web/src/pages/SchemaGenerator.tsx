@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import SchemaPreview from "../components/SchemaPreview";
 import { Field } from "../types/app-schema";
 import api from "../utils/api";
-import { useAppContext } from "../components/AppContext";
+import { useAppContext } from "../contexts/AppContext";
+import { Alert } from "../components/ui";
 
 interface SchemaData {
   name: string;
@@ -347,7 +348,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
             <div className="flex space-x-2">
               <button
                 onClick={() => navigate(`/schema-generator/${urlAppName}`)}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
+                className="bg-primary hover:bg-primary-hover text-on-primary px-4 py-2 rounded-md"
               >
                 編集
               </button>
@@ -361,7 +362,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                     navigate("/");
                   }
                 }}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
+                className="bg-neutral-500 hover:bg-neutral-600 text-on-primary px-4 py-2 rounded-md"
               >
                 戻る
               </button>
@@ -370,7 +371,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
             <div className="flex space-x-2">
               <button
                 onClick={saveSchema}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="bg-success hover:bg-success-hover text-on-primary px-4 py-2 rounded-md disabled:bg-neutral-300 disabled:cursor-not-allowed"
                 disabled={isSaving || !!appNameError}
               >
                 {isSaving ? (isCreateMode ? "作成中..." : "保存中...") : (isCreateMode ? "作成" : "保存")}
@@ -385,7 +386,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                     navigate("/");
                   }
                 }}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
+                className="bg-neutral-500 hover:bg-neutral-600 text-on-primary px-4 py-2 rounded-md"
               >
                 キャンセル
               </button>
@@ -395,26 +396,23 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
         {isLoading ? (
           <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-info"></div>
           </div>
         ) : (
           <div>
             {/* 成功メッセージ */}
             {successMessage && (
-              <div
-                className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-6"
-                role="alert"
-              >
+              <Alert type="success" className="mb-6">
                 <span className="block sm:inline">{successMessage}</span>
-              </div>
+              </Alert>
             )}
 
             {/* 基本情報入力フォーム */}
-            <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+            <div className="bg-bg p-6 rounded-lg shadow-md mb-6">
               <h2 className="text-xl font-semibold mb-4">基本情報</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
                     アプリ名（英数字）
                   </label>
                   <input
@@ -422,35 +420,35 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                     value={appName}
                     onChange={(e) => setAppName(e.target.value)}
                     onBlur={(e) => validateAppName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-neutral-100 disabled:cursor-not-allowed"
                     placeholder="invoice_processor"
                     disabled={isViewMode || isEditMode}
                   />
                   {appNameError && (
-                    <p className="mt-1 text-sm text-red-600">{appNameError}</p>
+                    <p className="mt-1 text-sm text-danger">{appNameError}</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
                     表示名
                   </label>
                   <input
                     type="text"
                     value={appDisplayName}
                     onChange={(e) => setAppDisplayName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="請求書処理"
                     disabled={isViewMode}
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
                     説明（オプション）
                   </label>
                   <textarea
                     value={appDescription}
                     onChange={(e) => setAppDescription(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     rows={2}
                     placeholder="このアプリケーションの説明..."
                     disabled={isViewMode}
@@ -468,12 +466,12 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                       id="fileUpload"
                       checked={fileUploadEnabled}
                       onChange={(e) => setFileUploadEnabled(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-info focus:ring-primary border-neutral-300 rounded"
                       disabled={isViewMode}
                     />
                     <label
                       htmlFor="fileUpload"
-                      className="ml-2 block text-sm text-gray-900"
+                      className="ml-2 block text-sm text-neutral-900"
                     >
                       ファイルアップロード
                     </label>
@@ -484,28 +482,28 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                       id="s3Sync"
                       checked={s3SyncEnabled}
                       onChange={(e) => setS3SyncEnabled(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-info focus:ring-primary border-neutral-300 rounded"
                       disabled={isViewMode}
                     />
                     <label
                       htmlFor="s3Sync"
-                      className="ml-2 block text-sm text-gray-900"
+                      className="ml-2 block text-sm text-neutral-900"
                     >
                       S3同期
                     </label>
                   </div>
                   {s3SyncEnabled && (
                     <div className="pl-6">
-                      <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                      <div className="bg-info-light border border-info-border rounded-md p-3">
                         <div className="flex">
-                          <svg className="w-5 h-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <svg className="w-5 h-5 text-info mr-2" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                           </svg>
                           <div>
-                            <h4 className="text-sm font-medium text-blue-800">S3同期バケット</h4>
-                            <div className="mt-1 text-sm text-blue-700">
-                              <p>バケット: <code className="bg-blue-100 px-1 py-0.5 rounded font-mono">{import.meta.env.VITE_SYNC_BUCKET_NAME || 'Loading...'}</code></p>
-                              <p className="mt-1">パス: <code className="bg-blue-100 px-1 py-0.5 rounded font-mono">{appName || 'app-name'}/</code></p>
+                            <h4 className="text-sm font-medium text-info-text">S3同期バケット</h4>
+                            <div className="mt-1 text-sm text-info-text">
+                              <p>バケット: <code className="bg-info-light px-1 py-0.5 rounded font-mono">{import.meta.env.VITE_SYNC_BUCKET_NAME || 'Loading...'}</code></p>
+                              <p className="mt-1">パス: <code className="bg-info-light px-1 py-0.5 rounded font-mono">{appName || 'app-name'}/</code></p>
                             </div>
                           </div>
                         </div>
@@ -519,30 +517,27 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         )}
 
         {error && (
-          <div
-            className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
-            role="alert"
-          >
+          <Alert type="error" className="mb-4">
             <span className="block sm:inline">{error}</span>
-          </div>
+          </Alert>
         )}
 
         <div className="flex flex-col lg:flex-row gap-6">
           {/* 左側: PDFアップロード領域 - 確認モードでは非表示 */}
           {!isViewMode && (
-            <div className="w-full lg:w-1/2 bg-white p-6 rounded-lg shadow-md">
+            <div className="w-full lg:w-1/2 bg-bg p-6 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold mb-4">
                 サンプル画像アップロード
               </h2>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
                   スキーマ生成の指示（オプション）
                 </label>
                 <textarea
                   value={extractionInstructions}
                   onChange={(e) => setExtractionInstructions(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   rows={3}
                   placeholder="例: この請求書から、請求日、請求番号、品目、金額などの情報を抽出できるスキーマを生成してください。"
                   disabled={isViewMode}
@@ -560,7 +555,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
               />
 
               <div
-                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50"
+                className="border-2 border-dashed border-neutral-300 rounded-lg p-8 text-center cursor-pointer hover:bg-neutral-50"
                 onClick={triggerFileInput}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleFileDrop}
@@ -569,7 +564,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                   <div>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className="mx-auto h-12 w-12 text-gray-400"
+                      className="mx-auto h-12 w-12 text-neutral-400"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -581,14 +576,14 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                         d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                       />
                     </svg>
-                    <p className="mt-2 text-sm text-gray-600">
+                    <p className="mt-2 text-sm text-neutral-600">
                       クリックしてファイルを選択
                       <br />
                       または
                       <br />
                       ファイルをドラッグ＆ドロップ
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-neutral-500">
                       PDF・画像ファイル (最大10MB)
                     </p>
                   </div>
@@ -603,7 +598,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                     ) : (
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="mx-auto h-12 w-12 text-gray-400"
+                        className="mx-auto h-12 w-12 text-neutral-400"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -616,10 +611,10 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                         />
                       </svg>
                     )}
-                    <p className="mt-2 text-sm font-medium text-gray-900">
+                    <p className="mt-2 text-sm font-medium text-neutral-900">
                       {uploadedFile.name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-neutral-500">
                       {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
                     </p>
                     <button
@@ -627,7 +622,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                         e.stopPropagation();
                         removeFile();
                       }}
-                      className="mt-2 text-sm text-red-600 hover:text-red-800"
+                      className="mt-2 text-sm text-danger hover:text-danger-text"
                     >
                       削除
                     </button>
@@ -638,13 +633,13 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
               <div className="mt-4 flex justify-between">
                 <button
                   onClick={generateSchema}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="bg-primary hover:bg-primary-hover text-on-primary px-4 py-2 rounded-md disabled:bg-neutral-300 disabled:cursor-not-allowed"
                   disabled={!uploadedFile || isGenerating}
                 >
                   {isGenerating ? (
                     <span className="flex items-center">
                       <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-on-primary"
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
                         viewBox="0 0 24 24"
@@ -687,10 +682,10 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
               {uploadedFile && filePreviewUrl && isPdfFile(uploadedFile) && (
                 <div className="mt-6">
                   <h3 className="text-lg font-medium mb-2">プレビュー</h3>
-                  <div className="border rounded-md p-4 bg-gray-100 text-center">
+                  <div className="border rounded-md p-4 bg-neutral-100 text-center">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className="mx-auto h-12 w-12 text-red-500"
+                      className="mx-auto h-12 w-12 text-danger"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -702,14 +697,14 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                       />
                     </svg>
-                    <p className="mt-2 text-sm text-gray-600">
+                    <p className="mt-2 text-sm text-neutral-600">
                       {uploadedFile.name}
                     </p>
                     <a
                       href={filePreviewUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 inline-block text-blue-500 hover:text-blue-700"
+                      className="mt-2 inline-block text-primary hover:text-primary-hover"
                     >
                       PDFを開く
                     </a>
@@ -720,13 +715,13 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
           )}
 
           {/* 右側: スキーマ表示・編集領域 */}
-          <div className={`w-full ${!isViewMode ? 'lg:w-1/2' : ''} bg-white p-6 rounded-lg shadow-md`}>
+          <div className={`w-full ${!isViewMode ? 'lg:w-1/2' : ''} bg-bg p-6 rounded-lg shadow-md`}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">スキーマ定義</h2>
               {generatedSchema && !isViewMode && (
                 <button
                   onClick={regenerateSchema}
-                  className="text-blue-500 hover:text-blue-700 flex items-center"
+                  className="text-primary hover:text-primary-hover flex items-center"
                   disabled={!uploadedFile || isGenerating}
                 >
                   <svg
@@ -753,13 +748,13 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                 {/* JSONエディタ - fieldsのみ表示 */}
                 {!isViewMode && (
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">
                       フィールド定義 (JSON)
                     </label>
                     <textarea
                       value={fieldsJson}
                       onChange={handleFieldsJsonChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       rows={15}
                     ></textarea>
                   </div>
@@ -772,7 +767,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-neutral-500">
                 {isViewMode ? (
                   <p>スキーマ情報を読み込み中...</p>
                 ) : (

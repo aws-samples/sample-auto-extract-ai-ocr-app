@@ -10,7 +10,7 @@ interface SchemaPreviewProps {
 const SchemaPreview: React.FC<SchemaPreviewProps> = ({ schema }) => {
   if (!schema || !schema.fields) {
     return (
-      <div className="text-gray-500 text-center py-4">
+      <div className="text-neutral-500 text-center py-4">
         有効なスキーマがありません
       </div>
     );
@@ -19,15 +19,15 @@ const SchemaPreview: React.FC<SchemaPreviewProps> = ({ schema }) => {
   const getTypeClass = (type: string) => {
     switch (type) {
       case 'string':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-info-light text-info-text';
       case 'number':
-        return 'bg-green-100 text-green-800';
+        return 'bg-success-light text-success-text';
       case 'map':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-accent-light text-accent-text';
       case 'list':
         return 'bg-orange-100 text-orange-800';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-surface-alt text-default';
     }
   };
 
@@ -35,12 +35,12 @@ const SchemaPreview: React.FC<SchemaPreviewProps> = ({ schema }) => {
     return fields.map((field, index) => (
       <div 
         key={`${field.name}-${index}`} 
-        className={`border rounded-md p-3 mb-3 ${level > 0 ? 'ml-4 border-l-2 border-gray-200' : ''}`}
+        className={`border rounded-md p-3 mb-3 ${level > 0 ? 'ml-4 border-l-2 border-neutral-200' : ''}`}
       >
         <div className="flex justify-between items-center">
           <div>
             <span className="font-medium">{field.display_name}</span>
-            <span className="ml-2 text-sm text-gray-500">({field.name})</span>
+            <span className="ml-2 text-sm text-neutral-500">({field.name})</span>
           </div>
           <span className={`px-2 py-1 text-xs rounded-full ${getTypeClass(field.type)}`}>
             {field.type}
@@ -49,14 +49,14 @@ const SchemaPreview: React.FC<SchemaPreviewProps> = ({ schema }) => {
         
         {/* ネストされたフィールド（map型の場合） */}
         {field.type === 'map' && field.fields && field.fields.length > 0 && (
-          <div className="mt-2 pl-4 border-l-2 border-gray-200">
+          <div className="mt-2 pl-4 border-l-2 border-neutral-200">
             {renderFields(field.fields, level + 1)}
           </div>
         )}
         
         {/* リスト型の場合 */}
         {field.type === 'list' && field.items && (
-          <div className="mt-2 pl-4 border-l-2 border-gray-200">
+          <div className="mt-2 pl-4 border-l-2 border-neutral-200">
             <div className="flex justify-between items-center">
               <div>
                 <span className="font-medium">リスト項目</span>
@@ -68,7 +68,7 @@ const SchemaPreview: React.FC<SchemaPreviewProps> = ({ schema }) => {
             
             {/* リスト内のマップ型 */}
             {field.items.type === 'map' && field.items.fields && field.items.fields.length > 0 && (
-              <div className="mt-2 pl-4 border-l-2 border-gray-200">
+              <div className="mt-2 pl-4 border-l-2 border-neutral-200">
                 {renderFields(field.items.fields, level + 2)}
               </div>
             )}

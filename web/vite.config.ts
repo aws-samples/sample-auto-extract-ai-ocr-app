@@ -13,5 +13,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Allow all hosts for remote development environments accessed via proxy
+    allowedHosts: true,
   },
 })

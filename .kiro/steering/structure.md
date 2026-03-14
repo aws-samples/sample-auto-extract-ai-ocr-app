@@ -33,11 +33,28 @@ inclusion: always
 │   └── demo-custom-resource/   # デモデータ投入用 Custom Resource
 ├── web/                        # フロントエンド (React + Vite)
 │   └── src/
-│       ├── components/         # 共通コンポーネント
+│       ├── contexts/           # React Context
+│       │   └── AppContext.tsx   # アプリ状態管理
+│       ├── components/
+│       │   ├── ui/             # デザインシステム（汎用 UI 部品）
+│       │   │   ├── Button.tsx  # variant: primary/secondary/danger/success/ghost
+│       │   │   ├── Input.tsx   # text/textarea 統合
+│       │   │   ├── Select.tsx
+│       │   │   ├── Table.tsx
+│       │   │   ├── Badge.tsx
+│       │   │   ├── Modal.tsx   # オーバーレイ + 白パネル
+│       │   │   ├── Alert.tsx   # type: success/error/warning/info
+│       │   │   ├── Avatar.tsx
+│       │   │   ├── Toast.tsx
+│       │   │   └── index.ts   # barrel export
+│       │   ├── layout/         # レイアウトコンポーネント
+│       │   │   ├── AuthWrapper.tsx  # Authenticator ラッピング
+│       │   │   ├── AppLayout.tsx    # ヘッダー + UserMenu + <main>
+│       │   │   └── UserMenu.tsx     # Avatar + ドロップダウン
+│       │   └── *.tsx           # 業務コンポーネント（直下）
 │       ├── pages/              # ページコンポーネント
 │       ├── types/              # TypeScript 型定義
-│       ├── utils/              # ユーティリティ
-│       └── styles/             # スタイル
+│       └── utils/              # ユーティリティ
 ├── agentcore/                  # Bedrock AgentCore ランタイム
 ├── ocr-containers/             # OCR コンテナイメージ
 │   ├── paddle-ocr/

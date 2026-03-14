@@ -10,7 +10,7 @@ import ImagePreview from "../components/ImagePreview";
 import OcrResultEditor from "../components/OcrResultEditor";
 import ExtractionStatusDisplay from "../components/ExtractionStatusDisplay";
 import ExtractedInfoDisplay from "../components/ExtractedInfoDisplay";
-import Toast from "../components/Toast";
+import Toast from "../components/ui/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 import CustomPromptModal from "../components/CustomPromptModal";
 
@@ -24,7 +24,7 @@ const styles = {
   title: "text-xl font-semibold",
   loadingContainer: "flex justify-center items-center flex-grow",
   spinner:
-    "animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500",
+    "animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-info",
   scrollContainer: "flex-grow overflow-y-auto min-h-0",
   contentArea: "flex-grow overflow-hidden flex flex-col min-h-0",
   scrollContainerStyle: { maxHeight: "calc(100vh - 200px)" },
@@ -902,17 +902,17 @@ function OcrResult() {
               <button
                 onClick={() => navigate(`/app/${appName}`)}
                 disabled={!appName}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-neutral-600 hover:bg-neutral-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                 title="アップロード画面に戻る"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
               </button>
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
-              <span className="text-xl font-semibold text-gray-800 truncate max-w-md">
+              <span className="text-xl font-semibold text-neutral-800 truncate max-w-md">
                 {filename || "画像プレビュー"}
               </span>
             </div>
@@ -920,7 +920,7 @@ function OcrResult() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCustomPromptModalOpen(true)}
-                  className="px-3 py-1.5 bg-indigo-500 text-white rounded hover:bg-indigo-600 flex items-center gap-1.5 text-sm"
+                  className="px-3 py-1.5 bg-indigo-500 text-on-primary rounded hover:bg-indigo-600 flex items-center gap-1.5 text-sm"
                   title="カスタムプロンプト"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -931,7 +931,7 @@ function OcrResult() {
                 <button
                   onClick={handleReExtract}
                   disabled={loading || extractionStatus === 'processing'}
-                  className="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1.5 text-sm"
+                  className="px-3 py-1.5 bg-primary text-on-primary rounded hover:bg-primary-hover disabled:bg-neutral-300 disabled:cursor-not-allowed flex items-center gap-1.5 text-sm"
                   title="再度抽出"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -945,18 +945,18 @@ function OcrResult() {
                 <button
                   onClick={goToPreviousPage}
                   disabled={currentPageIndex === 0}
-                  className="px-2 py-1 bg-gray-500 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-gray-600"
+                  className="px-2 py-1 bg-neutral-500 text-on-primary rounded disabled:bg-neutral-300 disabled:cursor-not-allowed hover:bg-neutral-600"
                   title="前のページ"
                 >
                   ←
                 </button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-neutral-600">
                   {currentPageIndex + 1} / {totalPages}
                 </span>
                 <button
                   onClick={goToNextPage}
                   disabled={currentPageIndex === totalPages - 1}
-                  className="px-2 py-1 bg-gray-500 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-gray-600"
+                  className="px-2 py-1 bg-neutral-500 text-on-primary rounded disabled:bg-neutral-300 disabled:cursor-not-allowed hover:bg-neutral-600"
                   title="次のページ"
                 >
                   →
@@ -1005,7 +1005,7 @@ function OcrResult() {
                     <div className="mb-4 p-2">
                       <button
                         onClick={() => changeView("extraction")}
-                        className="px-4 py-2 rounded bg-gray-500 hover:bg-gray-600 text-white"
+                        className="px-4 py-2 rounded bg-neutral-500 hover:bg-neutral-600 text-on-primary"
                       >
                         抽出画面へ戻る
                       </button>
@@ -1019,7 +1019,7 @@ function OcrResult() {
                     />
                   </>
                 ) : (
-                  <div className="flex justify-center items-center flex-grow text-gray-500">
+                  <div className="flex justify-center items-center flex-grow text-neutral-500">
                     <div className="text-center">
                       <p className="text-lg mb-2">OCR情報がありません</p>
                       <p className="text-sm">この画像はOCR処理されていないか、OCR結果が見つかりませんでした。</p>
@@ -1027,7 +1027,7 @@ function OcrResult() {
                   </div>
                 )
               ) : (
-                <div className="flex justify-center items-center flex-grow text-gray-500">
+                <div className="flex justify-center items-center flex-grow text-neutral-500">
                   <div className="text-center">
                     <p className="text-lg mb-2">OCRモードが無効です</p>
                     <p className="text-sm">このデプロイメントではOCR機能が無効になっています。</p>

@@ -57,8 +57,6 @@ const defaultParameters: AppParameters = {
 const envOverrides: Record<string, Partial<AppParameters>> = {
   base: {
     selfSignUpEnabled: false,
-    allowedSignUpEmailDomains:["amazon.com", "amazon.co.jp"],
-    cloudFrontGeoRestriction: ["JP"],
   },
   dev: {
 

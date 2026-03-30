@@ -1,10 +1,12 @@
 import * as cdk from "aws-cdk-lib";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 import { Auth } from "./constructs/auth";
 import { Api } from "./constructs/api";
 import { Web } from "./constructs/web";
 import { Database } from "./constructs/database";
+import { Dsql } from "./constructs/dsql";
 import { Ocr } from "./constructs/ocr";
 import { Agent } from "./constructs/agent";
 import { StepFunctions } from "./constructs/step-functions";
@@ -20,12 +22,27 @@ export class OcrAppStack extends cdk.Stack {
 
     const p = props.params;
 
+    const database = new Database(this, "Database");
+
     const auth = new Auth(this, "Auth", {
       selfSignUpEnabled: p.selfSignUpEnabled,
       allowedSignUpEmailDomains: p.allowedSignUpEmailDomains,
     });
 
-    const database = new Database(this, "Database");
+    const dsql = new Dsql(this, "Dsql", {
+      userPoolId: auth.userPool.userPoolId,
+      schemasTable: database.schemasTable,
+    });
+
+    // Post Auth Trigger に DSQL 接続情報を注入
+    auth.postAuthFunction.addEnvironment("DSQL_ENDPOINT", dsql.clusterEndpoint);
+    auth.postAuthFunction.addEnvironment("DSQL_REGION", this.region);
+    auth.postAuthFunction.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["dsql:DbConnectAdmin"],
+        resources: [dsql.clusterArn],
+      })
+    );
 
     let ocrEndpoint = undefined;
     if (p.enableOcr) {
@@ -50,6 +67,7 @@ export class OcrAppStack extends cdk.Stack {
       imagesTable: database.imagesTable,
       jobsTable: database.jobsTable,
       schemasTable: database.schemasTable,
+      userPreferencesTable: database.userPreferencesTable,
       toolsTable: agent?.toolsTable,
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.client.userPoolClientId,
@@ -59,6 +77,9 @@ export class OcrAppStack extends cdk.Stack {
       agentRuntimeArn: agent?.runtimeArn,
       modelId: p.modelId,
       modelRegion: p.modelRegion,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
     });
 
     const stepFunctions = new StepFunctions(this, "StepFunctions", {

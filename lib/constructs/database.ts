@@ -6,6 +6,7 @@ export class Database extends Construct {
   public readonly imagesTable: Table;
   public readonly jobsTable: Table;
   public readonly schemasTable: Table;
+  public readonly userPreferencesTable: Table;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -25,6 +26,13 @@ export class Database extends Construct {
       sortKey: { name: "upload_time", type: AttributeType.STRING },
     });
 
+    // GSI: アップロードユーザーでのフィルタリング用
+    this.imagesTable.addGlobalSecondaryIndex({
+      indexName: "UploadedByIndex",
+      partitionKey: { name: "uploaded_by", type: AttributeType.STRING },
+      sortKey: { name: "upload_time", type: AttributeType.STRING },
+    });
+
     // ジョブ情報を保存するテーブル
     this.jobsTable = new Table(this, "JobsTable", {
       partitionKey: { name: "id", type: AttributeType.STRING },
@@ -40,6 +48,14 @@ export class Database extends Construct {
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY, // 開発環境用
       pointInTimeRecovery: true,
+    });
+
+    // ユーザー設定テーブル（Star 等）
+    this.userPreferencesTable = new Table(this, "UserPreferencesTable", {
+      partitionKey: { name: "user_id", type: AttributeType.STRING },
+      sortKey: { name: "sk", type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
 
     // テーブル名を出力

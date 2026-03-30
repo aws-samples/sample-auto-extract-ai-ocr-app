@@ -13,6 +13,7 @@ import {
   ManagedPolicy,
 } from "aws-cdk-lib/aws-iam";
 import { DockerImageCode, DockerImageFunction } from "aws-cdk-lib/aws-lambda";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import {
   RestApi,
   LambdaIntegration,
@@ -29,6 +30,7 @@ export interface ApiProps {
   imagesTable: Table;
   jobsTable: Table;
   schemasTable: Table;
+  userPreferencesTable: Table;
   toolsTable?: Table;
   userPoolId: string;
   userPoolClientId: string;
@@ -38,6 +40,9 @@ export interface ApiProps {
   agentRuntimeArn?: string;
   modelId: string;
   modelRegion: string;
+  dsqlEndpoint: string;
+  dsqlRegion: string;
+  dsqlClusterArn: string;
 }
 
 export class Api extends Construct {
@@ -149,8 +154,17 @@ export class Api extends Construct {
           jobsTable.tableArn,
           props.schemasTable.tableArn,
           ...(props.toolsTable ? [props.toolsTable.tableArn] : []),
+          props.userPreferencesTable.tableArn,
           `${imagesTable.tableArn}/index/*`, // GSIへのアクセス権限も追加
         ],
+      })
+    );
+
+    // DSQL 接続権限
+    lambdaRole.addToPolicy(
+      new PolicyStatement({
+        actions: ["dsql:DbConnectAdmin"],
+        resources: [props.dsqlClusterArn],
       })
     );
 
@@ -175,6 +189,9 @@ export class Api extends Construct {
         MODEL_ID: modelId,
         MODEL_REGION: modelRegion,
         AGENT_RUNTIME_ARN: props.agentRuntimeArn || "",
+        DSQL_ENDPOINT: props.dsqlEndpoint,
+        DSQL_REGION: props.dsqlRegion,
+        USER_PREFERENCES_TABLE_NAME: props.userPreferencesTable.tableName,
         PORT: "8080",
         // Lambda Web Adapter関連の環境変数
         AWS_LWA_PORT: "8080",
@@ -272,6 +289,20 @@ export class Api extends Construct {
         authorizationType: AuthorizationType.COGNITO,
       }
     );
+
+    // Gateway Responses に CORS ヘッダー追加（Authorizer エラー等でも CORS が返るように）
+    for (const type of [
+      apigateway.ResponseType.DEFAULT_4XX,
+      apigateway.ResponseType.DEFAULT_5XX,
+    ]) {
+      api.addGatewayResponse(`GatewayResponse${type.responseType}`, {
+        type,
+        responseHeaders: {
+          "Access-Control-Allow-Origin": "'*'",
+          "Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Requested-With'",
+        },
+      });
+    }
 
     // エンドポイントのCFn出力
     this.apiEndpoint = api.url;

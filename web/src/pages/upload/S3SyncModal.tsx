@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import api from '../utils/api';
-import { S3SyncFile, S3ImportResponse } from '../types/app-schema';
-import { Alert, Button, Modal } from './ui';
+import { X, Loader2, RefreshCw, Download, Folder } from 'lucide-react';
+import api from '../../services/api';
+import { S3SyncFile, S3ImportResponse } from '../../types/app-schema';
+import { Alert, Button, Modal } from '../../components/ui';
 
 interface S3SyncModalProps {
   isOpen: boolean;
@@ -151,9 +152,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
             onClick={onClose}
             className="text-neutral-500 hover:text-neutral-700"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X size={24} />
           </button>
         </div>
 
@@ -201,17 +200,12 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
             >
               {loading ? (
                 <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-on-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 size={16} className="animate-spin -ml-1 mr-2" />
                   更新中...
                 </span>
               ) : (
                 <span className="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
+                  <RefreshCw size={16} className="mr-1" />
                   更新
                 </span>
               )}
@@ -224,17 +218,12 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
             >
               {importing ? (
                 <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-on-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 size={16} className="animate-spin -ml-1 mr-2" />
                   インポート中...
                 </span>
               ) : (
                 <span className="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
+                  <Download size={16} className="mr-1" />
                   選択ファイルをインポート ({selectedFiles.size})
                 </span>
               )}
@@ -244,10 +233,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
           <div className="overflow-y-auto max-h-[50vh]">
             {loading ? (
               <div className="flex justify-center items-center py-8">
-                <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
+                <Loader2 size={32} className="animate-spin text-primary" />
               </div>
             ) : files.length === 0 ? (
               <div className="text-center py-8 text-neutral-500">
@@ -269,9 +255,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                           onChange={() => togglePathSelection(pathFiles)}
                           className="mr-2"
                         />
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-5l-2-2H5a2 2 0 00-2 2z" />
-                        </svg>
+                        <Folder size={16} className="mr-2 text-neutral-500" />
                         <span className="font-medium text-neutral-700">{path}</span>
                         <span className="ml-2 text-sm text-neutral-500">({pathFiles.length} ファイル)</span>
                       </div>

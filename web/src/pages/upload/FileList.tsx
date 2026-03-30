@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ImageFile } from '../types/ocr';
-import StatusBadge from './StatusBadge';
-import { formatDateTimeJST } from '../utils/dateUtils';
-import { deleteImage } from '../utils/api';
-import Toast from './ui/Toast';
-import { Modal } from './ui';
+import { RefreshCw, ChevronRight, FileText, Image, Trash2, CheckCircle, Upload } from 'lucide-react';
+import { ImageFile } from '../../types/ocr';
+import StatusBadge from '../../components/shared/StatusBadge';
+import { formatDateTimeJST } from '../../utils/dateUtils';
+import { deleteImage } from '../../services/imageApi';
+import Toast from '../../components/ui/Toast';
+import { Modal, Button, EmptyState } from '../../components/ui';
 
 interface FileListProps {
   files: ImageFile[];
@@ -200,12 +201,10 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm text-neutral-500">全{totalFiles}件</span>
             <div className="flex items-center">
-              <button onClick={onRefresh} className="text-primary hover:text-primary-hover mr-2 flex items-center text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+              <Button variant="ghost" size="sm" onClick={onRefresh} className="flex items-center">
+                <RefreshCw size={16} className="mr-1" />
                 更新
-              </button>
+              </Button>
             </div>
           </div>
           
@@ -220,29 +219,19 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                 const overallStatus = getParentOverallStatus(file.id);
                 
                 return (
-                  <div key={file.id} className="border border-neutral-200 rounded-lg">
+                  <div key={file.id} className="rounded-xl border border-default shadow-sm">
                     {/* 親ドキュメント行 */}
                     <div 
-                      className="flex items-center p-4 cursor-pointer hover:bg-neutral-50"
+                      className="flex items-center p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
                       onClick={() => toggleParentExpansion(file.id)}
                     >
                       {/* アイコンエリア: 固定幅 */}
                       <div className="w-12 flex-shrink-0 flex items-center">
                         {/* 展開/折りたたみアイコン */}
-                        <svg 
-                          xmlns="http://www.w3.org/2000/svg" 
-                          className={`h-4 w-4 mr-1 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                          fill="none" 
-                          viewBox="0 0 24 24" 
-                          stroke="currentColor"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                        <ChevronRight size={16} className={`mr-1 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                         
                         {/* ファイルアイコン */}
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-danger" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                        </svg>
+                        <FileText size={20} className="text-danger" />
                       </div>
                       
                       {/* ファイル名と情報 */}
@@ -283,22 +272,18 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                         className="text-neutral-400 hover:text-neutral-600"
                         title="削除（全ページ削除）"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <Trash2 size={20} />
                       </button>
                     </div>
                   </div>
                   
                   {/* 子ページ一覧 */}
                   {isExpanded && children.length > 0 && (
-                    <div className="border-t border-neutral-100">
+                    <div className="border-t border-default">
                       {children.map((childFile) => (
                         <div key={childFile.id} className="flex items-center p-4 pl-12 hover:bg-neutral-50">
                           {/* ページアイコン */}
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-primary" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                          </svg>
+                          <Image size={16} className="mr-2 text-primary" />
                           
                           {/* ページ情報 */}
                           <div className="flex-1 min-w-0">
@@ -320,9 +305,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                           {/* 確認済み */}
                           <div className="w-16 flex-shrink-0 flex justify-center">
                             {childFile.verificationCompleted ? (
-                              <svg className="w-5 h-5 text-success" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              </svg>
+                              <CheckCircle size={20} className="text-success" />
                             ) : (
                               <span className="text-neutral-300">-</span>
                             )}
@@ -353,18 +336,16 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
               } else {
                 // 通常ファイル（統合処理・既存データ）
                 return (
-                  <div key={file.id} className="border border-neutral-200 rounded-lg p-4">
+                  <div key={file.id} className="rounded-xl border border-default shadow-sm p-4">
                     <div className="flex items-center">
                       {/* アイコンエリア: 固定幅 */}
                       <div className="w-12 flex-shrink-0 flex items-center justify-center">
                         {/* ファイルアイコン */}
-                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${file.name.toLowerCase().endsWith('.pdf') ? 'text-danger' : 'text-primary'}`} viewBox="0 0 20 20" fill="currentColor">
-                          {file.name.toLowerCase().endsWith('.pdf') ? (
-                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                          )}
-                        </svg>
+                        {file.name.toLowerCase().endsWith('.pdf') ? (
+                          <FileText size={20} className="text-danger" />
+                        ) : (
+                          <Image size={20} className="text-primary" />
+                        )}
                       </div>
                       
                       {/* ファイル名と処理情報 */}
@@ -397,9 +378,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                       {/* 確認済み */}
                       <div className="w-16 flex-shrink-0 flex justify-center">
                         {file.verificationCompleted ? (
-                          <svg className="w-5 h-5 text-success" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
+                          <CheckCircle size={20} className="text-success" />
                         ) : (
                           <span className="text-neutral-300">-</span>
                         )}
@@ -426,9 +405,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                           className="text-neutral-400 hover:text-neutral-600"
                           title="削除"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          <Trash2 size={20} />
                         </button>
                       </div>
                     </div>
@@ -439,37 +416,32 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
           </div>
         </>
       ) : (
-        <div className="bg-bg rounded-lg p-6 border border-dashed border-neutral-300 flex flex-col items-center justify-center text-neutral-400">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-center">
-            ファイルがありません。PDFをアップロードしてください。
-          </p>
-        </div>
+        <EmptyState icon={Upload} message="ファイルがありません。PDFをアップロードしてください。" />
       )}
 
       {/* 削除確認モーダル */}
       <Modal isOpen={deleteConfirm.show} onClose={() => setDeleteConfirm({ show: false, imageId: '', imageName: '' })} className="max-w-md w-full mx-4 p-6">
             <h3 className="text-lg font-semibold mb-4">画像の削除</h3>
-            <p className="text-neutral-600 mb-6">
+            <p className="text-muted mb-6">
               「{deleteConfirm.imageName}」を削除します。この操作は取り消せません。
             </p>
             <div className="flex justify-end gap-3">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setDeleteConfirm({ show: false, imageId: '', imageName: '' })}
-                className="px-4 py-2 rounded bg-neutral-500 hover:bg-neutral-600 text-on-primary"
                 disabled={deleting}
               >
                 キャンセル
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded bg-danger hover:bg-danger-hover text-on-primary"
                 disabled={deleting}
               >
                 {deleting ? '削除中...' : '削除'}
-              </button>
+              </Button>
             </div>
       </Modal>
 

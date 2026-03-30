@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import SchemaPreview from "../components/SchemaPreview";
-import { Field } from "../types/app-schema";
-import api from "../utils/api";
-import { useAppContext } from "../contexts/AppContext";
-import { Alert } from "../components/ui";
+import { Info } from "lucide-react";
+import SchemaPreview from "./SchemaPreview";
+import { Field } from "../../types/app-schema";
+import api from "../../services/api";
+import { useAppContext } from "../../contexts/AppContext";
+import { Alert, Button, Skeleton } from "../../components/ui";
 
 interface SchemaData {
   name: string;
@@ -336,67 +337,50 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">
-            {isCreateMode ? '新規ユースケース作成' : 
-             isViewMode ? 'ユースケース確認' : 'ユースケース編集'}
-          </h1>
+          <div>
+            <h1 className="text-2xl font-semibold text-default">
+              {isCreateMode ? '新規ユースケース作成' : 
+               isViewMode ? 'ユースケース確認' : 'ユースケース編集'}
+            </h1>
+            <p className="text-sm text-muted mt-1">
+              {isCreateMode ? 'サンプル画像からスキーマを自動生成できます' :
+               isViewMode ? 'ユースケースの設定内容を確認' : 'ユースケースの設定を編集'}
+            </p>
+          </div>
           
           {isViewMode ? (
-            <div className="flex space-x-2">
-              <button
-                onClick={() => navigate(`/schema-generator/${urlAppName}`)}
-                className="bg-primary hover:bg-primary-hover text-on-primary px-4 py-2 rounded-md"
-              >
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={() => navigate(`/schema-generator/${urlAppName}`)}>
                 編集
-              </button>
-              <button
-                onClick={() => {
-                  // 確認モードの場合は元のアップロード画面に戻る
-                  if (urlAppName) {
-                    navigate(`/app/${urlAppName}`);
-                  } else {
-                    // 万が一urlAppNameがない場合はトップページに戻る
-                    navigate("/");
-                  }
-                }}
-                className="bg-neutral-500 hover:bg-neutral-600 text-on-primary px-4 py-2 rounded-md"
-              >
+              </Button>
+              <Button variant="secondary" onClick={() => urlAppName ? navigate(`/app/${urlAppName}`) : navigate("/")}>
                 戻る
-              </button>
+              </Button>
             </div>
           ) : (
-            <div className="flex space-x-2">
-              <button
-                onClick={saveSchema}
-                className="bg-success hover:bg-success-hover text-on-primary px-4 py-2 rounded-md disabled:bg-neutral-300 disabled:cursor-not-allowed"
-                disabled={isSaving || !!appNameError}
-              >
+            <div className="flex gap-2">
+              <Button variant="success" onClick={saveSchema} disabled={isSaving || !!appNameError}>
                 {isSaving ? (isCreateMode ? "作成中..." : "保存中...") : (isCreateMode ? "作成" : "保存")}
-              </button>
-              <button
-                onClick={() => {
-                  // 編集モードの場合は元のアップロード画面に戻る
-                  if (urlAppName) {
-                    navigate(`/app/${urlAppName}`);
-                  } else {
-                    // 新規作成モードの場合はトップページに戻る
-                    navigate("/");
-                  }
-                }}
-                className="bg-neutral-500 hover:bg-neutral-600 text-on-primary px-4 py-2 rounded-md"
-              >
+              </Button>
+              <Button variant="secondary" onClick={() => urlAppName ? navigate(`/app/${urlAppName}`) : navigate("/")}>
                 キャンセル
-              </button>
+              </Button>
             </div>
           )}
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-info"></div>
+          <div className="space-y-6">
+            <div className="rounded-xl border border-default shadow-sm p-6 bg-bg">
+              <Skeleton className="h-6 w-24 mb-4" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Skeleton className="h-10" />
+                <Skeleton className="h-10" />
+                <div className="md:col-span-2"><Skeleton className="h-16" /></div>
+              </div>
+            </div>
           </div>
         ) : (
           <div>
@@ -408,11 +392,11 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
             )}
 
             {/* 基本情報入力フォーム */}
-            <div className="bg-bg p-6 rounded-lg shadow-md mb-6">
-              <h2 className="text-xl font-semibold mb-4">基本情報</h2>
+            <div className="rounded-xl border border-default shadow-sm p-6 bg-bg mb-6">
+              <h2 className="text-lg font-semibold mb-4">基本情報</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  <label className="block text-sm font-medium text-muted mb-1">
                     アプリ名（英数字）
                   </label>
                   <input
@@ -420,7 +404,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                     value={appName}
                     onChange={(e) => setAppName(e.target.value)}
                     onBlur={(e) => validateAppName(e.target.value)}
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-neutral-100 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-2 border border-default rounded-lg text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface disabled:cursor-not-allowed"
                     placeholder="invoice_processor"
                     disabled={isViewMode || isEditMode}
                   />
@@ -429,26 +413,26 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  <label className="block text-sm font-medium text-muted mb-1">
                     表示名
                   </label>
                   <input
                     type="text"
                     value={appDisplayName}
                     onChange={(e) => setAppDisplayName(e.target.value)}
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 border border-default rounded-lg text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="請求書処理"
                     disabled={isViewMode}
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  <label className="block text-sm font-medium text-muted mb-1">
                     説明（オプション）
                   </label>
                   <textarea
                     value={appDescription}
                     onChange={(e) => setAppDescription(e.target.value)}
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 border border-default rounded-lg text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
                     rows={2}
                     placeholder="このアプリケーションの説明..."
                     disabled={isViewMode}
@@ -496,9 +480,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                     <div className="pl-6">
                       <div className="bg-info-light border border-info-border rounded-md p-3">
                         <div className="flex">
-                          <svg className="w-5 h-5 text-info mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                          </svg>
+                          <Info size={20} className="text-info mr-2 shrink-0" />
                           <div>
                             <h4 className="text-sm font-medium text-info-text">S3同期バケット</h4>
                             <div className="mt-1 text-sm text-info-text">
@@ -525,8 +507,8 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         <div className="flex flex-col lg:flex-row gap-6">
           {/* 左側: PDFアップロード領域 - 確認モードでは非表示 */}
           {!isViewMode && (
-            <div className="w-full lg:w-1/2 bg-bg p-6 rounded-lg shadow-md">
-              <h2 className="text-xl font-semibold mb-4">
+            <div className="w-full lg:w-1/2 rounded-xl border border-default shadow-sm p-6 bg-bg">
+              <h2 className="text-lg font-semibold mb-4">
                 サンプル画像アップロード
               </h2>
 
@@ -537,7 +519,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                 <textarea
                   value={extractionInstructions}
                   onChange={(e) => setExtractionInstructions(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 border border-default rounded-lg text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
                   rows={3}
                   placeholder="例: この請求書から、請求日、請求番号、品目、金額などの情報を抽出できるスキーマを生成してください。"
                   disabled={isViewMode}
@@ -631,39 +613,13 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
               </div>
 
               <div className="mt-4 flex justify-between">
-                <button
+                <Button
+                  variant="primary"
                   onClick={generateSchema}
-                  className="bg-primary hover:bg-primary-hover text-on-primary px-4 py-2 rounded-md disabled:bg-neutral-300 disabled:cursor-not-allowed"
                   disabled={!uploadedFile || isGenerating}
                 >
-                  {isGenerating ? (
-                    <span className="flex items-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-on-primary"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      生成中...
-                    </span>
-                  ) : (
-                    "スキーマを生成"
-                  )}
-                </button>
+                  {isGenerating ? "生成中..." : "スキーマを生成"}
+                </Button>
               </div>
 
               {uploadedFile && filePreviewUrl && isImageFile(uploadedFile) && (
@@ -715,9 +671,9 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
           )}
 
           {/* 右側: スキーマ表示・編集領域 */}
-          <div className={`w-full ${!isViewMode ? 'lg:w-1/2' : ''} bg-bg p-6 rounded-lg shadow-md`}>
+          <div className={`w-full ${!isViewMode ? 'lg:w-1/2' : ''} rounded-xl border border-default shadow-sm p-6 bg-bg`}>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">スキーマ定義</h2>
+              <h2 className="text-lg font-semibold">スキーマ定義</h2>
               {generatedSchema && !isViewMode && (
                 <button
                   onClick={regenerateSchema}
@@ -748,13 +704,13 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                 {/* JSONエディタ - fieldsのみ表示 */}
                 {!isViewMode && (
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    <label className="block text-sm font-medium text-muted mb-1">
                       フィールド定義 (JSON)
                     </label>
                     <textarea
                       value={fieldsJson}
                       onChange={handleFieldsJsonChange}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full px-3 py-2 border border-default rounded-lg font-mono text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
                       rows={15}
                     ></textarea>
                   </div>
@@ -781,7 +737,6 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
             )}
           </div>
         </div>
-      </div>
     </div>
   );
 };

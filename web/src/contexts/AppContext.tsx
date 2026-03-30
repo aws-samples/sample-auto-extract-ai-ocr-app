@@ -1,12 +1,27 @@
-import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
-import api from '../utils/api';
+import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react';
+import api from '../services/api';
 import { AppSchema } from '../types/app-schema';
+
+interface CurrentUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  department: string | null;
+  role: string;
+}
 
 interface AppContextType {
   apps: AppSchema[];
   loading: boolean;
   error: string | null;
   refreshApps: () => Promise<void>;
+  currentUser: CurrentUser | null;
+  userLoaded: boolean;
+  isAdmin: boolean;
+  isAuthorOrAbove: boolean;
+  stars: string[];
+  toggleStar: (appName: string) => Promise<void>;
+  updateDisplayName: (name: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType>({
@@ -14,30 +29,32 @@ const AppContext = createContext<AppContextType>({
   loading: false,
   error: null,
   refreshApps: async () => {},
+  currentUser: null,
+  userLoaded: false,
+  isAdmin: false,
+  isAuthorOrAbove: false,
+  stars: [],
+  toggleStar: async () => {},
+  updateDisplayName: async () => {},
 });
 
 export { AppContext };
 export const useAppContext = () => useContext(AppContext);
 
-interface AppProviderProps {
-  children: ReactNode;
-}
-
-export const AppProvider = ({ children }: AppProviderProps) => {
+export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [apps, setApps] = useState<AppSchema[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [userLoaded, setUserLoaded] = useState(false);
+  const [stars, setStars] = useState<string[]>([]);
 
   const fetchApps = async () => {
     setLoading(true);
     setError(null);
     try {
       const response = await api.get('/apps');
-      if (response && response.data) {
-        setApps(response.data.apps || []);
-      } else {
-        setApps([]);
-      }
+      setApps(response?.data?.apps || []);
     } catch (err) {
       console.error('Failed to fetch apps:', err);
       setError('アプリケーション情報の取得に失敗しました');
@@ -47,8 +64,36 @@ export const AppProvider = ({ children }: AppProviderProps) => {
     }
   };
 
+  const toggleStar = useCallback(async (appName: string) => {
+    const isStarred = stars.includes(appName);
+    // 楽観的更新
+    setStars(prev => isStarred ? prev.filter(s => s !== appName) : [...prev, appName]);
+    try {
+      if (isStarred) {
+        await api.delete(`/user/stars/${appName}`);
+      } else {
+        await api.put(`/user/stars/${appName}`);
+      }
+    } catch {
+      // ロールバック
+      setStars(prev => isStarred ? [...prev, appName] : prev.filter(s => s !== appName));
+    }
+  }, [stars]);
+
+  const updateDisplayName = useCallback(async (name: string) => {
+    await api.patch('/user/me', { display_name: name });
+    setCurrentUser(prev => prev ? { ...prev, display_name: name } : prev);
+  }, []);
+
   useEffect(() => {
     fetchApps();
+    api.get('/user/me')
+      .then(r => setCurrentUser(r.data.user || null))
+      .catch(() => setCurrentUser(null))
+      .finally(() => setUserLoaded(true));
+    api.get('/user/stars')
+      .then(r => setStars(r.data.stars || []))
+      .catch(() => {});
   }, []);
 
   return (
@@ -58,6 +103,13 @@ export const AppProvider = ({ children }: AppProviderProps) => {
         loading,
         error,
         refreshApps: fetchApps,
+        currentUser,
+        userLoaded,
+        isAdmin: userLoaded && currentUser?.role === 'admin',
+        isAuthorOrAbove: userLoaded && (currentUser?.role === 'admin' || currentUser?.role === 'author'),
+        stars,
+        toggleStar,
+        updateDisplayName,
       }}
     >
       {children}

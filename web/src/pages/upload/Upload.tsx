@@ -1,21 +1,26 @@
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import api from "../utils/api";
-import { ImageFile } from "../types/ocr";
-import { useAppContext } from "../contexts/AppContext";
-import FileList from "../components/FileList";
-import OcrActionBar from "../components/OcrActionBar";
-import S3SyncModal from "../components/S3SyncModal";
-import CustomPromptModal from "../components/CustomPromptModal";
-import ConfirmModal from "../components/ConfirmModal";
-import LoadingToast from "../components/LoadingToast";
+import api from "../../services/api";
+import { ImageFile } from "../../types/ocr";
+import { useAppContext } from "../../contexts/AppContext";
+import { usePolling } from "../../hooks/usePolling";
+import FileList from "./FileList";
+import OcrActionBar from "./OcrActionBar";
+import S3SyncModal from "./S3SyncModal";
+import CustomPromptModal from "../../components/shared/CustomPromptModal";
+import ConfirmModal from "../../components/shared/ConfirmModal";
+import LoadingToast from "./LoadingToast";
 
-import { Alert } from "../components/ui";
+import SharingModal from "./SharingModal";
+
+import { Alert, Button } from "../../components/ui";
+
+import { MoreVertical, Eye, Pencil, RefreshCw, Trash2, Share2 } from "lucide-react";
 
 function Upload() {
   const { appName } = useParams<{ appName: string }>();
   const navigate = useNavigate();
-  const { apps, refreshApps } = useAppContext();
+  const { apps, refreshApps, isAuthorOrAbove, isAdmin, currentUser } = useAppContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -28,6 +33,7 @@ function Upload() {
   const [customPromptModalOpen, setCustomPromptModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showSharing, setShowSharing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pageProcessingMode, setPageProcessingMode] = useState<'combined' | 'individual'>('combined');
 
@@ -238,11 +244,11 @@ function Upload() {
         setUploadProgress({ ...uploadProgress, [file.name]: 0 });
 
         // 1. 署名付きURLを取得
-        const presignedUrlResponse = await api.post("/generate-presigned-url", {
+        const presignedUrlResponse = await api.post(`/generate-presigned-url?app_name=${encodeURIComponent(appName || 'default')}`, {
           filename: file.name,
           content_type: file.type,
           app_name: appName || undefined,
-          page_processing_mode: pageProcessingMode, // 追加
+          page_processing_mode: pageProcessingMode,
         });
 
         const { presigned_url, s3_key, image_id } = presignedUrlResponse.data;
@@ -289,23 +295,13 @@ function Upload() {
     }
   };
 
-  // コンポーネントマウント時とrefreshTrigger変更時にファイル一覧を取得
+  // コンポーネントマウント時にファイル一覧を取得
   useEffect(() => {
-    // 初回読み込み
     fetchFiles();
-    
-    // 定期的なポーリングを設定（2秒ごと）
-    const interval = setInterval(() => {
-      if (pollingEnabled) {
-        fetchFiles();
-      }
-    }, 2000);
-    
-    // コンポーネントのアンマウント時にポーリングを停止
-    return () => {
-      clearInterval(interval);
-    };
-  }, [appName, refreshTrigger, pollingEnabled]);
+  }, [appName, refreshTrigger]);
+
+  // 定期的なポーリング（2秒ごと）
+  usePolling(fetchFiles, { interval: 2000, enabled: pollingEnabled });
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -315,15 +311,23 @@ function Upload() {
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">{appDisplayName || appName}</h1>
             
-            <div className="relative" ref={menuRef}>
+            <div className="flex items-center gap-1">
+              {isAuthorOrAbove && (isAdmin || selectedApp?.permission === 'owner') && (
+                <button
+                  onClick={() => setShowSharing(true)}
+                  className="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600 transition"
+                  title="共有設定"
+                >
+                  <Share2 size={20} />
+                </button>
+              )}
+              <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setShowMenu(!showMenu)}
                   className="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600 transition"
                   title="その他"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                  </svg>
+                  <MoreVertical size={24} />
                 </button>
                 {showMenu && (
                   <div className="absolute right-0 mt-1 w-56 bg-bg rounded-lg shadow-lg border border-neutral-200 z-20 py-1">
@@ -332,19 +336,14 @@ function Upload() {
                       className="flex items-center px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
                       onClick={() => setShowMenu(false)}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
+                      <Eye size={16} className="mr-3 text-neutral-500" />
                       スキーマ確認・編集
                     </Link>
                     <button
                       onClick={() => { openCustomPromptModal(); setShowMenu(false); }}
                       className="flex items-center w-full px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
+                      <Pencil size={16} className="mr-3 text-neutral-500" />
                       カスタムプロンプト
                     </button>
                     {s3SyncEnabled && (
@@ -352,9 +351,7 @@ function Upload() {
                         onClick={() => { openS3SyncModal(); setShowMenu(false); }}
                         className="flex items-center w-full px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
+                        <RefreshCw size={16} className="mr-3 text-neutral-500" />
                         S3ファイル同期
                       </button>
                     )}
@@ -363,14 +360,13 @@ function Upload() {
                       onClick={() => { setShowDeleteConfirm(true); setShowMenu(false); }}
                       className="flex items-center w-full px-4 py-2 text-sm text-danger hover:bg-danger-light"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      <Trash2 size={16} className="mr-3" />
                       削除
                     </button>
                   </div>
                 )}
               </div>
+            </div>
           </div>
 
           {error && (
@@ -516,39 +512,13 @@ function Upload() {
             )}
 
             <div className="flex justify-end">
-              <button
+              <Button
                 type="submit"
-                className="bg-primary text-on-primary px-4 py-2 rounded-lg hover:bg-primary-hover transition duration-200 disabled:bg-neutral-300 disabled:cursor-not-allowed"
+                variant="primary"
                 disabled={selectedFiles.length === 0 || uploading}
               >
-                {uploading ? (
-                  <span className="flex items-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-2 h-5 w-5 text-on-primary"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    アップロード中...
-                  </span>
-                ) : (
-                  "アップロード"
-                )}
-              </button>
+                {uploading ? "アップロード中..." : "アップロード"}
+              </Button>
             </div>
           </form>
         </div>
@@ -589,6 +559,15 @@ function Upload() {
         message={`アプリ「${appDisplayName || appName}」を削除してもよろしいですか？`}
         confirmText="削除"
         cancelText="キャンセル"
+      />
+
+      <SharingModal
+        isOpen={showSharing}
+        onClose={() => setShowSharing(false)}
+        appName={appName || ''}
+        appDisplayName={appDisplayName || appName || ''}
+        currentUserId={currentUser?.id}
+        onPermissionLost={() => { setShowSharing(false); refreshApps(); }}
       />
 
       {/* エンドポイント起動中表示 */}

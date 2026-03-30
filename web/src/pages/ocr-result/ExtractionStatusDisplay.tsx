@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertCircle, Info } from 'lucide-react';
 
 interface ExtractionStatusDisplayProps {
   status: string;
@@ -33,9 +34,7 @@ const ExtractionStatusDisplay: React.FC<ExtractionStatusDisplayProps> = ({
         return (
           <div className="text-center py-10">
             <div className="bg-danger-light text-danger rounded-full h-12 w-12 flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <AlertCircle size={32} />
             </div>
             <p className="text-lg font-medium mb-2">情報抽出に失敗しました</p>
             <p className="text-sm text-neutral-500 mb-4">
@@ -54,9 +53,7 @@ const ExtractionStatusDisplay: React.FC<ExtractionStatusDisplayProps> = ({
         return (
           <div className="text-center py-10">
             <div className="bg-warning-light text-warning-text rounded-full h-12 w-12 flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Info size={32} />
             </div>
             <p className="text-lg font-medium mb-2">情報抽出が必要です</p>
             <p className="text-sm text-neutral-500 mb-4">

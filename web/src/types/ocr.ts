@@ -11,6 +11,10 @@ export interface ImageFile {
   totalPages?: number;
   parentDocumentId?: string;
   verificationCompleted?: boolean;
+  uploaded_by?: string;
+  uploaded_by_email?: string;
+  verified_by?: string;
+  verified_by_email?: string;
 }
 
 export interface OcrWord {

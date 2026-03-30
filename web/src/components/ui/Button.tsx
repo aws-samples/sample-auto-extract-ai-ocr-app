@@ -6,6 +6,7 @@ const variants = {
   danger: 'bg-danger hover:bg-danger-hover text-on-primary',
   success: 'bg-success hover:bg-success-hover text-on-primary',
   ghost: 'text-primary hover:text-primary-hover bg-transparent',
+  outline: 'border border-default bg-transparent hover:bg-neutral-100 text-neutral-700',
 } as const;
 
 const sizes = {
@@ -20,10 +21,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', className = '', disabled, ...props }, ref) => (
+  ({ variant = 'primary', size = 'md', className = '', disabled, type = 'button', ...props }, ref) => (
     <button
       ref={ref}
-      className={`rounded font-medium transition-colors ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+      type={type}
+      className={`inline-flex items-center justify-center rounded font-medium transition-colors ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
       disabled={disabled}
       {...props}
     />

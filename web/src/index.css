@@ -111,15 +111,6 @@ body {
 /* ========================================
    レイアウト
    ======================================== */
-.home-container {
-  padding: 40px 20px;
-  width: 100%;
-  max-width: 1200px;
-  margin: 40px auto;
-  box-sizing: border-box;
-  color: var(--color-text);
-}
-
 .ocr-result-container {
   padding: 20px;
   height: calc(100vh - 80px);
@@ -135,10 +126,6 @@ body {
 }
 
 @media (max-width: 768px) {
-  .home-container {
-    padding: 20px 15px;
-    margin: 20px auto;
-  }
 }
 
 /* ========================================

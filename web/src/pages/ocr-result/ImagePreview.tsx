@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { OcrBoundingBox } from '../types/ocr';
+import { OcrBoundingBox } from '../../types/ocr';
 
 interface ImagePreviewProps {
   imageSrc: string;
@@ -181,10 +181,15 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
               key={`box-${index}-${resizeCounter}`}
               className={`absolute cursor-pointer ${
                 selectedIndex === index 
-                  ? 'border-2 border-rose-500 bg-rose-100 bg-opacity-25' 
-                  : 'border border-info-border bg-info-light bg-opacity-20'
+                  ? 'border-2 border-rose-500' 
+                  : 'border border-info-border'
               }`}
-              style={getBoxStyle(box)}
+              style={{
+                ...getBoxStyle(box),
+                backgroundColor: selectedIndex === index
+                  ? 'rgba(244, 63, 94, 0.15)'
+                  : 'rgba(59, 130, 246, 0.12)',
+              }}
               onClick={() => onSelectBox(index)}
               title={`テキスト: ${box.text}`}
             ></div>

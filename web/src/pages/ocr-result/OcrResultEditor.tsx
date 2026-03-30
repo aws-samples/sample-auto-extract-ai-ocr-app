@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { OcrResultData } from '../types/ocr';
+import { OcrResultData } from '../../types/ocr';
 
 interface OcrResultEditorProps {
   ocrResults: OcrResultData[];

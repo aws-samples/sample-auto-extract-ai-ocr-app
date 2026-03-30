@@ -1,5 +1,5 @@
 import React from 'react';
-import { Field } from '../types/app-schema';
+import { Field } from '../../types/app-schema';
 
 interface SchemaPreviewProps {
   schema: {

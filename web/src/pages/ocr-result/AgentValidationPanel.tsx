@@ -1,5 +1,5 @@
 import React from 'react';
-import { Suggestion } from '../types/agent';
+import { Suggestion } from '../../types/agent';
 
 interface AgentValidationPanelProps {
   suggestions: Suggestion[];

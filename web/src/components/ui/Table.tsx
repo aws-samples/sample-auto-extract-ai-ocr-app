@@ -17,5 +17,5 @@ export function Thead({ className = '', children, ...props }: React.HTMLAttribut
 }
 
 export function Tbody({ className = '', children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={`bg-bg divide-y divide-default ${className}`} {...props}>{children}</tbody>;
+  return <tbody className={`bg-bg divide-y divide-default [&>tr]:hover:bg-neutral-50 [&>tr]:transition-colors ${className}`} {...props}>{children}</tbody>;
 }

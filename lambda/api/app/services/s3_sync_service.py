@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 from config import settings
 from repositories.schema_repository import get_app_schema
-from repositories.image_repository import create_image_record, get_images_by_sync_source
+from repositories.image_repository import create_image_record, get_images_by_sync_source, get_existing_sync_sources
 from schemas import UploadCompleteRequest
 from services.upload_service import UploadService
 
@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 class S3SyncService:
     """S3同期処理を管理するサービスクラス"""
 
-    def __init__(self):
+    def __init__(self, upload_service=None):
         self.bucket_name = settings.BUCKET_NAME
         self.sync_bucket_name = settings.SYNC_BUCKET_NAME
+        self._upload_service = upload_service
 
     async def sync_s3_files(self, app_name: str, prefix: Optional[str] = None) -> Dict[str, Any]:
         """S3バケットからファイルを同期する"""
@@ -58,7 +59,7 @@ class S3SyncService:
             logger.error(f"Error syncing S3 files: {str(e)}")
             raise
 
-    async def import_s3_file(self, app_name: str, file_data: dict) -> Dict[str, str]:
+    async def import_s3_file(self, app_name: str, file_data: dict, uploaded_by: str = None) -> Dict[str, str]:
         """S3バケットからファイルをインポートしてOCR処理を開始する"""
         try:
             # アプリケーションの入力方法設定を取得
@@ -103,11 +104,12 @@ class S3SyncService:
                 app_name=app_name,
                 status="uploading",
                 page_processing_mode=page_processing_mode,
-                sync_source_path=source_key
+                sync_source_path=source_key,
+                uploaded_by=uploaded_by
             )
 
             # アップロード完了処理を実行（OCR処理開始）
-            upload_service = UploadService()
+            upload_service = self._upload_service or UploadService()
             upload_request = UploadCompleteRequest(
                 image_id=image_id,
                 filename=filename,
@@ -162,17 +164,10 @@ class S3SyncService:
             raise
 
     async def check_existing_files(self, app_name: str, s3_keys: List[str]) -> Dict[str, bool]:
-        """既存ファイルをチェックする"""
+        """既存ファイルをバッチチェックする（1 回の scan で全件取得）"""
         try:
-            existing_files = {}
-            
-            for s3_key in s3_keys:
-                filename = s3_key.split('/')[-1]
-                existing = get_images_by_sync_source(filename, s3_key, app_name)
-                existing_files[s3_key] = len(existing) > 0
-            
-            return existing_files
-            
+            existing_sources = get_existing_sync_sources(app_name)
+            return {s3_key: s3_key in existing_sources for s3_key in s3_keys}
         except Exception as e:
             logger.error(f"既存ファイルチェックエラー: {str(e)}")
             raise

@@ -2,11 +2,18 @@ import logging
 import os
 import boto3
 from botocore.exceptions import ClientError
+from clients import dynamodb_resource
 
 logger = logging.getLogger(__name__)
 
-# DynamoDB クライアント
-dynamodb = boto3.resource('dynamodb')
+
+def _get_schemas_table():
+    """SchemasTable のリソースを取得"""
+    table_name = os.environ.get('SCHEMAS_TABLE_NAME')
+    if not table_name:
+        logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
+        raise ValueError("SCHEMAS_TABLE_NAME environment variable is not set")
+    return dynamodb_resource.Table(table_name)
 
 
 def load_app_schemas():
@@ -16,14 +23,8 @@ def load_app_schemas():
     取得できない場合はエラーを返す
     """
     try:
-        # DynamoDB からスキーマを取得
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            raise ValueError("SCHEMAS_TABLE_NAME environment variable is not set")
-            
-        logger.info(f"DynamoDB からスキーマを取得します: {schemas_table_name}")
-        schemas_table = dynamodb.Table(schemas_table_name)
+        logger.info(f"DynamoDB からスキーマを取得します")
+        schemas_table = _get_schemas_table()
         
         # schema_type='app' の全てのレコードを取得
         response = schemas_table.query(
@@ -92,33 +93,6 @@ def get_extraction_fields_for_app(app_name):
     return {"fields": []}
 
 
-def get_field_names_for_app(app_name):
-    """指定されたアプリの抽出フィールド名リストを取得（階層構造対応）"""
-    fields = get_extraction_fields_for_app(app_name)["fields"]
-    field_names = []
-    
-    def extract_field_names(fields, prefix=""):
-        for field in fields:
-            field_name = field["name"]
-            full_name = f"{prefix}{field_name}" if prefix else field_name
-            field_names.append(full_name)
-            
-            # map型の場合は再帰的に処理
-            if field.get("type") == "map" and "fields" in field:
-                extract_field_names(field["fields"], f"{full_name}.")
-            
-            # list型の場合、itemsがmap型なら再帰的に処理
-            if field.get("type") == "list" and "items" in field:
-                items = field["items"]
-                if items.get("type") == "map" and "fields" in items:
-                    # リスト内の各項目のフィールド名を取得
-                    for item_field in items["fields"]:
-                        field_names.append(f"{full_name}.{item_field['name']}")
-    
-    extract_field_names(fields)
-    return field_names
-
-
 def get_app_display_name(app_name):
     """アプリの表示名を取得"""
     app_schemas = get_app_schemas()
@@ -153,12 +127,7 @@ def update_app_schema(app_name, app_data):
     アプリケーションスキーマを更新する
     """
     try:
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            return False
-            
-        schemas_table = dynamodb.Table(schemas_table_name)
+        schemas_table = _get_schemas_table()
         
         # 現在の日時を取得
         from datetime import datetime
@@ -207,12 +176,7 @@ def delete_app_schema(app_name):
     アプリケーションスキーマを削除する
     """
     try:
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            return False
-            
-        schemas_table = dynamodb.Table(schemas_table_name)
+        schemas_table = _get_schemas_table()
         
         # スキーマを削除
         schemas_table.delete_item(

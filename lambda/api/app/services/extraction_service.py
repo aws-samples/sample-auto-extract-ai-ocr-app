@@ -5,22 +5,78 @@ from abc import ABC, abstractmethod
 from repositories import (
     get_image, update_extracted_info,
     update_image_status, get_extraction_fields_for_app,
-    get_field_names_for_app, get_custom_prompt_for_app,
+    get_custom_prompt_for_app,
     get_app_display_name, update_verification_status
 )
 from schemas import ExtractionRequest
 from config import settings
 from background import BackgroundTaskExtension
 from utils import decimal_to_float
+from utils.helpers import safe_get_from_dynamo_data
+from utils.bedrock import parse_converse_response, extract_json_from_response
+from domains.schema_fields import extract_field_names
 from clients import s3_client
+from clients.bedrock import call_bedrock, call_bedrock_with_retry
 from domains.extraction_engine import (
-    extract_information_from_multi_images_with_ocr,
-    extract_information_from_single_image_with_ocr,
-    extract_information_from_multi_images_without_ocr,
-    extract_information_from_single_image_without_ocr
+    build_single_image_with_ocr_request,
+    build_multi_images_with_ocr_request,
+    build_multi_images_without_ocr_request,
+    build_single_image_without_ocr_request,
+    parse_extraction_response,
+    finalize_extraction_result,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_multipage_ocr_results(image_id: str) -> list:
+    """複数ページOCR結果を取得する（repository 経由）"""
+    try:
+        image_data = get_image(image_id)
+        ocr_result = safe_get_from_dynamo_data(image_data, "ocr_result", {})
+
+        # 複数ページOCR結果を取得
+        pages_results = safe_get_from_dynamo_data(ocr_result, "pages", [])
+
+        # pages_resultsがリストの場合
+        if isinstance(pages_results, list):
+            processed_pages = []
+            for i, page_result in enumerate(pages_results):
+                try:
+                    if isinstance(page_result, dict):
+                        processed_pages.append(page_result)
+                    else:
+                        logger.warning(f"ページ {i} の結果が辞書形式ではありません: {type(page_result)}")
+                except Exception as page_error:
+                    logger.error(f"ページ {i} の処理エラー: {str(page_error)}")
+                    continue
+            if processed_pages:
+                return processed_pages
+        # pages_resultsが辞書の場合は単一ページとして扱う
+        elif isinstance(pages_results, dict):
+            return [pages_results]
+
+        # 従来形式の場合は単一ページとして扱う
+        words = safe_get_from_dynamo_data(ocr_result, "words", [])
+        # wordsがリストでない場合は空リストに
+        if not isinstance(words, list):
+            logger.warning(f"単語データがリスト形式ではありません: {type(words)}")
+            words = []
+        return [{"page": 1, "words": words}]
+
+    except Exception as e:
+        logger.error(f"複数ページOCR結果取得エラー: {str(e)}")
+        return []
+
+
+def get_s3_object_bytes(s3_key: str) -> bytes:
+    """S3から画像バイトデータを取得"""
+    try:
+        s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
+        return s3_response['Body'].read()
+    except Exception as e:
+        logger.error(f"S3オブジェクト取得エラー: {s3_key}, {str(e)}")
+        raise
 
 
 # ===== 抽出プロセッサークラス =====
@@ -58,7 +114,7 @@ class MultiImageExtractor(InformationExtractor):
                 raise ValueError(f"app_name not found for image {self.image_id}")
             
             app_extraction_fields = get_extraction_fields_for_app(app_name)
-            field_names = get_field_names_for_app(app_name)
+            field_names = extract_field_names(app_extraction_fields.get("fields", []))
             custom_prompt = get_custom_prompt_for_app(app_name)
 
             logger.info(
@@ -94,32 +150,40 @@ class MultiImageExtractor(InformationExtractor):
                 raise ValueError("画像データを取得できませんでした")
 
             if settings.ENABLE_OCR:
-                from domains.extraction_engine import get_multipage_ocr_results
                 ocr_results = get_multipage_ocr_results(self.image_id)
 
                 if not ocr_results:
                     raise ValueError("OCR結果が見つかりません")
 
-                result = extract_information_from_multi_images_with_ocr(
+                messages, system_prompts = build_multi_images_with_ocr_request(
                     page_images=page_images,
                     content_type=content_type,
                     ocr_results=ocr_results,
                     app_extraction_fields=app_extraction_fields,
-                    field_names=field_names,
                     custom_prompt=custom_prompt
                 )
+                response = call_bedrock(messages, system_prompts)
+                ai_response = parse_converse_response(response)
+                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
+                result = finalize_extraction_result(extracted_info, mapping)
             else:
                 logger.info("OCR無効: without_ocrモードで複数画像情報抽出を実行")
                 images_data = [
                     {'bytes': img, 'content_type': content_type}
                     for img in page_images
                 ]
-                result = extract_information_from_multi_images_without_ocr(
+                messages, system_prompts = build_multi_images_without_ocr_request(
                     images_data=images_data,
                     app_extraction_fields=app_extraction_fields,
                     field_names=field_names,
                     custom_prompt=custom_prompt
                 )
+                response = call_bedrock(messages, system_prompts)
+                ai_response = parse_converse_response(response)
+                extracted_info = extract_json_from_response(ai_response)
+                if not extracted_info:
+                    extracted_info = {"error": "Failed to extract JSON from response"}
+                result = finalize_extraction_result(extracted_info)
                 result["mapping"] = {}
 
             update_extracted_info(
@@ -158,7 +222,7 @@ class SingleImageExtractor(InformationExtractor):
                 raise ValueError(f"app_name not found for image {self.image_id}")
             
             app_extraction_fields = get_extraction_fields_for_app(app_name)
-            field_names = get_field_names_for_app(app_name)
+            field_names = extract_field_names(app_extraction_fields.get("fields", []))
             custom_prompt = get_custom_prompt_for_app(app_name)
 
             logger.info(
@@ -184,22 +248,31 @@ class SingleImageExtractor(InformationExtractor):
 
             if settings.ENABLE_OCR:
                 ocr_result = image_data.get("ocr_result", {})
-                result = extract_information_from_single_image_with_ocr(
+                messages, system_prompts = build_single_image_with_ocr_request(
                     image_data=image_bytes,
                     content_type=content_type,
                     ocr_result=ocr_result,
                     app_extraction_fields=app_extraction_fields,
-                    field_names=field_names,
                     custom_prompt=custom_prompt
                 )
+                response = call_bedrock_with_retry(messages, system_prompts)
+                ai_response = parse_converse_response(response)
+                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
+                result = finalize_extraction_result(extracted_info, mapping)
             else:
                 logger.info("OCR無効: without_ocrモードで単一画像情報抽出を実行")
-                result = extract_information_from_single_image_without_ocr(
+                messages, system_prompts = build_single_image_without_ocr_request(
                     image_bytes=image_bytes,
                     app_extraction_fields=app_extraction_fields,
                     field_names=field_names,
                     custom_prompt=custom_prompt
                 )
+                response = call_bedrock(messages, system_prompts)
+                ai_response = parse_converse_response(response)
+                extracted_info = extract_json_from_response(ai_response)
+                if not extracted_info:
+                    extracted_info = {"error": "Failed to extract JSON from response"}
+                result = finalize_extraction_result(extracted_info)
                 result["mapping"] = {}
 
             update_extracted_info(
@@ -370,10 +443,10 @@ class ExtractionService:
         else:
             return SingleImageExtractor(image_id, image_data)
 
-    async def update_verification_status(self, image_id: str, verification_completed: bool) -> Dict[str, Any]:
+    async def update_verification_status(self, image_id: str, verification_completed: bool, verified_by: str = None) -> Dict[str, Any]:
         """確認完了ステータスを更新する"""
         try:
-            update_verification_status(image_id, verification_completed)
+            update_verification_status(image_id, verification_completed, verified_by=verified_by)
             return {
                 "status": "success",
                 "verification_completed": verification_completed

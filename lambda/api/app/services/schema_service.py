@@ -10,11 +10,16 @@ from schemas import (
 from config import settings
 from repositories import (
     get_app_schemas, get_app_schema, get_extraction_fields_for_app,
-    get_field_names_for_app, get_custom_prompt_for_app, update_app_schema,
+    get_custom_prompt_for_app, update_app_schema,
     delete_app_schema, delete_images_by_app_name
 )
 from repositories.image_repository import create_s3_sync_folder, get_images_by_sync_source
-from domains.schema_generator import generate_schema_fields_from_image
+from repositories.usecase_repository import register_usecase_owner
+from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
+from domains.schema_fields import extract_field_names
+from clients.bedrock import call_bedrock
+from utils.bedrock import parse_converse_response
+from utils.auth import get_usecase_permission
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +45,32 @@ class SchemaService:
             "input_methods": request.input_methods
         }
 
-    async def get_apps_list(self) -> Dict[str, Any]:
-        """アプリ一覧を取得する"""
+    async def get_apps_list(self, user_id: str = None, role: str = None) -> Dict[str, Any]:
+        """アプリ一覧を取得する（権限フィルタリング込み）
+
+        Args:
+            user_id: ユーザーID（None の場合はフィルタなし）
+            role: ユーザーのシステムロール（admin の場合は全件 + owner 権限付与）
+        """
         try:
-            return get_app_schemas()
+            result = get_app_schemas()
+
+            if role == "admin":
+                for a in result.get("apps", []):
+                    a["permission"] = "owner"
+                return result
+
+            if user_id is None:
+                return result
+
+            apps = []
+            for a in result.get("apps", []):
+                perm = get_usecase_permission(user_id, a["name"])
+                if perm:
+                    a["permission"] = perm
+                    apps.append(a)
+            result["apps"] = apps
+            return result
         except Exception as e:
             logger.error(f"Error getting apps list: {str(e)}")
             raise
@@ -64,7 +91,7 @@ class SchemaService:
         """アプリのフィールド一覧を取得する"""
         try:
             extraction_fields = get_extraction_fields_for_app(app_name)
-            field_names = get_field_names_for_app(app_name)
+            field_names = extract_field_names(extraction_fields.get("fields", []))
 
             return {
                 "app_name": app_name,
@@ -117,7 +144,7 @@ class SchemaService:
             logger.error(f"Error deleting app: {str(e)}")
             raise
 
-    async def save_schema(self, request: SchemaSaveRequest) -> Dict[str, str]:
+    async def save_schema(self, request: SchemaSaveRequest, user_id: str = None) -> Dict[str, str]:
         """スキーマを保存する"""
         try:
             # 入力バリデーション
@@ -146,6 +173,10 @@ class SchemaService:
 
             # スキーマを保存
             update_app_schema(request.name, app_data)
+
+            # DSQL に usecase + owner 権限を登録
+            if user_id:
+                register_usecase_owner(request.name, user_id)
 
             logger.info(f"Saved schema for app: {request.name}")
             return {"status": "success", "message": "スキーマが正常に保存されました"}
@@ -205,18 +236,9 @@ class SchemaService:
             # PDFの場合は画像に変換
             if ext == '.pdf':
                 try:
-                    import fitz
-                    pdf_document = fitz.open(stream=file_data, filetype="pdf")
-                    if pdf_document.page_count > 0:
-                        page = pdf_document[0]
-                        # 高解像度で変換
-                        pix = page.get_pixmap(
-                            matrix=fitz.Matrix(300/72, 300/72))
-                        file_data = pix.tobytes("jpeg")
-                        logger.info(f"PDFを画像に変換しました: {request.filename}")
-                    else:
-                        raise ValueError("PDFにページがありません")
-                    pdf_document.close()
+                    from utils.pdf import pdf_page_to_jpeg
+                    file_data = pdf_page_to_jpeg(file_data, page_num=0, dpi=300)
+                    logger.info(f"PDFを画像に変換しました: {request.filename}")
                 except Exception as e:
                     logger.error(f"PDF変換エラー: {str(e)}")
                     raise ValueError("PDFの変換に失敗しました。有効なPDFファイルをアップロードしてください。")
@@ -224,11 +246,13 @@ class SchemaService:
                 raise ValueError(
                     "サポートされていないファイル形式です。JPG、PNG、GIF、PDFのみ対応しています。")
 
-            # スキーマフィールドを生成
-            schema = generate_schema_fields_from_image(
-                file_data,
-                request.instructions
+            # スキーマフィールドを生成（build → Bedrock 呼び出し → parse）
+            messages, system_prompts = build_schema_generation_request(
+                file_data, request.instructions
             )
+            response = call_bedrock(messages, system_prompts)
+            fields_text = parse_converse_response(response)
+            schema = parse_schema_generation_response(fields_text)
 
             # 常に {"fields": [...]} の形式で返す
             if "fields" not in schema:

@@ -9,6 +9,18 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 
+def enrich_image_emails(images: list[dict], email_map: dict[str, str]) -> None:
+    """画像リストに uploaded_by_email / verified_by_email を付与する（純粋関数）
+
+    Args:
+        images: 画像 dict のリスト（uploaded_by / verified_by キーを含む）
+        email_map: cognito_sub → email のマッピング
+    """
+    for img in images:
+        img["uploaded_by_email"] = email_map.get(img.get("uploaded_by", ""), "")
+        img["verified_by_email"] = email_map.get(img.get("verified_by", ""), "")
+
+
 def decimal_to_float(obj):
     """Decimal型をfloat型に変換してJSON serializable にする"""
     if isinstance(obj, dict):

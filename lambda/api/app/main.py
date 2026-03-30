@@ -1,11 +1,17 @@
-from routers.extraction import set_background_task as set_extraction_background_task
-from routers.agent import set_background_task as set_agent_background_task
 from background import BackgroundTaskExtension
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from services.ocr_service import OcrService
+from services.upload_service import UploadService
+from services.extraction_service import ExtractionService
+from services.schema_service import SchemaService
+from services.s3_sync_service import S3SyncService
+from services.agent_service import AgentService
+
 from routers import health, ocr, upload, extraction, schema, s3_sync, agent
+from routers import admin, user, sharing
 
 # アプリケーション全体のログレベル設定
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +21,14 @@ app = FastAPI()
 
 # バックグラウンドタスク拡張機能を初期化
 background_task = BackgroundTaskExtension()
+
+# 全サービスを app.state に集約
+app.state.ocr_service = OcrService()
+app.state.upload_service = UploadService()
+app.state.extraction_service = ExtractionService(background_task)
+app.state.schema_service = SchemaService()
+app.state.s3_sync_service = S3SyncService(upload_service=app.state.upload_service)
+app.state.agent_service = AgentService(background_task)
 
 # CORS 設定
 origins = ["*"]
@@ -35,10 +49,9 @@ app.include_router(extraction.router)
 app.include_router(schema.router)
 app.include_router(s3_sync.router)
 app.include_router(agent.router)
-
-# バックグラウンドタスクをサービスに注入
-set_extraction_background_task(background_task)
-set_agent_background_task(background_task)
+app.include_router(admin.router)
+app.include_router(user.router)
+app.include_router(sharing.router)
 
 
 # リクエスト完了時にバックグラウンドタスクに通知するミドルウェア

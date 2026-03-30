@@ -1,25 +1,21 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 import logging
 
 from schemas import (
     OcrResultResponse, OcrStartRequest, JobStartResponse, OcrResult
 )
 from services.ocr_service import OcrService
-from repositories import get_inference_component_status
-from config import settings
+from dependencies.services import get_ocr_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr", tags=["OCR"])
 
-# OCRサービスのインスタンス
-ocr_service = OcrService()
-
 
 @router.post("/start", response_model=JobStartResponse)
-async def start_ocr(request: OcrStartRequest = OcrStartRequest()):
+async def start_ocr(request: OcrStartRequest = OcrStartRequest(), service: OcrService = Depends(get_ocr_service)):
     """OCR処理を開始する（Step Functions版）"""
     try:
-        result = await ocr_service.start_step_functions_job(request)
+        result = await service.start_step_functions_job(request)
         return JobStartResponse(jobId=result["jobId"])
     except ValueError as e:
         if str(e) == 'endpoint_not_ready':
@@ -34,21 +30,20 @@ async def start_ocr(request: OcrStartRequest = OcrStartRequest()):
 
 
 @router.get("/result/{image_id}", response_model=OcrResultResponse)
-async def get_ocr_result(image_id: str):
+async def get_ocr_result(image_id: str, service: OcrService = Depends(get_ocr_service)):
     """OCR結果を取得する"""
     try:
-        result = await ocr_service.get_ocr_result(image_id)
-        return result
+        return await service.get_ocr_result(image_id)
     except Exception as e:
         logger.error(f"Error getting OCR result: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 @router.post("/edit/{image_id}")
-async def update_ocr_result(image_id: str, edited_ocr_data: dict):
+async def update_ocr_result(image_id: str, edited_ocr_data: dict, service: OcrService = Depends(get_ocr_service)):
     """OCR結果を更新する"""
     try:
-        await ocr_service.update_ocr_result(image_id, edited_ocr_data)
+        await service.update_ocr_result(image_id, edited_ocr_data)
         return {"status": "success", "message": "OCR results updated successfully"}
     except Exception as e:
         logger.error(f"Error updating OCR result: {str(e)}")
@@ -56,10 +51,10 @@ async def update_ocr_result(image_id: str, edited_ocr_data: dict):
 
 
 @router.post("/start/{image_id}")
-async def start_ocr_for_image(image_id: str, skip_ocr: bool = False):
+async def start_ocr_for_image(image_id: str, skip_ocr: bool = False, service: OcrService = Depends(get_ocr_service)):
     """指定した画像IDのOCR処理を開始する（Step Functions版）"""
     try:
-        result = await ocr_service.start_step_functions_for_image(image_id, skip_ocr)
+        result = await service.start_step_functions_for_image(image_id, skip_ocr)
         return result
     except ValueError as e:
         if str(e) == 'endpoint_not_ready':
@@ -74,13 +69,10 @@ async def start_ocr_for_image(image_id: str, skip_ocr: bool = False):
 
 
 @router.get("/endpoint-status")
-async def get_endpoint_status():
+async def get_endpoint_status(service: OcrService = Depends(get_ocr_service)):
     """エンドポイントの状態を確認（ポーリング用）"""
     try:
-        if not settings.ENABLE_OCR:
-            return {"ready": True, "status": "ocr_disabled"}
-        status = get_inference_component_status()
-        return status
+        return service.get_endpoint_status()
     except Exception as e:
         logger.error(f"Error checking endpoint status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

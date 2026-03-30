@@ -1,54 +1,7 @@
-"""Step Functions用のハンドラー"""
-import sys
-import os
-import logging
+"""後方互換: Dockerfile.stepfunctions の CMD が参照
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from services.image_processing_pipeline import ImageProcessingPipeline
-
-logger = logging.getLogger(__name__)
-
-
-def process_image_handler(event, context):
-    """
-    Step Functions用: 1枚の画像を処理
-    
-    Args:
-        event: {
-            'image_id': str,
-            'job_id': str,
-            'skip_ocr': bool (optional)
-        }
-    
-    Returns:
-        {
-            'image_id': str,
-            'success': bool,
-            'error': str (optional)
-        }
-    """
-    image_id = event['image_id']
-    skip_ocr = event.get('skip_ocr', False)
-    
-    logger.info(f"Processing image: {image_id}, skip_ocr: {skip_ocr}")
-    
-    try:
-        pipeline = ImageProcessingPipeline()
-        pipeline.process_complete_pipeline(image_id, skip_ocr)
-        
-        logger.info(f"Successfully processed image: {image_id}")
-        
-        return {
-            'image_id': image_id,
-            'success': True
-        }
-        
-    except Exception as e:
-        logger.error(f"Error processing {image_id}: {str(e)}")
-        
-        return {
-            'image_id': image_id,
-            'success': False,
-            'error': str(e)
-        }
+実体は workers/step_functions.py に移動済み。
+Dockerfile.stepfunctions の CMD を app.workers.step_functions.process_image_handler に
+変更した後、このファイルは削除可能。
+"""
+from app.workers.step_functions import process_image_handler  # noqa: F401

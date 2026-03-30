@@ -9,6 +9,7 @@ inclusion: always
 - AWS Lambda (Python / Docker) - API バックエンド
 - Amazon API Gateway - REST API
 - Amazon DynamoDB - データストア (Jobs, Images, Schemas テーブル)
+- Amazon Aurora DSQL - RBAC 権限管理 (PostgreSQL 互換、サーバーレス)
 - Amazon S3 - ドキュメント・画像保存
 - Amazon SageMaker - OCR 推論エンドポイント
 - Amazon Bedrock (Claude) - LLM による情報抽出・スキーマ生成
@@ -28,6 +29,13 @@ inclusion: always
 - Tailwind CSS - スタイリング
 - React Router - ルーティング
 - AWS Amplify - Cognito 認証連携
+
+## フロントエンド カラーテーマ方針
+- 色の定義は `web/src/index.css` の CSS 変数（`:root { --color-xxx }`)で一元管理
+- `tailwind.config.js` で CSS 変数を参照し、Tailwind カスタムカラーとして登録（例: `primary: 'var(--color-primary)'`）
+- コンポーネントでは Tailwind クラス（`bg-primary`, `border-default`, `text-muted` 等）のみ使用する
+- `var(--color-xxx)` をコンポーネントの style や className に直接書かない
+- 新しい色が必要な場合: index.css に CSS 変数追加 → tailwind.config.js に登録 → Tailwind クラスで使用
 
 ## コーディング規約
 - バックエンド: Python の型ヒントを使用、ドメイン駆動設計に準拠

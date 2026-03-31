@@ -45,20 +45,32 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   }, [onGetTools]);
 
   const updateFieldValue = (fieldName: string, value: any) => {
-    setEditedInfo(prev => ({ ...prev, [fieldName]: value }));
+    setEditedInfo(prev => {
+      const next = { ...prev, [fieldName]: value };
+      onUpdateExtractedInfo(next);
+      return next;
+    });
   };
 
   const updateMapFieldValue = (fieldName: string, subFieldName: string, value: any) => {
-    setEditedInfo(prev => ({
-      ...prev,
-      [fieldName]: { ...(prev[fieldName] || {}), [subFieldName]: value }
-    }));
+    setEditedInfo(prev => {
+      const next = {
+        ...prev,
+        [fieldName]: { ...(prev[fieldName] || {}), [subFieldName]: value }
+      };
+      onUpdateExtractedInfo(next);
+      return next;
+    });
   };
 
   const updateListItemProperty = (fieldName: string, itemIndex: number, propertyName: string, value: any) => {
-    const currentList = [...(editedInfo[fieldName] || [])];
-    currentList[itemIndex] = { ...(currentList[itemIndex] || {}), [propertyName]: value };
-    setEditedInfo(prev => ({ ...prev, [fieldName]: currentList }));
+    setEditedInfo(prev => {
+      const currentList = [...(prev[fieldName] || [])];
+      currentList[itemIndex] = { ...(currentList[itemIndex] || {}), [propertyName]: value };
+      const next = { ...prev, [fieldName]: currentList };
+      onUpdateExtractedInfo(next);
+      return next;
+    });
   };
 
   const handleRunAgent = async () => {

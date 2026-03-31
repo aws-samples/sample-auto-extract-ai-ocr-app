@@ -100,7 +100,7 @@ async function executeSeed(client: pg.Client): Promise<string[]> {
   // 2. "all" グループ作成
   const groupRes = await client.query(
     `INSERT INTO groups (name, description, source)
-     VALUES ('all', '全ユーザー', 'manual')
+     VALUES ('all', '全ユーザー', 'auto')
      ON CONFLICT (name) DO NOTHING
      RETURNING id`
   );
@@ -121,7 +121,7 @@ async function executeSeed(client: pg.Client): Promise<string[]> {
   for (const row of allUsers.rows) {
     await client.query(
       `INSERT INTO user_groups (user_id, group_id, source)
-       VALUES ($1, $2, 'manual')
+       VALUES ($1, $2, 'auto')
        ON CONFLICT (user_id, group_id) DO NOTHING`,
       [row.id, allGroupId]
     );

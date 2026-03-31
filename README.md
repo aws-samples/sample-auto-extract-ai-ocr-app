@@ -112,6 +112,26 @@ npm run web:dev     # ローカル開発サーバーの起動
 
 デプロイ後に出力される `OcrAppStack.WebConstructCloudFrontURL` の URL にアクセスすることで、Web サイトにアクセスできます。
 
+### 初期管理者の設定
+
+デプロイ直後はすべてのユーザーが一般権限（`reader`）です。管理画面にアクセスするには、最初のユーザーを admin に昇格させる必要があります。
+
+1. CloudFront URL にアクセスしてサインアップ・ログイン
+2. CDK 出力の `DsqlClusterEndpoint` を確認
+3. 以下のコマンドで admin 権限を付与
+
+```sh
+DSQL_ENDPOINT=<DsqlClusterEndpoint の値> DSQL_REGION=<リージョン> npm run init-admin -- --email <サインアップしたメールアドレス>
+```
+
+実行例:
+
+```sh
+DSQL_ENDPOINT=xxxxx.dsql.us-east-1.on.aws DSQL_REGION=us-east-1 npm run init-admin -- --email user@example.com
+```
+
+成功すると `Admin granted: {"id":"...","email":"...","role":"admin"}` と表示されます。ブラウザをリロードすると管理画面にアクセスできるようになります。
+
 ### AWS リソースの削除
 
 削除するとリソースとデータは完全に消去されるので注意してください。
@@ -164,6 +184,7 @@ OcrAppStack.ApiDocumentBucketName14F33E89 = ocrappstack-apidocumentbucket1e0f08d
 OcrAppStack.ApiImagesTableName87FC28D3 = OcrAppStack-DatabaseImagesTable3098F792-XXXXXXXXXXXX
 OcrAppStack.ApiJobsTableName16618860 = OcrAppStack-DatabaseJobsTable7C20F61C-XXXXXXXXXXXX
 OcrAppStack.ApiOcrApiEndpoint94C64180 = https://XXXXXXXXXXXX.execute-api.us-east-2.amazonaws.com/prod/
+OcrAppStack.ApiSyncBucketName1371D934 = ocrappstack-apisyncbucketa24e96d4-XXXXXXXXXXXX
 OcrAppStack.AuthUserPoolClientId8216BF9A = XXXXXXXXXXXX
 OcrAppStack.AuthUserPoolIdC0605E59 = us-east-2_XXXXXXXXXXXX
 OcrAppStack.DatabaseImagesTableName88591548 = OcrAppStack-DatabaseImagesTable3098F792-XXXXXXXXXXXX
@@ -173,6 +194,9 @@ OcrAppStack.OcrEndpointDockerImageUriDFE2281D = XXXXXXXXXXXX.dkr.ecr.us-east-2.a
 OcrAppStack.OcrEndpointSageMakerEndpointName031E6036 = OcrEndpointEFA18CB8-XXXXXXXXXXXX
 OcrAppStack.OcrEndpointSageMakerInferenceComponentNameAD008265 = ocr-inference-component
 OcrAppStack.OcrEndpointSageMakerRoleArn4F9772E2 = arn:aws:iam::XXXXXXXXXXXX:role/OcrAppStack-OcrEndpointSageMakerExecutionRoleF2F0DF-XXXXXXXXXXXX
+OcrAppStack.DsqlClusterArn7D6E6507 = arn:aws:dsql:us-east-2:XXXXXXXXXXXX:cluster/XXXXXXXXXXXX
+OcrAppStack.DsqlClusterEndpoint234B7E7D = XXXXXXXXXXXX.dsql.us-east-2.on.aws
+OcrAppStack.StateMachineArn = arn:aws:states:us-east-2:XXXXXXXXXXXX:stateMachine:StepFunctionsStateMachineCF441186-XXXXXXXXXXXX
 OcrAppStack.WebConstructCloudFrontURL2550F65B = https://XXXXXXXXXXXX.cloudfront.net
 Stack ARN:
 arn:aws:cloudformation:us-east-2:XXXXXXXXXXXX:stack/OcrAppStack/XXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX

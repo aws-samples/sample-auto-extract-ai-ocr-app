@@ -56,7 +56,7 @@ const defaultParameters: AppParameters = {
 // =============================================================================
 const envOverrides: Record<string, Partial<AppParameters>> = {
   base: {
-    selfSignUpEnabled: false,
+    
   },
   dev: {
 

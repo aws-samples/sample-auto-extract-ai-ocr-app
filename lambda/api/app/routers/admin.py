@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, Literal
 import logging
 
-from utils.auth import require_admin
+from dependencies.auth import require_admin
 from services.admin_service import AdminService
 from services.upload_service import UploadService
 from dependencies.services import get_upload_service

@@ -4,7 +4,7 @@ from typing import Optional
 
 from services.s3_sync_service import S3SyncService
 from dependencies.services import get_s3_sync_service
-from utils.auth import get_cognito_sub, RequirePermission
+from dependencies.auth import get_cognito_sub, RequirePermission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/s3-sync", tags=["S3 Sync"])

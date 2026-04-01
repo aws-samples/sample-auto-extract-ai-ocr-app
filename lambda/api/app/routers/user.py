@@ -1,7 +1,7 @@
 """ユーザー API"""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from utils.auth import require_auth, get_cognito_sub
+from dependencies.auth import require_auth, get_cognito_sub
 from fastapi import Request
 
 from services.user_service import UserService

@@ -7,7 +7,7 @@ from schemas import (
 )
 from services.schema_service import SchemaService
 from dependencies.services import get_schema_service
-from utils.auth import (
+from dependencies.auth import (
     require_auth, RequirePermission, RequireRole,
 )
 

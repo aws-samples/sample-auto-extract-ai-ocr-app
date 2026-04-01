@@ -6,7 +6,7 @@ from schemas import (
 )
 from services.upload_service import UploadService
 from dependencies.services import get_upload_service
-from utils.auth import require_auth, get_cognito_sub, RequirePermission
+from dependencies.auth import require_auth, get_cognito_sub, RequirePermission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Upload"])

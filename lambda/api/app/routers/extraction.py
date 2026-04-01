@@ -4,7 +4,7 @@ import logging
 from schemas import ExtractionRequest
 from services.extraction_service import ExtractionService
 from dependencies.services import get_extraction_service
-from utils.auth import require_auth, get_cognito_sub
+from dependencies.auth import require_auth, get_cognito_sub
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr/extract", tags=["Extraction"])

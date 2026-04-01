@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Literal
 import logging
 
-from utils.auth import RequirePermission
+from dependencies.auth import RequirePermission
 from services.sharing_service import SharingService
 
 logger = logging.getLogger(__name__)

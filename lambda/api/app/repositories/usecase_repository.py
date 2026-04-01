@@ -174,3 +174,22 @@ def get_permitted_app_names(user_id: str) -> list[str]:
         WHERE uu.user_id IS NOT NULL OR gu.usecase_id IS NOT NULL
     """, (user_id, user_id))
     return [r["app_name"] for r in rows]
+
+def delete_usecase_by_app_name(app_name: str) -> None:
+    """ユースケースと関連する中間テーブルのレコードを削除"""
+    def _do(conn):
+        with conn.cursor() as cur:
+            # まず usecase_id を取得
+            cur.execute("SELECT id FROM usecases WHERE app_name = %s", (app_name,))
+            row = cur.fetchone()
+            if not row:
+                return
+            uc_id = row["id"]
+            # 中間テーブルを先に削除
+            cur.execute("DELETE FROM user_usecases WHERE usecase_id = %s", (uc_id,))
+            cur.execute("DELETE FROM group_usecases WHERE usecase_id = %s", (uc_id,))
+            cur.execute("DELETE FROM usecase_tools WHERE usecase_id = %s", (uc_id,))
+            # マスタを削除
+            cur.execute("DELETE FROM usecases WHERE id = %s", (uc_id,))
+    with_retry(_do)
+

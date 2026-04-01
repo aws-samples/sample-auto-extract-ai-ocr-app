@@ -14,7 +14,7 @@ from repositories import (
     delete_app_schema, delete_images_by_app_name
 )
 from repositories.image_repository import create_s3_sync_folder, get_images_by_sync_source
-from repositories.usecase_repository import register_usecase_owner
+from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name
 from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
 from domains.schema_fields import extract_field_names
 from clients.bedrock import call_bedrock
@@ -133,13 +133,16 @@ class SchemaService:
     async def delete_app(self, app_name: str) -> None:
         """アプリを削除する"""
         try:
-            # 1. 関連する画像データを削除
+            # 1. DSQL のユースケース + 中間テーブルを削除（先に削除。失敗しても SchemasTable が残るので再削除可能）
+            delete_usecase_by_app_name(app_name)
+
+            # 2. 関連する画像データを削除（DynamoDB）
             delete_images_by_app_name(app_name)
 
-            # 2. スキーマを削除
+            # 3. スキーマを削除（DynamoDB — マスタなので最後に削除）
             delete_app_schema(app_name)
 
-            logger.info(f"Deleted app and related images: {app_name}")
+            logger.info(f"Deleted app and related data: {app_name}")
         except Exception as e:
             logger.error(f"Error deleting app: {str(e)}")
             raise

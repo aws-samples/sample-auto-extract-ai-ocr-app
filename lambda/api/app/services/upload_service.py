@@ -16,9 +16,9 @@ from schemas import (
 )
 from config import settings
 from utils import resize_image
-from utils.auth import get_permitted_app_names
 from utils.helpers import enrich_image_emails
 from repositories import get_app_schemas, get_app_input_methods
+from repositories.usecase_repository import get_permitted_app_names
 
 logger = logging.getLogger(__name__)
 

@@ -14,12 +14,11 @@ from repositories import (
     delete_app_schema, delete_images_by_app_name
 )
 from repositories.image_repository import create_s3_sync_folder, get_images_by_sync_source
-from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name
+from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name, get_permitted_apps_with_permission
 from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
 from domains.schema_fields import extract_field_names
 from clients.bedrock import call_bedrock
 from utils.bedrock import parse_converse_response
-from utils.auth import get_usecase_permission
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +62,11 @@ class SchemaService:
             if user_id is None:
                 return result
 
+            # 1クエリで許可済み app_name + permission を取得
+            perm_map = get_permitted_apps_with_permission(user_id)
             apps = []
             for a in result.get("apps", []):
-                perm = get_usecase_permission(user_id, a["name"])
+                perm = perm_map.get(a["name"])
                 if perm:
                     a["permission"] = perm
                     apps.append(a)

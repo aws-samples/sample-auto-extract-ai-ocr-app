@@ -175,6 +175,29 @@ def get_permitted_app_names(user_id: str) -> list[str]:
     """, (user_id, user_id))
     return [r["app_name"] for r in rows]
 
+def get_permitted_apps_with_permission(user_id: str) -> dict[str, str]:
+    """ユーザーが権限を持つ app_name と最大権限のマップを返す（1クエリ）"""
+    rank = {"owner": 3, "editor": 2, "viewer": 1}
+    rows = query("""
+        SELECT uc.app_name, COALESCE(uu.permission, gu.permission) AS permission
+        FROM usecases uc
+        LEFT JOIN user_usecases uu ON uu.usecase_id = uc.id AND uu.user_id = %s
+        LEFT JOIN (
+            SELECT gu2.usecase_id, gu2.permission
+            FROM group_usecases gu2
+            JOIN user_groups ug ON ug.group_id = gu2.group_id AND ug.user_id = %s
+        ) gu ON gu.usecase_id = uc.id
+        WHERE uu.permission IS NOT NULL OR gu.permission IS NOT NULL
+    """, (user_id, user_id))
+    result: dict[str, str] = {}
+    for r in rows:
+        name = r["app_name"]
+        perm = r["permission"]
+        if name not in result or rank.get(perm, 0) > rank.get(result[name], 0):
+            result[name] = perm
+    return result
+
+
 def delete_usecase_by_app_name(app_name: str) -> None:
     """ユースケースと関連する中間テーブルのレコードを削除"""
     def _do(conn):

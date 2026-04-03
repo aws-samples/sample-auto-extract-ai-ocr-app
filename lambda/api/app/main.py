@@ -9,6 +9,9 @@ from services.extraction_service import ExtractionService
 from services.schema_service import SchemaService
 from services.s3_sync_service import S3SyncService
 from services.agent_service import AgentService
+from services.admin_service import AdminService
+from services.user_service import UserService
+from services.sharing_service import SharingService
 
 from routers import health, ocr, upload, extraction, schema, s3_sync, agent
 from routers import admin, user, sharing
@@ -24,11 +27,14 @@ background_task = BackgroundTaskExtension()
 
 # 全サービスを app.state に集約
 app.state.ocr_service = OcrService()
-app.state.upload_service = UploadService()
+app.state.upload_service = UploadService(background_task)
 app.state.extraction_service = ExtractionService(background_task)
 app.state.schema_service = SchemaService()
 app.state.s3_sync_service = S3SyncService(upload_service=app.state.upload_service)
 app.state.agent_service = AgentService(background_task)
+app.state.admin_service = AdminService()
+app.state.user_service = UserService()
+app.state.sharing_service = SharingService()
 
 # CORS 設定
 origins = ["*"]

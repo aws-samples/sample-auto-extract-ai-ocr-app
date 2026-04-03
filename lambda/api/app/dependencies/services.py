@@ -7,6 +7,9 @@ from services.extraction_service import ExtractionService
 from services.schema_service import SchemaService
 from services.s3_sync_service import S3SyncService
 from services.agent_service import AgentService
+from services.admin_service import AdminService
+from services.user_service import UserService
+from services.sharing_service import SharingService
 
 
 def get_ocr_service(request: Request) -> OcrService:
@@ -31,3 +34,15 @@ def get_s3_sync_service(request: Request) -> S3SyncService:
 
 def get_agent_service(request: Request) -> AgentService:
     return request.app.state.agent_service
+
+
+def get_admin_service(request: Request) -> AdminService:
+    return request.app.state.admin_service
+
+
+def get_user_service(request: Request) -> UserService:
+    return request.app.state.user_service
+
+
+def get_sharing_service(request: Request) -> SharingService:
+    return request.app.state.sharing_service

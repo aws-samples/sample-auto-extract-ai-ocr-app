@@ -11,7 +11,6 @@ from domains.template import generate_unified_template
 import logging
 import json
 import re
-import base64
 
 logger = logging.getLogger(__name__)
 

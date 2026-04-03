@@ -1,5 +1,7 @@
 from clients import s3_client
 import logging
+import os
+import re
 import uuid
 from datetime import datetime
 from typing import Dict, Any
@@ -13,12 +15,13 @@ from repositories import (
     get_custom_prompt_for_app, update_app_schema,
     delete_app_schema, delete_images_by_app_name
 )
-from repositories.image_repository import create_s3_sync_folder, get_images_by_sync_source
+from repositories.image_repository import create_s3_sync_folder
 from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name, get_permitted_apps_with_permission
 from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
 from domains.schema_fields import extract_field_names
 from clients.bedrock import call_bedrock
 from utils.bedrock import parse_converse_response
+from utils.pdf import pdf_page_to_jpeg
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +159,6 @@ class SchemaService:
                 raise ValueError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
-            import re
             if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
 
@@ -233,14 +235,12 @@ class SchemaService:
                 raise ValueError("ファイルが見つかりません")
 
             # ファイルの種類を拡張子で判定
-            import os
             _, ext = os.path.splitext(request.filename)
             ext = ext.lower()
 
             # PDFの場合は画像に変換
             if ext == '.pdf':
                 try:
-                    from utils.pdf import pdf_page_to_jpeg
                     file_data = pdf_page_to_jpeg(file_data, page_num=0, dpi=300)
                     logger.info(f"PDFを画像に変換しました: {request.filename}")
                 except Exception as e:
@@ -276,7 +276,6 @@ class SchemaService:
                 raise ValueError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
-            import re
             if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
 

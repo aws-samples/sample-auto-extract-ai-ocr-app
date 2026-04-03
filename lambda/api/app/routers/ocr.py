@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, Depends
 import logging
 
 from schemas import (
-    OcrResultResponse, OcrStartRequest, JobStartResponse, OcrResult
+    OcrResultResponse, OcrStartRequest, JobStartResponse
 )
 from services.ocr_service import OcrService, EndpointNotReadyError
 from dependencies.services import get_ocr_service

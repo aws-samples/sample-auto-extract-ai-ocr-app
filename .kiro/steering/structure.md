@@ -151,9 +151,12 @@ inclusion: always
 依存方向:
 ```
 routers → dependencies/ → services → domains
-                                    → repositories → clients/
+                                    → repositories → clients/（DB系: DynamoDB, DSQL）
+                                    → clients/（外部API系: Bedrock, SageMaker, SFn, S3, AgentCore）
 workers/ → services（FastAPI DI 不使用、自前インスタンス化）
 ```
+
+外部 API 系の clients/ について: Clean Architecture では Gateway/Adapter 層を介した抽象化が推奨されるが、現時点ではプロジェクト規模に対してオーバーエンジニアリングとなるため、services/ から clients/ の薄いラッパーを直接呼び出す設計としている。
 
 ### clients/ — AWS SDK クライアント一元管理
 
@@ -215,16 +218,15 @@ HTTP リクエスト/レスポンスの入出口。責務は以下に限定す�
 FastAPI `Depends` ベースで統一。ルーターから利用する:
 
 - `Depends(require_auth)` — ログイン必須
-- `Depends(require_admin)` — admin ロール必須
-- `Depends(RequireRole("author"))` — 指定ロール以上
-- `Depends(RequirePermission("viewer"))` — ユースケース権限チェック（パスパラメータ `app_name` を自動取得）
+- `Depends(RequireRole(min_role))` — 指定ロール以上を要求（admin, author, reader）
+- `Depends(RequirePermission(min_level))` — ユースケース単位の権限チェック（owner/editor/viewer）。パスパラメータ `app_name` を自動取得し、admin は全権限スキップ
 
 ### サービス DI パターン（dependencies.py）
 
-全サービスは `main.py` で `app.state` に生成し、`dependencies.py` の `Depends` 関数経由で Router に注入:
+全サービスは `main.py` で `app.state` に生成し、`dependencies/services.py` の `Depends` 関数経由で Router に注入:
 
-- `Depends(get_upload_service)`, `Depends(get_schema_service)` 等
-- `image_processing_pipeline.py`（Step Functions Lambda）と `s3_sync_service.py`（Service 内）は FastAPI コンテキスト外のため `Depends` 対象外。自前でインスタンス生成する。
+- `Depends(get_upload_service)`, `Depends(get_schema_service)`, `Depends(get_admin_service)`, `Depends(get_user_service)`, `Depends(get_sharing_service)` 等
+- `workers/step_functions.py`（Step Functions Lambda）は FastAPI コンテキスト外のため `Depends` 対象外。自前でインスタンス生成する。
 
 ### services/ — アプリケーション層（ユースケース）
 
@@ -251,7 +253,8 @@ FastAPI `Depends` ベースで統一。ルーターから利用する:
 
 ### schemas/ — リクエスト/レスポンス定義
 
-Pydantic モデルによる API の入出力スキーマ定義。
+Pydantic モデルによる API の入出力スキーマ定義。複数の router/service から参照されるモデルはここに置く。
+router 内でしか使わないリクエストモデル（例: admin の GroupCreate 等）は router 内で定義してよい。
 
 ### utils/ — 横断的ユーティリティ
 

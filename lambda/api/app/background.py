@@ -3,6 +3,7 @@ from queue import Queue
 import json
 import os
 import requests
+import uuid
 import logging
 import traceback
 
@@ -74,7 +75,6 @@ class BackgroundTaskExtension(Thread):
     def add_task(self, background_task, *args, task_id=None, **kwargs):
         """タスクをキューに追加"""
         if task_id is None:
-            import uuid
             task_id = str(uuid.uuid4())
         
         logger.info(f"Adding task to queue: {background_task.__name__} (ID: {task_id})")

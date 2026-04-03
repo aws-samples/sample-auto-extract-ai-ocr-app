@@ -1,5 +1,6 @@
 """Service for agent-based OCR correction."""
 
+import asyncio
 import json
 import logging
 from typing import Dict, Any, Optional
@@ -58,7 +59,6 @@ class AgentService:
             job_id: Job ID
             image_id: Image ID
         """
-        import asyncio
         asyncio.run(self._process_agent_correction_async(job_id, image_id))
     
     async def _process_agent_correction_async(self, job_id: str, image_id: str):

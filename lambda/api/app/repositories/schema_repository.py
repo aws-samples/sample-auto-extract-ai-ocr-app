@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 from clients import dynamodb_resource
@@ -130,7 +131,6 @@ def update_app_schema(app_name, app_data):
         schemas_table = _get_schemas_table()
         
         # 現在の日時を取得
-        from datetime import datetime
         current_time = datetime.now().isoformat()
         
         # 既存のレコードを取得して created_at を保持

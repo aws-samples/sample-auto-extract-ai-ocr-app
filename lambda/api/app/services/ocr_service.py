@@ -2,22 +2,28 @@ import uuid
 import logging
 import json
 import base64
-import boto3
 from decimal import Decimal
 from typing import Optional, Dict, Any
 
 from repositories import (
     get_images, get_job,
     get_image, update_ocr_result as db_update_ocr_result,
-    update_image_status, get_inference_component_status, trigger_endpoint_wakeup
+    update_image_status,
 )
+from clients import get_inference_component_status, trigger_endpoint_wakeup
 from schemas import OcrResult, OcrResultResponse
 from config import settings
 from background import BackgroundTaskExtension
-from clients import s3_client, sagemaker_runtime_client
+from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response
+from services.parent_status import sync_parent_status
 
 logger = logging.getLogger(__name__)
+
+
+class EndpointNotReadyError(Exception):
+    """OCR エンドポイントが起動中の場合のエラー"""
+    pass
 
 
 class OcrService:
@@ -31,7 +37,7 @@ class OcrService:
         """OCR エンドポイントの状態を返す"""
         if not self.enable_ocr:
             return {"ready": True, "status": "ocr_disabled"}
-        return get_inference_component_status()
+        return get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
 
     def _invoke_ocr(self, image_data: bytes) -> dict:
         """SageMaker OCR エンドポイントを呼び出し、整形済み結果を返す
@@ -100,6 +106,7 @@ class OcrService:
                 raise ValueError(f"Image not found: {image_id}")
 
             update_image_status(image_id, "processing")
+            sync_parent_status(image_id)
 
             page_processing_mode = image_data.get("page_processing_mode", "combined")
             converted_s3_keys = image_data.get("converted_s3_key")
@@ -124,6 +131,7 @@ class OcrService:
         except Exception as e:
             logger.error(f"Error processing OCR for image {image_id}: {str(e)}")
             update_image_status(image_id, "failed")
+            sync_parent_status(image_id)
             raise
 
     # ========================================
@@ -253,6 +261,7 @@ class OcrService:
             })
 
             db_update_ocr_result(image_id, combined_result, "completed")
+            sync_parent_status(image_id)
             logger.info(f"複数ページOCR結果保存完了: {image_id}, 総単語数: {len(all_words)}, ID範囲: 0-{global_word_id-1}")
 
         except Exception as e:
@@ -268,11 +277,11 @@ class OcrService:
         try:
             # OCR有効時のみエンドポイント状態確認
             if self.enable_ocr:
-                status = get_inference_component_status()
+                status = get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
 
                 if not status['ready']:
-                    trigger_endpoint_wakeup()
-                    raise ValueError('endpoint_not_ready')
+                    trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+                    raise EndpointNotReadyError('Endpoint warming up')
 
             job_id = str(uuid.uuid4())
             app_name = request.app_name
@@ -292,7 +301,6 @@ class OcrService:
                 update_image_status(img['id'], 'processing', job_id)
 
             # Step Functions起動
-            sfn_client = boto3.client('stepfunctions')
             execution_response = sfn_client.start_execution(
                 stateMachineArn=settings.STATE_MACHINE_ARN,
                 name=f"ocr-job-{job_id}",
@@ -315,11 +323,11 @@ class OcrService:
         try:
             # OCRをスキップしない場合かつOCR有効時のみエンドポイント状態確認
             if not skip_ocr and self.enable_ocr:
-                status = get_inference_component_status()
+                status = get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
 
                 if not status['ready']:
-                    trigger_endpoint_wakeup()
-                    raise ValueError('endpoint_not_ready')
+                    trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+                    raise EndpointNotReadyError('Endpoint warming up')
 
             job_id = str(uuid.uuid4())
 
@@ -327,7 +335,6 @@ class OcrService:
             update_image_status(image_id, 'processing', job_id)
 
             # Step Functions起動（単一画像）
-            sfn_client = boto3.client('stepfunctions')
             execution_response = sfn_client.start_execution(
                 stateMachineArn=settings.STATE_MACHINE_ARN,
                 name=f"ocr-single-{image_id}-{job_id[:8]}",

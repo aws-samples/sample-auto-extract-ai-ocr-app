@@ -4,7 +4,7 @@ import logging
 from schemas import (
     OcrResultResponse, OcrStartRequest, JobStartResponse, OcrResult
 )
-from services.ocr_service import OcrService
+from services.ocr_service import OcrService, EndpointNotReadyError
 from dependencies.services import get_ocr_service
 
 logger = logging.getLogger(__name__)
@@ -17,12 +17,12 @@ async def start_ocr(request: OcrStartRequest = OcrStartRequest(), service: OcrSe
     try:
         result = await service.start_step_functions_job(request)
         return JobStartResponse(jobId=result["jobId"])
+    except EndpointNotReadyError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "endpoint_not_ready", "message": str(e)}
+        )
     except ValueError as e:
-        if str(e) == 'endpoint_not_ready':
-            raise HTTPException(
-                status_code=503,
-                detail={"error": "endpoint_not_ready", "message": "Endpoint warming up"}
-            )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error starting OCR job: {str(e)}")
@@ -56,12 +56,12 @@ async def start_ocr_for_image(image_id: str, skip_ocr: bool = False, service: Oc
     try:
         result = await service.start_step_functions_for_image(image_id, skip_ocr)
         return result
+    except EndpointNotReadyError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "endpoint_not_ready", "message": str(e)}
+        )
     except ValueError as e:
-        if str(e) == 'endpoint_not_ready':
-            raise HTTPException(
-                status_code=503,
-                detail={"error": "endpoint_not_ready", "message": "Endpoint warming up"}
-            )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error starting OCR for image: {str(e)}")

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
+from pydantic import BaseModel
 import logging
 from typing import Optional
 
@@ -8,6 +9,13 @@ from dependencies.auth import get_cognito_sub, RequirePermission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/s3-sync", tags=["S3 Sync"])
+
+
+class S3ImportRequest(BaseModel):
+    bucket: str
+    key: str
+    filename: str
+    page_processing_mode: str = "combined"
 
 
 @router.post("/{app_name}")
@@ -21,11 +29,11 @@ async def sync_s3_files(app_name: str, prefix: Optional[str] = None, user=Depend
 
 
 @router.post("/{app_name}/import")
-async def import_s3_file(app_name: str, file_data: dict, req: Request, user=Depends(RequirePermission("editor")), service: S3SyncService = Depends(get_s3_sync_service)):
+async def import_s3_file(app_name: str, body: S3ImportRequest, req: Request, user=Depends(RequirePermission("editor")), service: S3SyncService = Depends(get_s3_sync_service)):
     """S3バケットからファイルをインポートしてOCR処理を開始する"""
     try:
         sub = get_cognito_sub(req)
-        return await service.import_s3_file(app_name, file_data, uploaded_by=sub)
+        return await service.import_s3_file(app_name, body.model_dump(), uploaded_by=sub)
     except Exception as e:
         logger.error(f"Error importing S3 file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

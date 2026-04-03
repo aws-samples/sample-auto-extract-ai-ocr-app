@@ -12,7 +12,6 @@ from schemas import ExtractionRequest
 from config import settings
 from background import BackgroundTaskExtension
 from utils import decimal_to_float
-from utils.helpers import safe_get_from_dynamo_data
 from utils.bedrock import parse_converse_response, extract_json_from_response
 from domains.schema_fields import extract_field_names
 from clients import s3_client
@@ -25,6 +24,7 @@ from domains.extraction_engine import (
     parse_extraction_response,
     finalize_extraction_result,
 )
+from services.parent_status import sync_parent_status
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +33,10 @@ def get_multipage_ocr_results(image_id: str) -> list:
     """複数ページOCR結果を取得する（repository 経由）"""
     try:
         image_data = get_image(image_id)
-        ocr_result = safe_get_from_dynamo_data(image_data, "ocr_result", {})
+        ocr_result = image_data.get("ocr_result", {}) if isinstance(image_data, dict) else {}
 
         # 複数ページOCR結果を取得
-        pages_results = safe_get_from_dynamo_data(ocr_result, "pages", [])
+        pages_results = ocr_result.get("pages", []) if isinstance(ocr_result, dict) else []
 
         # pages_resultsがリストの場合
         if isinstance(pages_results, list):
@@ -57,7 +57,7 @@ def get_multipage_ocr_results(image_id: str) -> list:
             return [pages_results]
 
         # 従来形式の場合は単一ページとして扱う
-        words = safe_get_from_dynamo_data(ocr_result, "words", [])
+        words = ocr_result.get("words", []) if isinstance(ocr_result, dict) else []
         # wordsがリストでない場合は空リストに
         if not isinstance(words, list):
             logger.warning(f"単語データがリスト形式ではありません: {type(words)}")
@@ -418,12 +418,14 @@ class ExtractionService:
 
             extractor = self._get_extractor(image_id, image_data)
             extractor.extract()
+            sync_parent_status(image_id)
 
             logger.info(
                 f"Successfully completed extraction for image {image_id}")
 
         except Exception as e:
             logger.error(f"Error during information extraction: {str(e)}")
+            sync_parent_status(image_id)
             raise
 
     def _get_extractor(self, image_id: str, image_data: dict):

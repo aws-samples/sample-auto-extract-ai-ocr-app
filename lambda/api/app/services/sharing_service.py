@@ -6,7 +6,15 @@ from repositories import usecase_repository, group_repository
 logger = logging.getLogger(__name__)
 
 
+class LastOwnerError(Exception):
+    """最後のオーナーを削除しようとした場合のエラー"""
+    pass
+
+
 class SharingService:
+    def __init__(self):
+        pass
+
     def _get_usecase_id(self, app_name: str) -> str:
         uc = usecase_repository.get_usecase_by_app_name(app_name)
         if not uc:
@@ -27,7 +35,7 @@ class SharingService:
     def remove_user_sharing(self, app_name: str, user_id: str) -> None:
         uc_id = self._get_usecase_id(app_name)
         if usecase_repository.count_owners(uc_id) <= 1 and usecase_repository.is_owner(user_id, uc_id):
-            raise ValueError("Cannot remove the last owner")
+            raise LastOwnerError("Cannot remove the last owner")
         usecase_repository.delete_user_permission(user_id, uc_id)
 
     def add_group_sharing(self, app_name: str, group_id: str, permission: str) -> None:

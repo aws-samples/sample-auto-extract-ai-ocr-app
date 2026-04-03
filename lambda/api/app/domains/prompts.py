@@ -2,7 +2,7 @@
 プロンプト生成関数
 """
 import json
-from utils.helpers import decimal_to_float, safe_get_from_dynamo_data
+from utils.helpers import decimal_to_float
 from domains.template import generate_unified_template
 import logging
 
@@ -158,8 +158,8 @@ def create_multi_with_ocr_prompt(ocr_results: list, schema: dict, instructions: 
                 f"ページ結果が辞書形式ではありません: {type(page_result)} - {page_result}")
             continue
 
-        page_num = safe_get_from_dynamo_data(page_result, "page", 1)
-        page_words = safe_get_from_dynamo_data(page_result, "words", [])
+        page_num = page_result.get("page", 1)
+        page_words = page_result.get("words", [])
 
         # page_wordsがリストでない場合は空リストに
         if not isinstance(page_words, list):
@@ -175,15 +175,15 @@ def create_multi_with_ocr_prompt(ocr_results: list, schema: dict, instructions: 
                 logger.warning(f"単語が辞書形式ではありません: {type(word)} - {word}")
                 continue
 
-            word_content = safe_get_from_dynamo_data(
-                word, "content", "").strip()
+            word_content = word.get(
+                "content", "").strip()
             if word_content:
                 page_text_parts.append(f"[ID:{word_id}] {word_content}")
                 all_words_with_ids.append({
                     "id": word_id,
                     "content": word_content,
                     "page": page_num,
-                    "points": safe_get_from_dynamo_data(word, "points", [])
+                    "points": word.get("points", [])
                 })
                 word_id += 1
 

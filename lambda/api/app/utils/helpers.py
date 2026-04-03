@@ -9,18 +9,6 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 
-def enrich_image_emails(images: list[dict], email_map: dict[str, str]) -> None:
-    """画像リストに uploaded_by_email / verified_by_email を付与する（純粋関数）
-
-    Args:
-        images: 画像 dict のリスト（uploaded_by / verified_by キーを含む）
-        email_map: cognito_sub → email のマッピング
-    """
-    for img in images:
-        img["uploaded_by_email"] = email_map.get(img.get("uploaded_by", ""), "")
-        img["verified_by_email"] = email_map.get(img.get("verified_by", ""), "")
-
-
 def decimal_to_float(obj):
     """Decimal型をfloat型に変換してJSON serializable にする"""
     if isinstance(obj, dict):
@@ -43,28 +31,6 @@ def float_to_decimal(obj):
         return Decimal(str(obj))
     else:
         return obj
-
-
-def safe_get_from_dynamo_data(data, key, default=None):
-    """
-    DynamoDBのデータを安全に取得
-
-    Args:
-        data: DynamoDBから取得したデータ
-        key: 取得したいキー
-        default: デフォルト値
-
-    Returns:
-        取得した値またはデフォルト値
-    """
-    try:
-        if isinstance(data, dict):
-            return data.get(key, default)
-        else:
-            return default
-    except Exception as e:
-        logger.warning(f"DynamoDBデータ取得エラー: {str(e)}")
-        return default
 
 
 def resize_image(image_data, max_dimension=1568, min_dimension=200):

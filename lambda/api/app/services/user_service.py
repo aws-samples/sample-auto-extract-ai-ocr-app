@@ -8,6 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class UserService:
+    def __init__(self):
+        pass
+
     def get_me(self, cognito_sub: str) -> dict | None:
         return user_repository.get_user_detail_by_cognito_sub(cognito_sub)
 

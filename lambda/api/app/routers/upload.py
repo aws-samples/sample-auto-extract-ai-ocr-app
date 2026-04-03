@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import StreamingResponse
 import logging
+import io
 
 from schemas import (
     PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest,
@@ -44,7 +46,12 @@ async def upload_complete(request: UploadCompleteRequest, service: UploadService
 async def get_image_stream(image_id: str, service: UploadService = Depends(get_upload_service)):
     """画像を取得して返す"""
     try:
-        return await service.get_image_stream(image_id)
+        image_bytes, content_type, filename = await service.get_image_stream(image_id)
+        return StreamingResponse(
+            io.BytesIO(image_bytes),
+            media_type=content_type,
+            headers={"Content-Disposition": f"inline; filename={filename}"}
+        )
     except Exception as e:
         logger.error(f"Error getting image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
@@ -94,8 +101,10 @@ async def delete_image(
             cognito_sub=sub,
             is_admin=(user["role"] == "admin"),
         )
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

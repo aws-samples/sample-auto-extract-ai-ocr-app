@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel
 import logging
 
 from schemas import ExtractionRequest
@@ -51,13 +52,16 @@ async def update_extraction_result(image_id: str, edited_data: dict, service: Ex
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
+class VerificationRequest(BaseModel):
+    verification_completed: bool = False
+
+
 @router.post("/verification/{image_id}")
-async def update_verification_status(image_id: str, request: dict, req: Request = None, user=Depends(require_auth), service: ExtractionService = Depends(get_extraction_service)):
+async def update_verification_status(image_id: str, body: VerificationRequest, req: Request = None, user=Depends(require_auth), service: ExtractionService = Depends(get_extraction_service)):
     """確認完了ステータスを更新する"""
     try:
-        verification_completed = request.get("verification_completed", False)
         verified_by = get_cognito_sub(req) if req else None
-        return await service.update_verification_status(image_id, verification_completed, verified_by=verified_by)
+        return await service.update_verification_status(image_id, body.verification_completed, verified_by=verified_by)
     except Exception as e:
         logger.error(f"Error updating verification status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

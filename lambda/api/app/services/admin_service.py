@@ -6,7 +6,15 @@ from repositories import user_repository, group_repository, usecase_repository, 
 logger = logging.getLogger(__name__)
 
 
+class NotFoundError(Exception):
+    """リソースが見つからない場合のエラー"""
+    pass
+
+
 class AdminService:
+    def __init__(self):
+        pass
+
     # ---- Users ----
     def list_users(self) -> list[dict]:
         users = user_repository.list_users()
@@ -37,7 +45,7 @@ class AdminService:
         """グループを削除する（auto グループは削除不可）"""
         group = group_repository.get_group(group_id)
         if not group:
-            raise ValueError("Group not found")
+            raise NotFoundError("Group not found")
         if group["source"] == "auto":
             raise ValueError("Cannot delete auto-managed group")
         group_repository.delete_group(group_id)
@@ -46,7 +54,7 @@ class AdminService:
         """グループの名前・説明を更新する（auto グループは編集不可）"""
         group = group_repository.get_group(group_id)
         if not group:
-            raise ValueError("Group not found")
+            raise NotFoundError("Group not found")
         if group["source"] == "auto":
             raise ValueError("Cannot edit auto-managed group")
         return group_repository.update_group(group_id, name=name, description=description)

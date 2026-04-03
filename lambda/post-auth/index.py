@@ -54,6 +54,8 @@ def upsert_user(conn, cognito_sub, email, display_name, department):
             existing = cur.fetchone()
             is_new = existing is None
 
+            # cognito_sub をキーに upsert。新規なら INSERT、既存なら email 等を最新化。
+            # DSQL は SERIAL 非推奨のため PK は gen_random_uuid()（DDL 側で設定）。
             cur.execute("""
                 INSERT INTO users (cognito_sub, email, display_name, department)
                 VALUES (%s, %s, %s, %s)
@@ -67,35 +69,32 @@ def upsert_user(conn, cognito_sub, email, display_name, department):
             user_id = cur.fetchone()[0]
 
             if is_new:
-                # all グループに追加（グループがなければ作成）
-                cur.execute("""
-                    INSERT INTO groups (name, description, source)
-                    VALUES ('all', 'All users', 'auto')
-                    ON CONFLICT (name) DO NOTHING
-                """)
+                # all グループに追加（all グループは dsql-admin seed で作成済み前提）
+                # seed 未実行の場合はスキップ（グループが見つからなければ何もしない）
                 cur.execute("SELECT id FROM groups WHERE name = 'all'")
-                all_group_id = cur.fetchone()[0]
-                cur.execute("""
-                    INSERT INTO user_groups (user_id, group_id, source)
-                    VALUES (%s, %s, 'auto')
-                    ON CONFLICT (user_id, group_id) DO NOTHING
-                """, (user_id, all_group_id))
-
-                # sample_group を作成（なければ）
-                cur.execute("""
-                    INSERT INTO groups (name, description, source)
-                    VALUES ('sample_group', 'Sample group for testing', 'manual')
-                    ON CONFLICT (name) DO NOTHING
-                """)
+                row = cur.fetchone()
+                if row:
+                    # source='auto' で自動追加を明示。ON CONFLICT で冪等性を担保。
+                    cur.execute("""
+                        INSERT INTO user_groups (user_id, group_id, source)
+                        VALUES (%s, %s, 'auto')
+                        ON CONFLICT (user_id, group_id) DO NOTHING
+                    """, (user_id, row[0]))
 
             return user_id
     return with_retry(conn, _do)
 
 
 def sync_idp_groups(conn, user_id, idp_groups):
-    """IdP グループの差分同期"""
+    """IdP グループの差分同期
+
+    Cognito の custom:idp_group 属性から取得したグループ名リストを
+    DSQL の groups / user_groups テーブルに同期する。
+    source='idp' で IdP 由来のグループを区別し、手動追加分（source='manual'）とは独立管理。
+    """
     def _do(c):
         with c.cursor() as cur:
+            # IdP グループが DSQL に存在しなければ作成（source='idp'）
             for group_name in idp_groups:
                 cur.execute("""
                     INSERT INTO groups (name, source)
@@ -103,11 +102,13 @@ def sync_idp_groups(conn, user_id, idp_groups):
                     ON CONFLICT (name) DO NOTHING
                 """, (group_name,))
 
+            # IdP 由来のグループ ID を取得
             cur.execute("""
                 SELECT id, name FROM groups WHERE name = ANY(%s) AND source = 'idp'
             """, (idp_groups,))
             group_map = {row[1]: row[0] for row in cur.fetchall()}
 
+            # 現在の IdP グループ所属を取得して差分計算
             cur.execute("""
                 SELECT group_id FROM user_groups
                 WHERE user_id = %s AND source = 'idp'
@@ -115,6 +116,7 @@ def sync_idp_groups(conn, user_id, idp_groups):
             current_ids = {row[0] for row in cur.fetchall()}
             desired_ids = set(group_map.values())
 
+            # 追加: IdP にあって DSQL にない所属を追加
             for gid in desired_ids - current_ids:
                 cur.execute("""
                     INSERT INTO user_groups (user_id, group_id, source, synced_at)
@@ -123,6 +125,7 @@ def sync_idp_groups(conn, user_id, idp_groups):
                         source = 'idp', synced_at = now()
                 """, (user_id, gid))
 
+            # 削除: IdP から外れた所属を削除（source='idp' のみ対象）
             for gid in current_ids - desired_ids:
                 cur.execute("""
                     DELETE FROM user_groups

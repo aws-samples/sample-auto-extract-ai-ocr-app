@@ -8,7 +8,7 @@ inclusion: always
 - AWS CDK (TypeScript) によるIaCデプロイ
 - AWS Lambda (Python / Docker) - API バックエンド
 - Amazon API Gateway - REST API
-- Amazon DynamoDB - データストア (Jobs, Images, Schemas テーブル)
+- Amazon DynamoDB - データストア (Jobs, Images, Schemas, UserPreferences テーブル + Agent 有効時: Tools, Customers)
 - Amazon Aurora DSQL - RBAC 権限管理 (PostgreSQL 互換、サーバーレス)
 - Amazon S3 - ドキュメント・画像保存
 - Amazon SageMaker - OCR 推論エンドポイント
@@ -45,5 +45,5 @@ inclusion: always
 ## 静的解析
 - `lambda/api/app/` 配下の Python ファイルを変更した場合、必ず pyflakes で構文エラー・未使用 import を確認する
 ```bash
-cd lambda/api/app && python -m pyflakes routers/ services/ domains/ schemas/ utils/ repositories/ clients/ workers/
+cd lambda/api/app && python -m pyflakes routers/ services/ domains/ schemas/ utils/ repositories/ clients/ workers/ dependencies/
 ```

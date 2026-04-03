@@ -15,13 +15,8 @@ from .image_repository import (
     create_individual_page_record,
     update_parent_document_status,
     get_children_by_parent_id,
-    check_and_update_parent_status,
 )
 
-from .sagemaker_repository import (
-    get_inference_component_status,
-    trigger_endpoint_wakeup,
-)
 from .job_repository import (
     get_job,
 )
@@ -57,10 +52,6 @@ __all__ = [
     "create_individual_page_record",
     "update_parent_document_status",
     "get_children_by_parent_id",
-    "check_and_update_parent_status",
-    # SageMaker operations
-    "get_inference_component_status",
-    "trigger_endpoint_wakeup",
     # Job operations
     "get_job",
     # Schema operations

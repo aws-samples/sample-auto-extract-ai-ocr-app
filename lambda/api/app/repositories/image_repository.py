@@ -5,7 +5,6 @@ from botocore.exceptions import ClientError
 from datetime import datetime
 import uuid
 from config import settings
-from domains.image_status import determine_parent_status
 
 logger = logging.getLogger(__name__)
 
@@ -184,11 +183,6 @@ def update_image_status(image_id, status, job_id=None):
             ExpressionAttributeValues=expression_attribute_values
         )
 
-        # 親ドキュメントのステータス更新チェック
-        image_data = get_image(image_id)
-        if image_data and image_data.get("parent_document_id"):
-            check_and_update_parent_status(image_data["parent_document_id"])
-
     except Exception as e:
         logger.error(f"画像ステータス更新エラー: {str(e)}")
         raise
@@ -215,11 +209,6 @@ def update_ocr_result(image_id: str, ocr_result: dict, extraction_status: str = 
             }
         )
         logger.info(f"OCR結果を更新しました: {image_id}")
-
-        # 親ドキュメントのステータス更新チェック
-        image_data = get_image(image_id)
-        if image_data and image_data.get("parent_document_id"):
-            check_and_update_parent_status(image_data["parent_document_id"])
 
     except Exception as e:
         logger.error(f"OCR結果更新エラー: {str(e)}")
@@ -530,31 +519,6 @@ def get_children_by_parent_id(parent_id: str):
     except Exception as e:
         logger.error(f"子ページ取得エラー: {str(e)}")
         return []
-
-
-def check_and_update_parent_status(parent_id: str):
-    """
-    親ドキュメントのステータスをチェックして更新する
-
-    Args:
-        parent_id (str): 親ドキュメントID
-    """
-    try:
-        children = get_children_by_parent_id(parent_id)
-        new_status = determine_parent_status(children)
-
-        # 現在の親ステータスを取得
-        parent_data = get_image(parent_id)
-        current_status = parent_data.get("status")
-
-        # ステータスが変更された場合のみ更新
-        if current_status != new_status:
-            update_parent_document_status(parent_id, new_status)
-            logger.info(
-                f"親ドキュメントステータス更新: {parent_id} {current_status} -> {new_status}")
-
-    except Exception as e:
-        logger.error(f"親ステータス更新エラー: {str(e)}")
 
 
 def create_s3_sync_folder(app_name: str) -> None:

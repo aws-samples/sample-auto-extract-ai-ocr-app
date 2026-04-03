@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 
 
 class ImageInfo(BaseModel):
@@ -26,8 +26,3 @@ class ImageInfo(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-
-class ImageListResponse(BaseModel):
-    """画像リストレスポンス"""
-    images: List[ImageInfo]
-    total: int

@@ -24,7 +24,7 @@ from domains.extraction_engine import (
     parse_extraction_response,
     finalize_extraction_result,
 )
-from services.parent_status import sync_parent_status
+from services.pdf_conversion_service import sync_parent_status
 
 logger = logging.getLogger(__name__)
 

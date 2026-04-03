@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Optional, Dict, Any
 
 from repositories import (
-    get_images, get_job,
+    get_images,
     get_image, update_ocr_result as db_update_ocr_result,
     update_image_status,
 )
@@ -16,7 +16,7 @@ from config import settings
 from background import BackgroundTaskExtension
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response
-from services.parent_status import sync_parent_status
+from services.pdf_conversion_service import sync_parent_status
 
 logger = logging.getLogger(__name__)
 

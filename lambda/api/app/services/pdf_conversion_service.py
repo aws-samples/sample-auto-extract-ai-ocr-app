@@ -1,6 +1,6 @@
-"""PDF 変換サービス
+"""PDF 関連サービス
 
-PDF→画像変換のオーケストレーションを担当。
+PDF→画像変換のオーケストレーションと、複数ページ PDF の親ドキュメントステータス連動を担当。
 S3 からの PDF 取得、ページごとの画像変換、S3 アップロード、DynamoDB 更新を行う。
 純粋な画像変換処理は utils/pdf.py の関数を使用する。
 """
@@ -19,7 +19,9 @@ from repositories import (
     get_image, update_image_status, update_converted_image,
     update_ocr_result, update_parent_document_status,
     create_individual_page_record, get_app_input_methods,
+    get_children_by_parent_id,
 )
+from domains.image_status import determine_parent_status
 from utils.helpers import resize_image
 
 logger = logging.getLogger(__name__)
@@ -193,3 +195,28 @@ def _create_individual_page(pdf_document, page_num: int, parent_image_id: str,
         uploaded_by=parent_data.get("uploaded_by"),
     )
     return page_id
+
+
+def sync_parent_status(image_id: str) -> None:
+    """子ページのステータス変更後に親ドキュメントのステータスを連動更新する
+
+    複数ページ PDF の子ページ（個別ページ画像）のステータスが変わった際に、
+    親ドキュメント（PDF 全体）のステータスを子ページの状態から再計算して更新する。
+    OcrService / ExtractionService の両方から呼ばれる共通処理。
+    """
+    try:
+        image_data = get_image(image_id)
+        if not image_data or not image_data.get("parent_document_id"):
+            return
+
+        parent_id = image_data["parent_document_id"]
+        children = get_children_by_parent_id(parent_id)
+        new_status = determine_parent_status(children)
+
+        parent_data = get_image(parent_id)
+        if parent_data and parent_data.get("status") != new_status:
+            update_parent_document_status(parent_id, new_status)
+            logger.info(f"親ドキュメントステータス更新: {parent_id} -> {new_status}")
+
+    except Exception as e:
+        logger.error(f"親ステータス更新エラー: {str(e)}")

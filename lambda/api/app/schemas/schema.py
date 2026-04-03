@@ -2,14 +2,6 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 
-class SchemaField(BaseModel):
-    """スキーマフィールド定義"""
-    name: str
-    type: str
-    description: Optional[str] = None
-    required: bool = False
-
-
 class SchemaGenerateRequest(BaseModel):
     """スキーマ生成リクエスト"""
     s3_key: str

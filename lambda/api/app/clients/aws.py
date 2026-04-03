@@ -63,6 +63,11 @@ def create_dynamodb_resource():
     return boto3.resource("dynamodb", region_name=settings.AWS_REGION)
 
 
+def create_sfn_client():
+    """Step Functions クライアントを作成"""
+    return boto3.client("stepfunctions", region_name=settings.AWS_REGION)
+
+
 # グローバルインスタンス
 s3_client = create_s3_client()
 bedrock_client = create_bedrock_client()
@@ -71,3 +76,31 @@ dynamodb_resource = create_dynamodb_resource()
 sagemaker_runtime_client = create_sagemaker_runtime_client()
 sagemaker_client = create_sagemaker_client()
 bedrock_agentcore_client = create_bedrock_agentcore_client()
+sfn_client = create_sfn_client()
+
+
+def get_inference_component_status(component_name: str) -> dict:
+    """推論コンポーネントの状態を取得"""
+    response = sagemaker_client.describe_inference_component(
+        InferenceComponentName=component_name
+    )
+    copy_count = response['RuntimeConfig']['CurrentCopyCount']
+    return {
+        'ready': copy_count > 0,
+        'copy_count': copy_count,
+        'status': 'ready' if copy_count > 0 else 'cold'
+    }
+
+
+def trigger_endpoint_wakeup(endpoint_name: str, component_name: str):
+    """エンドポイントのスケールアウトをトリガー（ダミーリクエスト送信）"""
+    try:
+        sagemaker_runtime_client.invoke_endpoint(
+            EndpointName=endpoint_name,
+            InferenceComponentName=component_name,
+            Body='{"dummy": true}',
+            ContentType='application/json'
+        )
+    except Exception:
+        # NoCapacityエラーが期待される（これがスケールアウトをトリガー）
+        pass

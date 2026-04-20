@@ -34,9 +34,9 @@ class SharingService:
 
     def remove_user_sharing(self, app_name: str, user_id: str) -> None:
         uc_id = self._get_usecase_id(app_name)
-        if usecase_repository.count_owners(uc_id) <= 1 and usecase_repository.is_owner(user_id, uc_id):
+        deleted = usecase_repository.delete_user_permission_safe(user_id, uc_id)
+        if not deleted:
             raise LastOwnerError("Cannot remove the last owner")
-        usecase_repository.delete_user_permission(user_id, uc_id)
 
     def add_group_sharing(self, app_name: str, group_id: str, permission: str) -> None:
         uc_id = self._get_usecase_id(app_name)

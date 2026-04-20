@@ -75,6 +75,25 @@ def upsert_user_permission(user_id: str, usecase_id: str, permission: str) -> No
     with_retry(_do)
 
 
+def delete_user_permission_safe(user_id: str, usecase_id: str) -> bool:
+    """最後の owner を削除しないよう条件付き DELETE（1 トランザクション内で原子的に実行）。
+    削除成功なら True、最後の owner で削除不可なら False を返す。"""
+    def _do(conn):
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM user_usecases
+                WHERE user_id = %s AND usecase_id = %s
+                  AND NOT (
+                    permission = 'owner'
+                    AND (SELECT COUNT(*) FROM user_usecases
+                         WHERE usecase_id = %s AND permission = 'owner') = 1
+                  )
+                RETURNING user_id
+            """, (user_id, usecase_id, usecase_id))
+            return cur.fetchone() is not None
+    return with_retry(_do)
+
+
 def delete_user_permission(user_id: str, usecase_id: str) -> None:
     """ユーザーのユースケース権限を削除"""
     def _do(conn):

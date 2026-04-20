@@ -8,7 +8,7 @@ from schemas import (
 )
 from services.upload_service import UploadService
 from dependencies.services import get_upload_service
-from dependencies.auth import require_auth, get_cognito_sub, RequirePermission
+from dependencies.auth import require_auth, get_cognito_sub, RequirePermission, RequireImagePermission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Upload"])
@@ -32,9 +32,14 @@ async def generate_presigned_url(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.post("/upload-complete")
-async def upload_complete(request: UploadCompleteRequest, service: UploadService = Depends(get_upload_service)):
-    """アップロード完了を処理する"""
+@router.post("/upload-complete/{image_id}")
+async def upload_complete(
+    image_id: str,
+    request: UploadCompleteRequest,
+    user=Depends(RequireImagePermission("viewer")),
+    service: UploadService = Depends(get_upload_service),
+):
+    """アップロード完了を処理する（対象画像に viewer 以上の権限が必要）"""
     try:
         return await service.handle_upload_complete(request)
     except Exception as e:
@@ -43,8 +48,12 @@ async def upload_complete(request: UploadCompleteRequest, service: UploadService
 
 
 @router.get("/image/{image_id}")
-async def get_image_stream(image_id: str, service: UploadService = Depends(get_upload_service)):
-    """画像を取得して返す"""
+async def get_image_stream(
+    image_id: str,
+    user=Depends(RequireImagePermission("viewer")),
+    service: UploadService = Depends(get_upload_service),
+):
+    """画像を取得して返す（対象画像に viewer 以上の権限が必要）"""
     try:
         image_bytes, content_type, filename = await service.get_image_stream(image_id)
         return StreamingResponse(
@@ -58,8 +67,12 @@ async def get_image_stream(image_id: str, service: UploadService = Depends(get_u
 
 
 @router.get("/generate-presigned-download-url/{image_id}")
-async def generate_presigned_download_url(image_id: str, service: UploadService = Depends(get_upload_service)):
-    """ダウンロード用の署名付きURLを生成する"""
+async def generate_presigned_download_url(
+    image_id: str,
+    user=Depends(RequireImagePermission("viewer")),
+    service: UploadService = Depends(get_upload_service),
+):
+    """ダウンロード用の署名付きURLを生成する（対象画像に viewer 以上の権限が必要）"""
     try:
         return await service.generate_download_url(image_id)
     except Exception as e:

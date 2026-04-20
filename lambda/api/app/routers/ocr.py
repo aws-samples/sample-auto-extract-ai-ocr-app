@@ -6,15 +6,17 @@ from schemas import (
 )
 from services.ocr_service import OcrService, EndpointNotReadyError
 from dependencies.services import get_ocr_service
+from dependencies.auth import RequireImagePermission, RequirePermission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr", tags=["OCR"])
 
 
-@router.post("/start", response_model=JobStartResponse)
-async def start_ocr(request: OcrStartRequest = OcrStartRequest(), service: OcrService = Depends(get_ocr_service)):
-    """OCR処理を開始する（Step Functions版）"""
+@router.post("/start/{app_name}", response_model=JobStartResponse)
+async def start_ocr(app_name: str, user=Depends(RequirePermission("viewer")), service: OcrService = Depends(get_ocr_service)):
+    """OCR処理を開始する（対象ユースケースに viewer 以上の権限が必要）"""
     try:
+        request = OcrStartRequest(app_name=app_name)
         result = await service.start_step_functions_job(request)
         return JobStartResponse(jobId=result["jobId"])
     except EndpointNotReadyError as e:
@@ -30,8 +32,8 @@ async def start_ocr(request: OcrStartRequest = OcrStartRequest(), service: OcrSe
 
 
 @router.get("/result/{image_id}", response_model=OcrResultResponse)
-async def get_ocr_result(image_id: str, service: OcrService = Depends(get_ocr_service)):
-    """OCR結果を取得する"""
+async def get_ocr_result(image_id: str, user=Depends(RequireImagePermission("viewer")), service: OcrService = Depends(get_ocr_service)):
+    """OCR結果を取得する（対象画像に viewer 以上の権限が必要）"""
     try:
         return await service.get_ocr_result(image_id)
     except Exception as e:
@@ -40,8 +42,8 @@ async def get_ocr_result(image_id: str, service: OcrService = Depends(get_ocr_se
 
 
 @router.post("/edit/{image_id}")
-async def update_ocr_result(image_id: str, edited_ocr_data: dict, service: OcrService = Depends(get_ocr_service)):
-    """OCR結果を更新する"""
+async def update_ocr_result(image_id: str, edited_ocr_data: dict, user=Depends(RequireImagePermission("viewer")), service: OcrService = Depends(get_ocr_service)):
+    """OCR結果を更新する（対象画像に viewer 以上の権限が必要）"""
     try:
         await service.update_ocr_result(image_id, edited_ocr_data)
         return {"status": "success", "message": "OCR results updated successfully"}
@@ -51,8 +53,8 @@ async def update_ocr_result(image_id: str, edited_ocr_data: dict, service: OcrSe
 
 
 @router.post("/start/{image_id}")
-async def start_ocr_for_image(image_id: str, skip_ocr: bool = False, service: OcrService = Depends(get_ocr_service)):
-    """指定した画像IDのOCR処理を開始する（Step Functions版）"""
+async def start_ocr_for_image(image_id: str, skip_ocr: bool = False, user=Depends(RequireImagePermission("viewer")), service: OcrService = Depends(get_ocr_service)):
+    """指定した画像IDのOCR処理を開始する（対象画像に viewer 以上の権限が必要）"""
     try:
         result = await service.start_step_functions_for_image(image_id, skip_ocr)
         return result

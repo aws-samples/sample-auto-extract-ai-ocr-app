@@ -2,11 +2,13 @@
 
 - RequireRole: システム全体のロール（admin/author/reader）をチェック
 - RequirePermission: 特定ユースケースに対する権限（owner/editor/viewer）をチェック
+- RequireImagePermission: image_id から app_name を解決し、ユースケース権限をチェック
 """
 from fastapi import Request, HTTPException, Depends
 import json
 from repositories.usecase_repository import get_user_max_permission, get_permitted_app_names as _get_permitted_app_names
 from repositories.user_repository import get_user_by_cognito_sub
+from repositories.image_repository import get_image
 
 _LEVEL_RANK = {"viewer": 1, "editor": 2, "owner": 3}   # ユースケース権限
 _ROLE_RANK = {"reader": 1, "author": 2, "admin": 3}     # システムロール
@@ -90,6 +92,42 @@ class RequirePermission:
 
         # user_usecases + group_usecases から最大権限を取得し、_LEVEL_RANK で比較:
         # viewer(1) < editor(2) < owner(3)
+        perm = get_usecase_permission(str(user["id"]), app_name)
+        if not perm or _LEVEL_RANK.get(perm, 0) < required:
+            raise HTTPException(status_code=403, detail=f"Forbidden: requires {self.min_level} permission")
+        return user
+
+
+class RequireImagePermission:
+    """image_id パスパラメータから app_name を解決し、ユースケース権限をチェックする Depends クラス。
+    画像レコードを request.state.image にキャッシュし、後続のサービス層で再取得を避ける。"""
+    def __init__(self, min_level: str):
+        self.min_level = min_level
+
+    def __call__(self, image_id: str, request: Request, user: dict = Depends(require_auth)) -> dict:
+        # image_id → DynamoDB から画像レコードを取得
+        image = get_image(image_id)
+        if not image:
+            raise HTTPException(status_code=404, detail="Image not found")
+
+        # 後続で再取得しなくて済むようキャッシュ
+        request.state.image = image
+
+        # admin は全ユースケースにフルアクセス
+        if user["role"] == "admin":
+            return user
+
+        required = _LEVEL_RANK.get(self.min_level, 0)
+
+        # reader ロールは viewer 権限までしか行使できない
+        if user["role"] == "reader" and required > _LEVEL_RANK["viewer"]:
+            raise HTTPException(status_code=403, detail="Forbidden: reader role cannot edit")
+
+        # 画像の app_name からユースケース権限を解決
+        app_name = image.get("app_name", "")
+        if not app_name:
+            raise HTTPException(status_code=403, detail="Forbidden: image has no associated usecase")
+
         perm = get_usecase_permission(str(user["id"]), app_name)
         if not perm or _LEVEL_RANK.get(perm, 0) < required:
             raise HTTPException(status_code=403, detail=f"Forbidden: requires {self.min_level} permission")

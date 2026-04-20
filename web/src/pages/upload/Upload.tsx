@@ -75,9 +75,7 @@ function Upload() {
   const startOcr = async () => {
     try {
       setIsProcessing(true);
-      const response = await api.post("/ocr/start", {
-        app_name: appName,
-      });
+      const response = await api.post(`/ocr/start/${appName}`);
 
       if (response.data && response.data.jobId) {
         // 成功したら即座に一覧を更新
@@ -101,7 +99,7 @@ function Upload() {
               setIsEndpointWarming(false);
               
               // リトライ
-              const retryResponse = await api.post("/ocr/start", { app_name: appName });
+              const retryResponse = await api.post(`/ocr/start/${appName}`);
               if (retryResponse.data?.jobId) {
                 fetchFiles();
               }
@@ -266,12 +264,11 @@ function Upload() {
         setUploadProgress((prev) => ({ ...prev, [file.name]: 50 }));
 
         // 3. アップロード完了を通知
-        await api.post("/upload-complete", {
-          image_id,
+        await api.post(`/upload-complete/${image_id}`, {
           filename: file.name,
           s3_key,
           app_name: appName || undefined,
-          page_processing_mode: pageProcessingMode, // 追加
+          page_processing_mode: pageProcessingMode,
         });
 
         // アップロード進捗を完了に更新

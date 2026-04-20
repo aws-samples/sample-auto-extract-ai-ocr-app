@@ -148,13 +148,17 @@ def handler(event, context):
 
     idp_groups = [g.strip() for g in idp_group_str.split(",") if g.strip()] if idp_group_str else []
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         user_id = upsert_user(conn, cognito_sub, email, display_name, department)
         if idp_groups:
             sync_idp_groups(conn, user_id, idp_groups)
         logger.info(f"Synced user {cognito_sub}, idp_groups={idp_groups}")
+    except Exception:
+        logger.exception("post-auth sync failed, continuing login")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     return event

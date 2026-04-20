@@ -53,11 +53,6 @@ async function executeDdl(client: pg.Client): Promise<string[]> {
   return results;
 }
 
-async function executeSql(client: pg.Client, sql: string): Promise<any> {
-  const result = await client.query(sql);
-  return { rowCount: result.rowCount, rows: result.rows };
-}
-
 /**
  * Seed: Cognito ユーザー → DSQL users, "all" グループ作成,
  * SchemasTable → DSQL usecases, 権限割り当て。全て冪等。
@@ -216,14 +211,6 @@ export async function handler(event: any): Promise<any> {
         return {
           PhysicalResourceId: "dsql-seed",
           Data: { results: JSON.stringify(results) },
-        };
-      }
-      case "execute_sql": {
-        const sql = event.ResourceProperties?.sql || event.sql;
-        const result = await executeSql(client, sql);
-        return {
-          PhysicalResourceId: "dsql-sql",
-          Data: result,
         };
       }
       default:

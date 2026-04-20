@@ -123,6 +123,46 @@ def get_custom_prompt_for_app(app_name):
     return ""
 
 
+def create_app_schema(app_name, app_data):
+    """
+    アプリケーションスキーマを新規作成する（同名が既に存在する場合は ClientError を raise）
+    """
+    try:
+        schemas_table = _get_schemas_table()
+        current_time = datetime.now().isoformat()
+
+        item = {
+            'schema_type': 'app',
+            'name': app_name,
+            'display_name': app_data.get('display_name', app_name),
+            'description': app_data.get('description', ''),
+            'fields': app_data.get('fields', []),
+            'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
+            'created_at': current_time,
+            'updated_at': current_time
+        }
+
+        if 'custom_prompt' in app_data and app_data['custom_prompt']:
+            item['custom_prompt'] = app_data['custom_prompt']
+
+        schemas_table.put_item(
+            Item=item,
+            ConditionExpression='attribute_not_exists(schema_type) AND attribute_not_exists(#n)',
+            ExpressionAttributeNames={'#n': 'name'}
+        )
+
+        logger.info(f"スキーマを新規作成しました: {app_name}")
+        return True
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            raise ValueError(f"アプリ名 '{app_name}' は既に使用されています")
+        raise
+    except Exception as e:
+        logger.error(f"スキーマ作成エラー: {str(e)}")
+        raise
+
+
 def update_app_schema(app_name, app_data):
     """
     アプリケーションスキーマを更新する

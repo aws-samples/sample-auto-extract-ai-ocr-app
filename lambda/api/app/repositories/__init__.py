@@ -28,6 +28,7 @@ from .schema_repository import (
     get_app_display_name,
     get_app_input_methods,
     get_custom_prompt_for_app,
+    create_app_schema,
     update_app_schema,
     delete_app_schema,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "get_app_display_name",
     "get_app_input_methods",
     "get_custom_prompt_for_app",
+    "create_app_schema",
     "update_app_schema",
     "delete_app_schema",
     # DSQL repositories

@@ -12,7 +12,7 @@ from schemas import (
 from config import settings
 from repositories import (
     get_app_schemas, get_app_schema, get_extraction_fields_for_app,
-    get_custom_prompt_for_app, update_app_schema,
+    get_custom_prompt_for_app, update_app_schema, create_app_schema,
     delete_app_schema, delete_images_by_app_name
 )
 from repositories.image_repository import create_s3_sync_folder
@@ -151,7 +151,7 @@ class SchemaService:
             logger.error(f"Error deleting app: {str(e)}")
             raise
 
-    async def save_schema(self, request: SchemaSaveRequest, user_id: str = None) -> Dict[str, str]:
+    async def save_schema(self, request: SchemaSaveRequest, user_id: str) -> Dict[str, str]:
         """スキーマを保存する"""
         try:
             # 入力バリデーション
@@ -161,11 +161,6 @@ class SchemaService:
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
             if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
-
-            # 既存チェック（新規作成時のみ）
-            existing_schema = get_app_schema(request.name)
-            if existing_schema:
-                raise ValueError(f"アプリ名 '{request.name}' は既に使用されています")
 
             # 入力方法のバリデーション
             if not request.input_methods.get("file_upload", False) and not request.input_methods.get("s3_sync", False):
@@ -177,12 +172,20 @@ class SchemaService:
             # S3同期が有効な場合、フォルダを作成
             self._create_s3_sync_folder_if_needed(app_data, request.name)
 
-            # スキーマを保存
-            update_app_schema(request.name, app_data)
+            # 1. DSQL に usecase + owner 権限を登録（先に実行。失敗すれば DynamoDB には書き込まない）
+            register_usecase_owner(request.name, user_id)
 
-            # DSQL に usecase + owner 権限を登録
-            if user_id:
-                register_usecase_owner(request.name, user_id)
+            # 2. DynamoDB にスキーマ保存（DSQL 成功後。ConditionExpression で同名重複を原子的に防止）
+            try:
+                create_app_schema(request.name, app_data)
+            except Exception:
+                # DynamoDB 保存失敗時は DSQL 側を rollback して孤児を防ぐ
+                logger.warning(f"DynamoDB save failed, rolling back DSQL usecase: {request.name}")
+                try:
+                    delete_usecase_by_app_name(request.name)
+                except Exception:
+                    logger.error(f"DSQL rollback also failed for: {request.name}")
+                raise
 
             logger.info(f"Saved schema for app: {request.name}")
             return {"status": "success", "message": "スキーマが正常に保存されました"}

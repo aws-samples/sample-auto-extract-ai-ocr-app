@@ -41,7 +41,7 @@ async def upload_complete(
 ):
     """アップロード完了を処理する（対象画像に viewer 以上の権限が必要）"""
     try:
-        return await service.handle_upload_complete(request)
+        return await service.handle_upload_complete(image_id, request)
     except Exception as e:
         logger.error(f"Error handling upload complete: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

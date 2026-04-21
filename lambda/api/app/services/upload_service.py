@@ -94,7 +94,7 @@ class UploadService:
             logger.error(f"Error generating presigned URL: {str(e)}")
             raise
 
-    async def handle_upload_complete(self, request: UploadCompleteRequest) -> Dict[str, Any]:
+    async def handle_upload_complete(self, image_id: str, request: UploadCompleteRequest) -> Dict[str, Any]:
         """アップロード完了を処理する"""
         try:
             # S3オブジェクトの存在確認
@@ -115,18 +115,18 @@ class UploadService:
 
             if is_image:
                 # 画像ファイルの場合はリサイズ処理
-                await self._handle_image_resize(request, content_type)
+                await self._handle_image_resize(image_id, request, content_type)
 
             # PDFファイルの場合は変換処理を開始
             if is_pdf:
-                return await self._handle_pdf_conversion(request)
+                return await self._handle_pdf_conversion(image_id, request)
             else:
                 # 画像ファイルの場合はそのまま処理待ちに
-                update_image_status(request.image_id, "pending")
+                update_image_status(image_id, "pending")
                 return {
                     "status": "success",
                     "message": "Upload completed successfully",
-                    "image_id": request.image_id,
+                    "image_id": image_id,
                     "is_converting": False
                 }
 
@@ -134,7 +134,7 @@ class UploadService:
             logger.error(f"Error handling upload complete: {str(e)}")
             raise
 
-    async def _handle_image_resize(self, request: UploadCompleteRequest, content_type: str) -> None:
+    async def _handle_image_resize(self, image_id: str, request: UploadCompleteRequest, content_type: str) -> None:
         """画像のリサイズ処理"""
         try:
             # S3から画像を取得
@@ -162,7 +162,7 @@ class UploadService:
 
                     # DynamoDBを更新
                     update_converted_image(
-                        request.image_id,
+                        image_id,
                         converted_s3_key,
                         "pending",
                         orig_size,
@@ -172,7 +172,7 @@ class UploadService:
                     logger.info("リサイズは不要です。元の画像を使用します。")
                     # リサイズ不要でも元の画像をconverted_s3_keyとして設定
                     update_converted_image(
-                        request.image_id,
+                        image_id,
                         request.s3_key,
                         "pending",
                         orig_size,
@@ -185,27 +185,27 @@ class UploadService:
             logger.error(f"画像リサイズエラー: {str(e)}")
             # リサイズに失敗しても処理を続行
 
-    async def _handle_pdf_conversion(self, request: UploadCompleteRequest) -> Dict[str, Any]:
+    async def _handle_pdf_conversion(self, image_id: str, request: UploadCompleteRequest) -> Dict[str, Any]:
         """PDF変換処理"""
         try:
             # ステータスを変換中に更新
-            update_image_status(request.image_id, "converting")
+            update_image_status(image_id, "converting")
 
             # バックグラウンドタスクとして変換処理を実行
             if not self.background_task:
                 raise ValueError("background_task is not configured for PDF conversion")
             task_id = self.background_task.add_task(
                 convert_pdf_to_image,
-                request.image_id,
+                image_id,
                 request.s3_key
             )
             logger.info(
-                f"Started PDF conversion task {task_id} for image {request.image_id}")
+                f"Started PDF conversion task {task_id} for image {image_id}")
 
             return {
                 "status": "success",
                 "message": "Upload completed, PDF conversion started",
-                "image_id": request.image_id,
+                "image_id": image_id,
                 "is_converting": True
             }
         except Exception as e:

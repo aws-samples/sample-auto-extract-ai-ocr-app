@@ -1,5 +1,5 @@
 """ユーザー Repository（DSQL）"""
-from dsql_client import query, query_one, with_retry
+from clients.dsql import query, query_one, with_retry
 
 
 def get_user_by_cognito_sub(cognito_sub: str) -> dict | None:

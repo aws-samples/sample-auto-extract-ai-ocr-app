@@ -1,5 +1,5 @@
 """ツール Repository（DSQL）"""
-from dsql_client import query, with_retry
+from clients.dsql import query, with_retry
 
 
 def list_tools() -> list[dict]:

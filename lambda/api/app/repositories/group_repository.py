@@ -1,5 +1,5 @@
 """グループ Repository（DSQL）"""
-from dsql_client import query, query_one, with_retry
+from clients.dsql import query, query_one, with_retry
 
 
 def list_groups() -> list[dict]:

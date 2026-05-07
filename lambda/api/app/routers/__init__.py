@@ -9,12 +9,20 @@ from . import upload
 from . import extraction
 from . import schema
 from . import s3_sync
+from . import agent
+from . import admin
+from . import user
+from . import sharing
 
 __all__ = [
     'health',
-    'ocr', 
+    'ocr',
     'upload',
     'extraction',
     'schema',
-    's3_sync'
+    's3_sync',
+    'agent',
+    'admin',
+    'user',
+    'sharing',
 ]

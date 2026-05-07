@@ -1,66 +1,40 @@
-import { createBrowserRouter, Outlet } from 'react-router-dom';
-import { Authenticator } from '@aws-amplify/ui-react';
-import App from './App';
+import { createBrowserRouter } from 'react-router-dom';
+import { AuthWrapper } from './components/layout/AuthWrapper';
+import { AppLayout } from './components/layout/AppLayout';
+import { AppProvider } from './contexts/AppContext';
 import Home from './pages/Home';
-import Upload from './pages/Upload';
-import OCRResult from './pages/OCRResult';
-import SchemaGenerator from './pages/SchemaGenerator'; // 追加
-import { AppProvider } from './components/AppContext';
-import '@aws-amplify/ui-react/styles.css';
+import Stars from './pages/Stars';
+import History from './pages/History';
+import Upload from './pages/upload/Upload';
+import OCRResult from './pages/ocr-result/OCRResult';
+import SchemaGenerator from './pages/schema/SchemaGenerator';
+import Admin from './pages/Admin';
+import NotFound from './pages/NotFound';
 
-// Layout component that includes the App wrapper and authentication
-const AppLayout = () => {
-  return (
-    <Authenticator>
-      {() => (
-        <AppProvider>
-          <App>
-            <Outlet />
-          </App>
-        </AppProvider>
-      )}
-    </Authenticator>
-  );
-};
+const Root = () => (
+  <AuthWrapper>
+    <AppProvider>
+      <AppLayout />
+    </AppProvider>
+  </AuthWrapper>
+);
 
-// Define routes
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <AppLayout />,
+    element: <Root />,
     children: [
-      {
-        index: true,
-        element: <Home />,
-      },
-      {
-        path: 'app/:appName',
-        element: <Upload />,
-      },
-      {
-        path: 'ocr-result/:id',
-        element: <OCRResult />,
-      },
-      {
-        // 新規作成・編集共通のルート
-        path: 'schema-generator',
-        element: <SchemaGenerator mode="create" />,
-      },
-      {
-        // 新規作成・編集共通のルート (appNameあり)
-        path: 'schema-generator/:appName',
-        element: <SchemaGenerator mode="edit" />,
-      },
-      {
-        // 確認用
-        path: 'apps/:appName/view',
-        element: <SchemaGenerator mode="view" />,
-      },
-      {
-        // 編集用 (schema-generatorにリダイレクト)
-        path: 'apps/:appName/edit',
-        element: <SchemaGenerator mode="edit" />,
-      },
+      { index: true, element: <Home /> },
+      { path: 'stars', element: <Stars /> },
+      { path: 'history', element: <History /> },
+      { path: 'app/:appName', element: <Upload /> },
+      { path: 'ocr-result/:id', element: <OCRResult /> },
+      { path: 'schema-generator', element: <SchemaGenerator mode="create" /> },
+      { path: 'schema-generator/:appName', element: <SchemaGenerator mode="edit" /> },
+      { path: 'apps/:appName/view', element: <SchemaGenerator mode="view" /> },
+      { path: 'apps/:appName/edit', element: <SchemaGenerator mode="edit" /> },
+      { path: 'admin', element: <Admin /> },
+      { path: '*', element: <NotFound /> },
     ],
   },
 ]);

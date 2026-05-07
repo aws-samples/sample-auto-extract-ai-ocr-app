@@ -27,6 +27,7 @@ export interface AppSchema {
   description?: string;
   fields: Field[];
   input_methods?: InputMethods;
+  permission?: string;
 }
 
 export interface AppSchemaResponse {

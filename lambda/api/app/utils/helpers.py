@@ -33,28 +33,6 @@ def float_to_decimal(obj):
         return obj
 
 
-def safe_get_from_dynamo_data(data, key, default=None):
-    """
-    DynamoDBのデータを安全に取得
-
-    Args:
-        data: DynamoDBから取得したデータ
-        key: 取得したいキー
-        default: デフォルト値
-
-    Returns:
-        取得した値またはデフォルト値
-    """
-    try:
-        if isinstance(data, dict):
-            return data.get(key, default)
-        else:
-            return default
-    except Exception as e:
-        logger.warning(f"DynamoDBデータ取得エラー: {str(e)}")
-        return default
-
-
 def resize_image(image_data, max_dimension=1568, min_dimension=200):
     """
     画像をリサイズする関数

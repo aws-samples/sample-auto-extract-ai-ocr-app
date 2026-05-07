@@ -2,9 +2,7 @@ from clients import s3_client
 import uuid
 import logging
 from datetime import datetime
-from typing import Dict, Any
-from fastapi.responses import StreamingResponse
-import io
+from typing import Dict, Any, Optional, Tuple
 
 from repositories import (
     create_image_record, get_image, get_images, update_image_status, update_converted_image,
@@ -14,8 +12,13 @@ from schemas import (
     PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest
 )
 from config import settings
-from utils import resize_image, convert_pdf_to_image
+from utils import resize_image, decimal_to_float
 from repositories import get_app_schemas, get_app_input_methods
+from repositories.usecase_repository import get_permitted_app_names
+from repositories import user_repository
+from background import BackgroundTaskExtension
+from services.pdf_conversion_service import convert_pdf_to_image
+from schemas.image import ImageInfo
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +28,11 @@ logger = logging.getLogger(__name__)
 class UploadService:
     """アップロード処理を管理するサービスクラス"""
 
-    def __init__(self):
+    def __init__(self, background_task: Optional[BackgroundTaskExtension] = None):
         self.bucket_name = settings.BUCKET_NAME
+        self.background_task = background_task
 
-    async def generate_presigned_url(self, request: PresignedUrlRequest) -> PresignedUrlResponse:
+    async def generate_presigned_url(self, request: PresignedUrlRequest, uploaded_by: str = None) -> PresignedUrlResponse:
         """署名付きURLを生成する"""
         try:
             # app_nameのバリデーション
@@ -73,7 +77,8 @@ class UploadService:
                 s3_key=s3_key,
                 app_name=request.app_name,
                 status="uploading",  # アップロード中ステータスを設定
-                page_processing_mode=request.page_processing_mode  # 追加
+                page_processing_mode=request.page_processing_mode,  # 追加
+                uploaded_by=uploaded_by
             )
 
             logger.info(
@@ -89,7 +94,7 @@ class UploadService:
             logger.error(f"Error generating presigned URL: {str(e)}")
             raise
 
-    async def handle_upload_complete(self, request: UploadCompleteRequest) -> Dict[str, Any]:
+    async def handle_upload_complete(self, image_id: str, request: UploadCompleteRequest) -> Dict[str, Any]:
         """アップロード完了を処理する"""
         try:
             # S3オブジェクトの存在確認
@@ -110,18 +115,18 @@ class UploadService:
 
             if is_image:
                 # 画像ファイルの場合はリサイズ処理
-                await self._handle_image_resize(request, content_type)
+                await self._handle_image_resize(image_id, request, content_type)
 
             # PDFファイルの場合は変換処理を開始
             if is_pdf:
-                return await self._handle_pdf_conversion(request)
+                return await self._handle_pdf_conversion(image_id, request)
             else:
                 # 画像ファイルの場合はそのまま処理待ちに
-                update_image_status(request.image_id, "pending")
+                update_image_status(image_id, "pending")
                 return {
                     "status": "success",
                     "message": "Upload completed successfully",
-                    "image_id": request.image_id,
+                    "image_id": image_id,
                     "is_converting": False
                 }
 
@@ -129,7 +134,7 @@ class UploadService:
             logger.error(f"Error handling upload complete: {str(e)}")
             raise
 
-    async def _handle_image_resize(self, request: UploadCompleteRequest, content_type: str) -> None:
+    async def _handle_image_resize(self, image_id: str, request: UploadCompleteRequest, content_type: str) -> None:
         """画像のリサイズ処理"""
         try:
             # S3から画像を取得
@@ -157,7 +162,7 @@ class UploadService:
 
                     # DynamoDBを更新
                     update_converted_image(
-                        request.image_id,
+                        image_id,
                         converted_s3_key,
                         "pending",
                         orig_size,
@@ -167,7 +172,7 @@ class UploadService:
                     logger.info("リサイズは不要です。元の画像を使用します。")
                     # リサイズ不要でも元の画像をconverted_s3_keyとして設定
                     update_converted_image(
-                        request.image_id,
+                        image_id,
                         request.s3_key,
                         "pending",
                         orig_size,
@@ -180,34 +185,39 @@ class UploadService:
             logger.error(f"画像リサイズエラー: {str(e)}")
             # リサイズに失敗しても処理を続行
 
-    async def _handle_pdf_conversion(self, request: UploadCompleteRequest) -> Dict[str, Any]:
+    async def _handle_pdf_conversion(self, image_id: str, request: UploadCompleteRequest) -> Dict[str, Any]:
         """PDF変換処理"""
         try:
             # ステータスを変換中に更新
-            update_image_status(request.image_id, "converting")
+            update_image_status(image_id, "converting")
 
             # バックグラウンドタスクとして変換処理を実行
-            from main import background_task
-            task_id = background_task.add_task(
+            if not self.background_task:
+                raise ValueError("background_task is not configured for PDF conversion")
+            task_id = self.background_task.add_task(
                 convert_pdf_to_image,
-                request.image_id,
+                image_id,
                 request.s3_key
             )
             logger.info(
-                f"Started PDF conversion task {task_id} for image {request.image_id}")
+                f"Started PDF conversion task {task_id} for image {image_id}")
 
             return {
                 "status": "success",
                 "message": "Upload completed, PDF conversion started",
-                "image_id": request.image_id,
+                "image_id": image_id,
                 "is_converting": True
             }
         except Exception as e:
             logger.error(f"PDF conversion setup error: {str(e)}")
             raise
 
-    async def get_image_stream(self, image_id: str) -> StreamingResponse:
-        """画像をストリーミングで返す"""
+    async def get_image_stream(self, image_id: str) -> Tuple[bytes, str, str]:
+        """画像データを返す
+
+        Returns:
+            (image_bytes, content_type, filename) のタプル
+        """
         try:
             # 画像情報を取得
             image_data = get_image(image_id)
@@ -223,17 +233,11 @@ class UploadService:
                 Bucket=self.bucket_name, Key=s3_key)
             image_data_bytes = s3_response['Body'].read()
 
-            # Content-Typeを推定
             content_type = s3_response.get(
                 'ContentType', 'application/octet-stream')
+            filename = image_data.get('filename', 'image')
 
-            # ストリーミングレスポンスを作成
-            return StreamingResponse(
-                io.BytesIO(image_data_bytes),
-                media_type=content_type,
-                headers={
-                    "Content-Disposition": f"inline; filename={image_data.get('filename', 'image')}"}
-            )
+            return (image_data_bytes, content_type, filename)
 
         except Exception as e:
             logger.error(f"Error getting image stream: {str(e)}")
@@ -337,33 +341,124 @@ class UploadService:
             logger.error(f"Error generating download URL: {str(e)}")
             raise
 
-    async def get_images_list(self, app_name: str = None) -> Dict[str, Any]:
+    @staticmethod
+    def _serialize_images(images: list[dict]) -> list[dict]:
+        """DynamoDB の画像レコードを API レスポンス形式（camelCase）に変換する"""
+        result = []
+        for img in images:
+            try:
+                # DynamoDB の Decimal 型を Python の int/float に変換
+                converted = decimal_to_float(img)
+                info = ImageInfo.model_validate(converted)
+                result.append(info.model_dump(by_alias=True))
+            except Exception as e:
+                logger.error(f"Image serialization error for {img.get('id', '?')}: {e}; raw_keys={sorted(img.keys())}")
+                result.append({"id": img.get("id", ""), "name": img.get("filename", ""), "status": img.get("status", "")})
+        return result
+
+    async def get_images_list(self, app_name: str = None, uploaded_by: str = None) -> Dict[str, Any]:
         """画像一覧を取得する"""
         try:
-            # app_nameでフィルタリングして画像を取得
-            images = get_images(app_name)
+            images = get_images(app_name, uploaded_by=uploaded_by)
+            self._enrich_uploaded_by_email(images)
 
-            # レスポンス形式に変換
+            serialized = self._serialize_images(images)
             result = {
-                "images": images,
-                "total": len(images)
+                "images": serialized,
+                "total": len(serialized)
             }
 
-            logger.info(f"Retrieved {len(images)} images")
+            logger.info(f"Retrieved {len(serialized)} images")
             return result
 
         except Exception as e:
             logger.error(f"Error getting images list: {str(e)}")
             raise
 
-    async def delete_image(self, image_id: str) -> Dict[str, Any]:
-        """画像を削除する"""
+    async def get_images_for_user(self, user_id: str, role: str, app_name: str = None) -> Dict[str, Any]:
+        """ユーザーの権限に応じた画像一覧を取得する
+
+        Args:
+            user_id: ユーザーID
+            role: システムロール（admin / author / reader）
+            app_name: ユースケースでフィルタする場合に指定
+        """
+        if role == "admin":
+            return await self.get_images_list(app_name)
+
+        permitted = get_permitted_app_names(user_id)
+        if not permitted:
+            return {"images": [], "total": 0}
+
+        return await self.get_images_for_permitted_apps(permitted, app_name_filter=app_name)
+
+    async def get_images_for_permitted_apps(self, app_names: list[str], app_name_filter: str = None) -> Dict[str, Any]:
+        """権限のあるユースケースの画像一覧を取得する
+
+        Args:
+            app_names: ユーザーが権限を持つ app_name のリスト
+            app_name_filter: 特定のユースケースでさらに絞り込む場合に指定
+        """
         try:
-            from fastapi import HTTPException
-            
+            if app_name_filter:
+                # フィルタ指定時は権限チェック済みの app_name のみ取得
+                if app_name_filter not in app_names:
+                    return {"images": [], "total": 0}
+                target_apps = [app_name_filter]
+            else:
+                target_apps = app_names
+
+            all_images = []
+            for name in target_apps:
+                images = get_images(app_name=name)
+                all_images.extend(images)
+
+            # upload_time 降順でソート
+            all_images.sort(key=lambda x: x.get("upload_time", ""), reverse=True)
+            self._enrich_uploaded_by_email(all_images)
+
+            serialized = self._serialize_images(all_images)
+            return {
+                "images": serialized,
+                "total": len(serialized)
+            }
+        except Exception as e:
+            logger.error(f"Error getting images for permitted apps: {str(e)}")
+            raise
+
+    @staticmethod
+    def _enrich_uploaded_by_email(images: list[dict]) -> None:
+        """画像リストに uploaded_by_email / verified_by_email を付与する"""
+        subs = set()
+        for img in images:
+            if img.get("uploaded_by"):
+                subs.add(img["uploaded_by"])
+            if img.get("verified_by"):
+                subs.add(img["verified_by"])
+        if not subs:
+            return
+        email_map = user_repository.get_emails_by_cognito_subs(subs)
+        for img in images:
+            img["uploaded_by_email"] = email_map.get(img.get("uploaded_by", ""), "")
+            img["verified_by_email"] = email_map.get(img.get("verified_by", ""), "")
+
+    async def delete_image(self, image_id: str, cognito_sub: str = None, is_admin: bool = False) -> Dict[str, Any]:
+        """画像を削除する
+
+        Args:
+            image_id: 削除対象の画像ID
+            cognito_sub: 操作ユーザーの cognito_sub（所有者チェック用）
+            is_admin: admin ロールの場合 True（所有者チェックをスキップ）
+        """
+        try:
             image = get_image(image_id)
             if not image:
-                raise HTTPException(status_code=404, detail="Image not found")
+                raise ValueError("Image not found")
+
+            # 所有者チェック（admin 以外）
+            if not is_admin:
+                if not cognito_sub or image.get("uploaded_by") != cognito_sub:
+                    raise PermissionError("Forbidden: not the owner")
             
             parent_document_id = image.get("parent_document_id")
             page_processing_mode = image.get("page_processing_mode")

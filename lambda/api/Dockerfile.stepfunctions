@@ -6,4 +6,4 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY app/ ${LAMBDA_TASK_ROOT}/app/
 
-CMD ["app.step_functions_handler.process_image_handler"]
+CMD ["app.workers.step_functions.process_image_handler"]

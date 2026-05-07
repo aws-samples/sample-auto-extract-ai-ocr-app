@@ -2,7 +2,6 @@ from clients import dynamodb_resource, s3_client
 import logging
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
-from fastapi import HTTPException
 from datetime import datetime
 import uuid
 from config import settings
@@ -20,15 +19,14 @@ def get_images_table():
     table_name = settings.IMAGES_TABLE_NAME
     if not table_name:
         logger.error("IMAGES_TABLE_NAME 環境変数が設定されていません")
-        raise HTTPException(
-            status_code=500, detail="Database configuration error")
+        raise ValueError("IMAGES_TABLE_NAME environment variable is not set")
 
     return dynamodb_resource.Table(table_name)
 
 
 def create_image_record(image_id, filename, s3_key, app_name="default", status="pending", converted_s3_key=None,
                         page_processing_mode="combined", total_pages=None, page_number=None, parent_document_id=None,
-                        sync_source_path=None):
+                        sync_source_path=None, uploaded_by=None):
     """
     画像レコードを作成する
 
@@ -44,6 +42,7 @@ def create_image_record(image_id, filename, s3_key, app_name="default", status="
         page_number (int, optional): ページ番号（個別処理の場合）
         parent_document_id (str, optional): 親ドキュメントID（個別処理の場合）
         sync_source_path (str, optional): S3同期元のパス
+        uploaded_by (str, optional): アップロードしたユーザーの cognito_sub
 
     Returns:
         str: 作成された画像のID
@@ -64,6 +63,10 @@ def create_image_record(image_id, filename, s3_key, app_name="default", status="
             "app_name": app_name,
             "page_processing_mode": page_processing_mode
         }
+
+        # アップロードユーザー情報を追加
+        if uploaded_by:
+            item["uploaded_by"] = uploaded_by
 
         # ページ関連の情報を追加
         if total_pages is not None:
@@ -86,11 +89,10 @@ def create_image_record(image_id, filename, s3_key, app_name="default", status="
         return image_id
     except Exception as e:
         logger.error(f"画像レコード作成エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
-def get_images(app_name=None):
+def get_images(app_name=None, uploaded_by=None):
     """
     画像一覧を取得する
 
@@ -98,19 +100,40 @@ def get_images(app_name=None):
         app_name (str, optional): アプリケーション名でフィルタリング
                                  指定時はGSI(AppNameIndex)でquery実行
                                  未指定時はscanで全件取得（1MB制限あり）
+        uploaded_by (str, optional): アップロードユーザーの cognito_sub でフィルタリング
+                                    指定時はGSI(UploadedByIndex)でquery実行
 
     Returns:
         list: 画像レコードのリスト
 
     注意:
-        app_name未指定時はDynamoDB scanを使用するため、1MBのデータサイズ制限があります。
+        app_name/uploaded_by未指定時はDynamoDB scanを使用するため、1MBのデータサイズ制限があります。
         大量のレコードがある場合、全てのデータを取得できない可能性があります。
         本番環境では必ずapp_nameを指定してGSI経由でのquery使用を推奨します。
     """
     table = get_images_table()
 
     try:
-        if app_name:
+        if uploaded_by and app_name:
+            # UploadedByIndex で取得し、app_name でクライアント側フィルタ
+            # （GSI の PK が uploaded_by のみのため、app_name は KeyCondition に含められない）
+            response = table.query(
+                IndexName="UploadedByIndex",
+                KeyConditionExpression=Key('uploaded_by').eq(uploaded_by),
+                ScanIndexForward=False  # 降順（新しい順）
+            )
+            items = [i for i in response.get('Items', []) if i.get('app_name') == app_name]
+            logger.info(f"UploadedByIndex + app_name フィルタで画像を取得")
+        elif uploaded_by:
+            # UploadedByIndex で自分の画像のみ取得
+            response = table.query(
+                IndexName="UploadedByIndex",
+                KeyConditionExpression=Key('uploaded_by').eq(uploaded_by),
+                ScanIndexForward=False  # 降順（新しい順）
+            )
+            items = response.get('Items', [])
+            logger.info(f"UploadedByIndex 経由でユーザーの画像を取得")
+        elif app_name:
             # GSI(AppNameIndex)を使用してアプリ名でフィルタリング
             # queryは効率的で1MB制限の影響を受けにくい
             response = table.query(
@@ -118,34 +141,19 @@ def get_images(app_name=None):
                 KeyConditionExpression=Key('app_name').eq(app_name),
                 ScanIndexForward=False  # 降順（新しい順）
             )
+            items = response.get('Items', [])
             logger.info(f"GSI経由でアプリ '{app_name}' の画像を取得")
         else:
             # 全件取得（警告: DynamoDB scanは1MB制限があり、大規模データでは不完全な結果になる）
             response = table.scan()
+            items = response.get('Items', [])
             logger.warning("scanで全件取得中 - 大量データがある場合は一部のレコードが取得されない可能性があります")
 
-        images = []
-        for item in response.get('Items', []):
-            images.append({
-                "id": item.get("id"),
-                "name": item.get("filename"),
-                "s3_key": item.get("s3_key"),
-                "uploadTime": item.get("upload_time"),
-                "status": item.get("status"),
-                "jobId": item.get("job_id"),
-                "appName": item.get("app_name"),
-                "pageProcessingMode": item.get("page_processing_mode"),
-                "totalPages": item.get("total_pages"),
-                "pageNumber": item.get("page_number"),
-                "parentDocumentId": item.get("parent_document_id"),
-                "verificationCompleted": item.get("verification_completed", False)
-            })
-
-        return images
+        # DynamoDB の Item をそのまま返す（camelCase 変換はサービス層/Pydantic で行う）
+        return items
     except Exception as e:
         logger.error(f"画像一覧取得エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def update_image_status(image_id, status, job_id=None):
@@ -175,15 +183,9 @@ def update_image_status(image_id, status, job_id=None):
             ExpressionAttributeValues=expression_attribute_values
         )
 
-        # 親ドキュメントのステータス更新チェック
-        image_data = get_image(image_id)
-        if image_data and image_data.get("parent_document_id"):
-            check_and_update_parent_status(image_data["parent_document_id"])
-
     except Exception as e:
         logger.error(f"画像ステータス更新エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def update_ocr_result(image_id: str, ocr_result: dict, extraction_status: str = "processing") -> None:
@@ -208,15 +210,9 @@ def update_ocr_result(image_id: str, ocr_result: dict, extraction_status: str = 
         )
         logger.info(f"OCR結果を更新しました: {image_id}")
 
-        # 親ドキュメントのステータス更新チェック
-        image_data = get_image(image_id)
-        if image_data and image_data.get("parent_document_id"):
-            check_and_update_parent_status(image_data["parent_document_id"])
-
     except Exception as e:
         logger.error(f"OCR結果更新エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def update_extracted_info(image_id, extracted_info, extraction_mapping, status="completed"):
@@ -244,8 +240,7 @@ def update_extracted_info(image_id, extracted_info, extraction_mapping, status="
         logger.info(f"抽出情報を更新しました: {image_id}")
     except Exception as e:
         logger.error(f"抽出情報更新エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def get_image(image_id):
@@ -262,16 +257,10 @@ def get_image(image_id):
 
     try:
         response = table.get_item(Key={"id": image_id})
-        item = response.get("Item")
-
-        if not item:
-            raise HTTPException(status_code=404, detail="Image not found")
-
-        return item
+        return response.get("Item")
     except ClientError as e:
         logger.error(f"画像取得エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def update_converted_image(image_id, converted_s3_key, status=None, original_size=None, resized_size=None,
@@ -397,13 +386,14 @@ def delete_image(image_id: str) -> bool:
         return False
 
 
-def update_verification_status(image_id: str, verification_completed: bool) -> None:
+def update_verification_status(image_id: str, verification_completed: bool, verified_by: str = None) -> None:
     """
     確認完了ステータスを更新する
 
     Args:
         image_id (str): 画像ID
         verification_completed (bool): 確認完了フラグ
+        verified_by (str, optional): 確認者の cognito_sub
     """
     table = get_images_table()
     current_time = datetime.now().isoformat()
@@ -411,22 +401,23 @@ def update_verification_status(image_id: str, verification_completed: bool) -> N
     try:
         table.update_item(
             Key={"id": image_id},
-            UpdateExpression="SET verification_completed = :completed, verification_completed_at = :timestamp",
+            UpdateExpression="SET verification_completed = :completed, verification_completed_at = :timestamp, verified_by = :verified_by",
             ExpressionAttributeValues={
                 ":completed": verification_completed,
-                ":timestamp": current_time if verification_completed else None
+                ":timestamp": current_time if verification_completed else None,
+                ":verified_by": verified_by if verification_completed else None
             }
         )
-        logger.info(f"確認完了ステータスを更新: {image_id} -> {verification_completed}")
+        logger.info(f"確認完了ステータスを更新: {image_id} -> {verification_completed} (by: {verified_by})")
     except Exception as e:
         logger.error(f"確認完了ステータス更新エラー: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def create_individual_page_record(page_id: str, parent_image_id: str, filename: str,
                                   converted_s3_key: str,
                                   page_number: int, total_pages: int, app_name: str,
-                                  original_size: tuple, new_size: tuple):
+                                  original_size: tuple, new_size: tuple, uploaded_by: str = None):
     """
     個別ページのレコードを作成する
 
@@ -462,14 +453,16 @@ def create_individual_page_record(page_id: str, parent_image_id: str, filename: 
             "new_size": list(new_size) if new_size else None
         }
 
+        if uploaded_by:
+            item["uploaded_by"] = uploaded_by
+
         table.put_item(Item=item)
         logger.info(
             f"個別ページレコード作成完了: {page_id} (ページ {page_number}/{total_pages})")
 
     except Exception as e:
         logger.error(f"個別ページレコード作成エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def update_parent_document_status(parent_id: str, status: str, total_pages: int = None):
@@ -503,8 +496,7 @@ def update_parent_document_status(parent_id: str, status: str, total_pages: int 
 
     except Exception as e:
         logger.error(f"親ドキュメントステータス更新エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def get_children_by_parent_id(parent_id: str):
@@ -527,56 +519,6 @@ def get_children_by_parent_id(parent_id: str):
     except Exception as e:
         logger.error(f"子ページ取得エラー: {str(e)}")
         return []
-
-
-def determine_parent_status(children):
-    """
-    子ページのステータスから親ドキュメントのステータスを判定する
-
-    Args:
-        children (list): 子ページのリスト
-
-    Returns:
-        str: 親ドキュメントのステータス
-    """
-    if not children:
-        return "converting"
-
-    statuses = [child.get("status") for child in children]
-
-    if all(status == "completed" for status in statuses):
-        return "completed"
-    elif any(status == "failed" for status in statuses):
-        return "failed"  # 一つでも失敗したら親も失敗
-    elif any(status == "processing" for status in statuses):
-        return "processing"
-    else:
-        return "converting"  # pending状態
-
-
-def check_and_update_parent_status(parent_id: str):
-    """
-    親ドキュメントのステータスをチェックして更新する
-
-    Args:
-        parent_id (str): 親ドキュメントID
-    """
-    try:
-        children = get_children_by_parent_id(parent_id)
-        new_status = determine_parent_status(children)
-
-        # 現在の親ステータスを取得
-        parent_data = get_image(parent_id)
-        current_status = parent_data.get("status")
-
-        # ステータスが変更された場合のみ更新
-        if current_status != new_status:
-            update_parent_document_status(parent_id, new_status)
-            logger.info(
-                f"親ドキュメントステータス更新: {parent_id} {current_status} -> {new_status}")
-
-    except Exception as e:
-        logger.error(f"親ステータス更新エラー: {str(e)}")
 
 
 def create_s3_sync_folder(app_name: str) -> None:
@@ -627,3 +569,24 @@ def get_images_by_sync_source(filename: str, sync_source_path: str, app_name: st
     except Exception as e:
         logger.error(f"同期元パスでの画像検索エラー: {str(e)}")
         return []
+
+def get_existing_sync_sources(app_name: str) -> set[str]:
+    """指定アプリの既存 sync_source_path のセットを返す（バッチ重複チェック用）
+
+    1 回の scan で全件取得し、Python 側でセット化する。
+    ファイルごとに scan するより効率的。
+
+    警告: DynamoDB scan は 1MB 制限があり、大量データでは不完全な結果になる可能性がある。
+    """
+    try:
+        table = get_images_table()
+        filter_expr = Attr("app_name").eq(app_name) & Attr("sync_source_path").exists()
+        response = table.scan(
+            FilterExpression=filter_expr,
+            ProjectionExpression="sync_source_path",
+        )
+        return {item["sync_source_path"] for item in response.get("Items", [])}
+    except Exception as e:
+        logger.error(f"同期元パス一括取得エラー: {str(e)}")
+        return set()
+

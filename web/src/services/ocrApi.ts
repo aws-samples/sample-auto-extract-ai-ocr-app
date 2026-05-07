@@ -1,0 +1,36 @@
+/** OCR / Agent / 抽出関連 API */
+import api from './api';
+
+export const runAgent = async (imageId: string) => {
+  const startResponse = await api.post(`/ocr/agent/${imageId}`);
+  const jobId = startResponse.data.jobId;
+  return pollAgentJobStatus(jobId);
+};
+
+export const pollAgentJobStatus = async (
+  jobId: string,
+  maxAttempts = 60,
+  interval = 2000
+): Promise<any> => {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const response = await api.get(`/ocr/agent/status/${jobId}`);
+    const { status, suggestions, error } = response.data;
+
+    if (status === 'completed') {
+      return { status: 'success', suggestions };
+    }
+
+    if (status === 'failed') {
+      throw new Error(error || 'Agent processing failed');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+
+  throw new Error('Agent processing timed out');
+};
+
+export const getAgentTools = async () => {
+  const response = await api.get('/ocr/agent/tools');
+  return response.data;
+};

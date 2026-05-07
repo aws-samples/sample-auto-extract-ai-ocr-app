@@ -8,22 +8,33 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "cdk:deploy": "npx cdk deploy",
+    "cdk:synth": "npx cdk synth",
+    "cdk:diff": "npx cdk diff",
+    "web:build": "npm --prefix web run build",
+    "web:dev": "npm --prefix web run dev",
+    "init-admin": "npx ts-node scripts/init-admin.ts"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "22.7.9",
-    "aws-cdk": "^2.1002.0",
+    "@types/pg": "^8.18.0",
+    "aws-cdk": "^2.1111.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "typescript": "~5.6.3"
   },
   "dependencies": {
-    "@aws-cdk/aws-lambda-python-alpha": "^2.181.1-alpha.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1009.0",
+    "@aws-sdk/client-dynamodb": "^3.1009.0",
+    "@aws-sdk/dsql-signer": "^3.1009.0",
+    "@aws-sdk/lib-dynamodb": "^3.1009.0",
     "@aws-solutions-constructs/aws-cloudfront-s3": "^2.77.0",
     "aws-cdk-lib": "^2.191.0",
     "constructs": "^10.0.0",
-    "deploy-time-build": "^0.3.24"
+    "deploy-time-build": "^0.3.24",
+    "pg": "^8.20.0"
   }
 }

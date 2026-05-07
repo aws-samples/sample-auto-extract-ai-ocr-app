@@ -1,11 +1,13 @@
 """Service for agent-based OCR correction."""
 
+import asyncio
 import json
 import logging
 from typing import Dict, Any, Optional
 
 from repositories import get_image
 from repositories.job_repository import create_agent_job, update_agent_job, get_job
+from repositories.agent_tools_repository import list_agent_tools
 from clients import AgentClient
 from config import settings
 from background import BackgroundTaskExtension
@@ -57,7 +59,6 @@ class AgentService:
             job_id: Job ID
             image_id: Image ID
         """
-        import asyncio
         asyncio.run(self._process_agent_correction_async(job_id, image_id))
     
     async def _process_agent_correction_async(self, job_id: str, image_id: str):
@@ -135,7 +136,7 @@ class AgentService:
             Dictionary with tools list
         """
         try:
-            tools = await self.agent_client.get_tools()
+            tools = list_agent_tools()
             return {"status": "success", "tools": tools}
         
         except Exception as e:
@@ -224,48 +225,3 @@ class AgentService:
             logger.error(f"Response text: {response_text}")
             return []
     
-    async def suggest_corrections(self, image_id: str) -> Dict[str, Any]:
-        """Generate correction suggestions for OCR results
-        
-        Args:
-            image_id: Image ID
-            
-        Returns:
-            Dictionary with status and suggestions
-        """
-        try:
-            logger.info(f"Starting agent correction for image: {image_id}")
-            
-            # Get OCR extraction results
-            image_data = get_image(image_id)
-            if not image_data:
-                raise ValueError(f"Image not found: {image_id}")
-            
-            extracted_info = image_data.get("extracted_info", {})
-            if not extracted_info:
-                logger.warning(f"No extracted info found for image: {image_id}")
-                return {"status": "success", "suggestions": []}
-            
-            # Create system prompt
-            system_prompt = self._create_system_prompt(extracted_info)
-            
-            # Call AgentCore Runtime
-            response_text = await self.agent_client.invoke_agent(
-                messages=[],
-                system_prompt=system_prompt,
-                prompt="OCR抽出結果を検証し、誤りがあれば修正してください。",
-                model_info={
-                    "modelId": settings.MODEL_ID,
-                    "region": settings.MODEL_REGION
-                }
-            )
-            
-            # Parse response
-            suggestions = self._parse_agent_response(response_text)
-            
-            logger.info(f"Agent correction completed for image: {image_id}")
-            return {"status": "success", "suggestions": suggestions}
-        
-        except Exception as e:
-            logger.error(f"Error in agent correction: {e}")
-            raise

@@ -1,20 +1,13 @@
 """
-Utilities package
+Utilities package — 純粋関数のみ
+
+pdf_page_to_jpeg は fitz 依存のため、必要な箇所で from utils.pdf import pdf_page_to_jpeg で直接 import すること。
 """
 
 from .helpers import decimal_to_float, resize_image, float_to_decimal
-from .pdf import (
-    convert_pdf_to_image, process_combined_pages, process_single_page_combined,
-    process_individual_pages, create_individual_page
-)
 
 __all__ = [
     'decimal_to_float',
     'float_to_decimal',
     'resize_image',
-    'convert_pdf_to_image',
-    'process_combined_pages',
-    'process_single_page_combined', 
-    'process_individual_pages',
-    'create_individual_page'
 ]

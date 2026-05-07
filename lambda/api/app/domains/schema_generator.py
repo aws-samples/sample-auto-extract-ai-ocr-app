@@ -2,21 +2,19 @@ import json
 import logging
 import re
 import imghdr
-from utils.bedrock import call_bedrock, parse_converse_response
 
 logger = logging.getLogger(__name__)
 
 
-def generate_schema_fields_from_image(image_data, instructions=None):
-    """
-    画像からスキーマのフィールド部分のみを生成する関数
+def build_schema_generation_request(image_data, instructions=None):
+    """画像からスキーマ生成用の Bedrock リクエストを構築する（純粋関数）
 
     Args:
         image_data (bytes): 画像データ
         instructions (str, optional): スキーマ生成の指示
 
     Returns:
-        dict: 生成されたフィールド定義 {"fields": [...]} の形式
+        tuple: (messages, system_prompts)
     """
     try:
         # 画像のMIMEタイプを判定
@@ -314,38 +312,41 @@ def generate_schema_fields_from_image(image_data, instructions=None):
 
         messages = [user_message]
 
-        # Bedrock APIを呼び出し
-        response = call_bedrock(messages, system_prompts)
+        return messages, system_prompts
 
-        # レスポンスからテキストを抽出
-        fields_text = parse_converse_response(response)
+    except Exception as e:
+        logger.error(f"スキーマ生成リクエスト構築エラー: {str(e)}")
+        raise
 
+
+def parse_schema_generation_response(fields_text: str) -> dict:
+    """Bedrock レスポンスからスキーマフィールド定義をパースする（純粋関数）
+
+    Args:
+        fields_text: Bedrock からのレスポンステキスト
+
+    Returns:
+        {"fields": [...]} 形式のスキーマ定義
+    """
+    try:
         # JSONテキストからフィールド定義を抽出
-        json_match = re.search(r'```json\s*(.*?)\s*```',
-                               fields_text, re.DOTALL)
+        json_match = re.search(r'```json\s*(.*?)\s*```', fields_text, re.DOTALL)
         if json_match:
             fields_json = json_match.group(1)
         else:
             fields_json = fields_text
 
-        # JSONをパース
-        try:
-            schema = json.loads(fields_json)
+        schema = json.loads(fields_json)
 
-            # スキーマが {"fields": [...]} の形式になっているか確認
-            if "fields" not in schema:
-                # fieldsキーがない場合は、配列を受け取ったと仮定して包む
-                if isinstance(schema, list):
-                    schema = {"fields": schema}
-                else:
-                    # それ以外の場合はエラー
-                    raise ValueError("生成されたスキーマに 'fields' キーがありません")
+        # スキーマが {"fields": [...]} の形式になっているか確認
+        if "fields" not in schema:
+            # fieldsキーがない場合は、配列を受け取ったと仮定して包む
+            if isinstance(schema, list):
+                schema = {"fields": schema}
+            else:
+                raise ValueError("生成されたスキーマに 'fields' キーがありません")
 
-            return schema
-        except json.JSONDecodeError as e:
-            logger.error(f"フィールド定義のJSONパースエラー: {str(e)}")
-            raise ValueError(f"生成されたフィールド定義が有効なJSONではありません: {fields_json}")
-
-    except Exception as e:
-        logger.error(f"フィールド生成エラー: {str(e)}")
-        raise
+        return schema
+    except json.JSONDecodeError as e:
+        logger.error(f"フィールド定義のJSONパースエラー: {str(e)}")
+        raise ValueError(f"生成されたフィールド定義が有効なJSONではありません: {fields_json}")

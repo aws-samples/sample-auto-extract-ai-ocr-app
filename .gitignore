@@ -1,13 +1,15 @@
 # Node.js
 node_modules
 
-# TypeScript
-lib/**/*.d.ts
-dist/**/*.d.ts
-
 # CDK
 .cdk.staging
 cdk.out
+
+# CDK TypeScript build output
+bin/**/*.js
+bin/**/*.d.ts
+lib/**/*.js
+lib/**/*.d.ts
 
 # Python
 __pycache__/
@@ -17,3 +19,17 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# VSCode
+.vscode/
+
+# Web build
+web/dist
+
+# Kiro
+.kiro/*
+!.kiro/steering/
+.kiro/steering/*
+!.kiro/steering/product.md
+!.kiro/steering/structure.md
+!.kiro/steering/tech.md

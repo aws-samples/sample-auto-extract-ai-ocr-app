@@ -2,15 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================
+   カラーテーマ（CSS 変数）
+   ======================================== */
 :root {
+  /* テーマカラー */
+  --color-primary: #0073bb;
+  --color-primary-hover: #005f9b;
+  --color-muted: #94a3b8;
+  --color-bg: #ffffff;
+  --color-overlay: rgba(0, 0, 0, 0.5);
+  --color-surface: #f8fafc;
+  --color-surface-alt: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+  --color-header: #1e3a5f;
+  --color-header-hover: #162d4a;
+  --color-text: #1e293b;
+  --color-text-light: #4b5563;
+  --color-on-primary: #ffffff;
+
+  /* セマンティックカラー */
+  --color-danger: #dc4545;
+  --color-danger-hover: #c53a3a;
+  --color-danger-light: #fee2e2;
+  --color-danger-border: #f87171;
+  --color-danger-text: #b91c1c;
+  --color-success: #22a55a;
+  --color-success-hover: #1d8f4e;
+  --color-success-light: #dcfce7;
+  --color-success-border: #4ade80;
+  --color-success-text: #166534;
+  --color-warning: #eab308;
+  --color-warning-light: #fefce8;
+  --color-warning-border: #facc15;
+  --color-warning-text: #854d0e;
+  --color-info: #3b82f6;
+  --color-info-hover: #2563eb;
+  --color-info-light: #dbeafe;
+  --color-info-border: #60a5fa;
+  --color-info-text: #1e40af;
+
+  /* ニュートラル（gray 系） */
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #f3f4f6;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-300: #d1d5db;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-500: #6b7280;
+  --color-neutral-600: #4b5563;
+  --color-neutral-700: #374151;
+  --color-neutral-800: #1f2937;
+  --color-neutral-900: #111827;
+
+  /* アクセント */
+  --color-accent-light: #f3e8ff;
+  --color-accent-text: #6b21a8;
+  --color-accent-border: #d8b4fe;
+
+  /* フォント */
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
   color-scheme: light;
-  color: #213547;
+  color: var(--color-text);
   background-color: #ffffff;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -30,53 +86,65 @@ body {
   height: 100vh;
 }
 
-/* スクロールバーのスタイリング */
+/* ========================================
+   スクロールバー
+   ======================================== */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--color-surface-alt);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--color-muted);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--color-text-light);
 }
 
-.home-container {
-  padding: 40px 20px;
-  width: 100%;
-  max-width: 1200px;
-  margin: 40px auto;
-  box-sizing: border-box;
-  color: #213547;
-}
-
+/* ========================================
+   レイアウト
+   ======================================== */
 .ocr-result-container {
   padding: 20px;
   height: calc(100vh - 80px);
   overflow: hidden;
 }
 
-/* テキストカラーの明示的な設定 */
 .app-card h2 {
-  color: #213547;
+  color: var(--color-text);
 }
 
 .app-card .text-gray-600 {
-  color: #4b5563;
+  color: var(--color-text-light);
 }
 
 @media (max-width: 768px) {
-  .home-container {
-    padding: 20px 15px;
-    margin: 20px auto;
-  }
+}
+
+/* ========================================
+   アニメーション（旧 styles/index.css から統合）
+   ======================================== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-20px); }
+}
+
+.animate-fade-in-down {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-fade-out-up {
+  animation: fadeOut 0.3s ease-in forwards;
 }

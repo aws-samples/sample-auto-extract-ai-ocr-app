@@ -1,12 +1,20 @@
 import logging
 import os
+from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
+from clients import dynamodb_resource
 
 logger = logging.getLogger(__name__)
 
-# DynamoDB クライアント
-dynamodb = boto3.resource('dynamodb')
+
+def _get_schemas_table():
+    """SchemasTable のリソースを取得"""
+    table_name = os.environ.get('SCHEMAS_TABLE_NAME')
+    if not table_name:
+        logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
+        raise ValueError("SCHEMAS_TABLE_NAME environment variable is not set")
+    return dynamodb_resource.Table(table_name)
 
 
 def load_app_schemas():
@@ -16,14 +24,8 @@ def load_app_schemas():
     取得できない場合はエラーを返す
     """
     try:
-        # DynamoDB からスキーマを取得
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            raise ValueError("SCHEMAS_TABLE_NAME environment variable is not set")
-            
-        logger.info(f"DynamoDB からスキーマを取得します: {schemas_table_name}")
-        schemas_table = dynamodb.Table(schemas_table_name)
+        logger.info(f"DynamoDB からスキーマを取得します")
+        schemas_table = _get_schemas_table()
         
         # schema_type='app' の全てのレコードを取得
         response = schemas_table.query(
@@ -92,33 +94,6 @@ def get_extraction_fields_for_app(app_name):
     return {"fields": []}
 
 
-def get_field_names_for_app(app_name):
-    """指定されたアプリの抽出フィールド名リストを取得（階層構造対応）"""
-    fields = get_extraction_fields_for_app(app_name)["fields"]
-    field_names = []
-    
-    def extract_field_names(fields, prefix=""):
-        for field in fields:
-            field_name = field["name"]
-            full_name = f"{prefix}{field_name}" if prefix else field_name
-            field_names.append(full_name)
-            
-            # map型の場合は再帰的に処理
-            if field.get("type") == "map" and "fields" in field:
-                extract_field_names(field["fields"], f"{full_name}.")
-            
-            # list型の場合、itemsがmap型なら再帰的に処理
-            if field.get("type") == "list" and "items" in field:
-                items = field["items"]
-                if items.get("type") == "map" and "fields" in items:
-                    # リスト内の各項目のフィールド名を取得
-                    for item_field in items["fields"]:
-                        field_names.append(f"{full_name}.{item_field['name']}")
-    
-    extract_field_names(fields)
-    return field_names
-
-
 def get_app_display_name(app_name):
     """アプリの表示名を取得"""
     app_schemas = get_app_schemas()
@@ -148,20 +123,54 @@ def get_custom_prompt_for_app(app_name):
     return ""
 
 
+def create_app_schema(app_name, app_data):
+    """
+    アプリケーションスキーマを新規作成する（同名が既に存在する場合は ClientError を raise）
+    """
+    try:
+        schemas_table = _get_schemas_table()
+        current_time = datetime.now().isoformat()
+
+        item = {
+            'schema_type': 'app',
+            'name': app_name,
+            'display_name': app_data.get('display_name', app_name),
+            'description': app_data.get('description', ''),
+            'fields': app_data.get('fields', []),
+            'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
+            'created_at': current_time,
+            'updated_at': current_time
+        }
+
+        if 'custom_prompt' in app_data and app_data['custom_prompt']:
+            item['custom_prompt'] = app_data['custom_prompt']
+
+        schemas_table.put_item(
+            Item=item,
+            ConditionExpression='attribute_not_exists(schema_type) AND attribute_not_exists(#n)',
+            ExpressionAttributeNames={'#n': 'name'}
+        )
+
+        logger.info(f"スキーマを新規作成しました: {app_name}")
+        return True
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            raise ValueError(f"アプリ名 '{app_name}' は既に使用されています")
+        raise
+    except Exception as e:
+        logger.error(f"スキーマ作成エラー: {str(e)}")
+        raise
+
+
 def update_app_schema(app_name, app_data):
     """
     アプリケーションスキーマを更新する
     """
     try:
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            return False
-            
-        schemas_table = dynamodb.Table(schemas_table_name)
+        schemas_table = _get_schemas_table()
         
         # 現在の日時を取得
-        from datetime import datetime
         current_time = datetime.now().isoformat()
         
         # 既存のレコードを取得して created_at を保持
@@ -207,12 +216,7 @@ def delete_app_schema(app_name):
     アプリケーションスキーマを削除する
     """
     try:
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            return False
-            
-        schemas_table = dynamodb.Table(schemas_table_name)
+        schemas_table = _get_schemas_table()
         
         # スキーマを削除
         schemas_table.delete_item(

@@ -1,5 +1,7 @@
 from clients import s3_client
 import logging
+import os
+import re
 import uuid
 from datetime import datetime
 from typing import Dict, Any
@@ -10,11 +12,16 @@ from schemas import (
 from config import settings
 from repositories import (
     get_app_schemas, get_app_schema, get_extraction_fields_for_app,
-    get_field_names_for_app, get_custom_prompt_for_app, update_app_schema,
+    get_custom_prompt_for_app, update_app_schema, create_app_schema,
     delete_app_schema, delete_images_by_app_name
 )
-from repositories.image_repository import create_s3_sync_folder, get_images_by_sync_source
-from domains.schema_generator import generate_schema_fields_from_image
+from repositories.image_repository import create_s3_sync_folder
+from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name, get_permitted_apps_with_permission
+from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
+from domains.schema_fields import extract_field_names
+from clients.bedrock import call_bedrock
+from utils.bedrock import parse_converse_response
+from utils.pdf import pdf_page_to_jpeg
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +47,34 @@ class SchemaService:
             "input_methods": request.input_methods
         }
 
-    async def get_apps_list(self) -> Dict[str, Any]:
-        """アプリ一覧を取得する"""
+    async def get_apps_list(self, user_id: str = None, role: str = None) -> Dict[str, Any]:
+        """アプリ一覧を取得する（権限フィルタリング込み）
+
+        Args:
+            user_id: ユーザーID（None の場合はフィルタなし）
+            role: ユーザーのシステムロール（admin の場合は全件 + owner 権限付与）
+        """
         try:
-            return get_app_schemas()
+            result = get_app_schemas()
+
+            if role == "admin":
+                for a in result.get("apps", []):
+                    a["permission"] = "owner"
+                return result
+
+            if user_id is None:
+                return result
+
+            # 1クエリで許可済み app_name + permission を取得
+            perm_map = get_permitted_apps_with_permission(user_id)
+            apps = []
+            for a in result.get("apps", []):
+                perm = perm_map.get(a["name"])
+                if perm:
+                    a["permission"] = perm
+                    apps.append(a)
+            result["apps"] = apps
+            return result
         except Exception as e:
             logger.error(f"Error getting apps list: {str(e)}")
             raise
@@ -64,7 +95,7 @@ class SchemaService:
         """アプリのフィールド一覧を取得する"""
         try:
             extraction_fields = get_extraction_fields_for_app(app_name)
-            field_names = get_field_names_for_app(app_name)
+            field_names = extract_field_names(extraction_fields.get("fields", []))
 
             return {
                 "app_name": app_name,
@@ -106,18 +137,21 @@ class SchemaService:
     async def delete_app(self, app_name: str) -> None:
         """アプリを削除する"""
         try:
-            # 1. 関連する画像データを削除
+            # 1. DSQL のユースケース + 中間テーブルを削除（先に削除。失敗しても SchemasTable が残るので再削除可能）
+            delete_usecase_by_app_name(app_name)
+
+            # 2. 関連する画像データを削除（DynamoDB）
             delete_images_by_app_name(app_name)
 
-            # 2. スキーマを削除
+            # 3. スキーマを削除（DynamoDB — マスタなので最後に削除）
             delete_app_schema(app_name)
 
-            logger.info(f"Deleted app and related images: {app_name}")
+            logger.info(f"Deleted app and related data: {app_name}")
         except Exception as e:
             logger.error(f"Error deleting app: {str(e)}")
             raise
 
-    async def save_schema(self, request: SchemaSaveRequest) -> Dict[str, str]:
+    async def save_schema(self, request: SchemaSaveRequest, user_id: str) -> Dict[str, str]:
         """スキーマを保存する"""
         try:
             # 入力バリデーション
@@ -125,14 +159,8 @@ class SchemaService:
                 raise ValueError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
-            import re
             if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
-
-            # 既存チェック（新規作成時のみ）
-            existing_schema = get_app_schema(request.name)
-            if existing_schema:
-                raise ValueError(f"アプリ名 '{request.name}' は既に使用されています")
 
             # 入力方法のバリデーション
             if not request.input_methods.get("file_upload", False) and not request.input_methods.get("s3_sync", False):
@@ -144,8 +172,20 @@ class SchemaService:
             # S3同期が有効な場合、フォルダを作成
             self._create_s3_sync_folder_if_needed(app_data, request.name)
 
-            # スキーマを保存
-            update_app_schema(request.name, app_data)
+            # 1. DSQL に usecase + owner 権限を登録（先に実行。失敗すれば DynamoDB には書き込まない）
+            register_usecase_owner(request.name, user_id)
+
+            # 2. DynamoDB にスキーマ保存（DSQL 成功後。ConditionExpression で同名重複を原子的に防止）
+            try:
+                create_app_schema(request.name, app_data)
+            except Exception:
+                # DynamoDB 保存失敗時は DSQL 側を rollback して孤児を防ぐ
+                logger.warning(f"DynamoDB save failed, rolling back DSQL usecase: {request.name}")
+                try:
+                    delete_usecase_by_app_name(request.name)
+                except Exception:
+                    logger.error(f"DSQL rollback also failed for: {request.name}")
+                raise
 
             logger.info(f"Saved schema for app: {request.name}")
             return {"status": "success", "message": "スキーマが正常に保存されました"}
@@ -198,25 +238,14 @@ class SchemaService:
                 raise ValueError("ファイルが見つかりません")
 
             # ファイルの種類を拡張子で判定
-            import os
             _, ext = os.path.splitext(request.filename)
             ext = ext.lower()
 
             # PDFの場合は画像に変換
             if ext == '.pdf':
                 try:
-                    import fitz
-                    pdf_document = fitz.open(stream=file_data, filetype="pdf")
-                    if pdf_document.page_count > 0:
-                        page = pdf_document[0]
-                        # 高解像度で変換
-                        pix = page.get_pixmap(
-                            matrix=fitz.Matrix(300/72, 300/72))
-                        file_data = pix.tobytes("jpeg")
-                        logger.info(f"PDFを画像に変換しました: {request.filename}")
-                    else:
-                        raise ValueError("PDFにページがありません")
-                    pdf_document.close()
+                    file_data = pdf_page_to_jpeg(file_data, page_num=0, dpi=300)
+                    logger.info(f"PDFを画像に変換しました: {request.filename}")
                 except Exception as e:
                     logger.error(f"PDF変換エラー: {str(e)}")
                     raise ValueError("PDFの変換に失敗しました。有効なPDFファイルをアップロードしてください。")
@@ -224,11 +253,13 @@ class SchemaService:
                 raise ValueError(
                     "サポートされていないファイル形式です。JPG、PNG、GIF、PDFのみ対応しています。")
 
-            # スキーマフィールドを生成
-            schema = generate_schema_fields_from_image(
-                file_data,
-                request.instructions
+            # スキーマフィールドを生成（build → Bedrock 呼び出し → parse）
+            messages, system_prompts = build_schema_generation_request(
+                file_data, request.instructions
             )
+            response = call_bedrock(messages, system_prompts)
+            fields_text = parse_converse_response(response)
+            schema = parse_schema_generation_response(fields_text)
 
             # 常に {"fields": [...]} の形式で返す
             if "fields" not in schema:
@@ -248,7 +279,6 @@ class SchemaService:
                 raise ValueError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
-            import re
             if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
 

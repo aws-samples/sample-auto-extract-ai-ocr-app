@@ -6,8 +6,7 @@ import {
   Role,
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
-import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
-import { Runtime } from "aws-cdk-lib/aws-lambda";
+import { DockerImageCode, DockerImageFunction } from "aws-cdk-lib/aws-lambda";
 import {
   Table,
   AttributeType,
@@ -129,11 +128,11 @@ export class Agent extends Construct {
       });
 
       // Insert demo data
-      const handler = new PythonFunction(this, "DemoDataHandler", {
-        runtime: Runtime.PYTHON_3_12,
-        handler: "handler",
+      const handler = new DockerImageFunction(this, "DemoDataHandler", {
+        code: DockerImageCode.fromImageAsset("lambda/demo-custom-resource", {
+          platform: Platform.LINUX_AMD64,
+        }),
         timeout: Duration.seconds(60),
-        entry: path.join(__dirname, "../../lambda/demo-custom-resource"),
       });
 
       this.customersTable.grantWriteData(handler);

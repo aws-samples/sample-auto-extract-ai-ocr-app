@@ -6,7 +6,6 @@ import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito';
 import awsmobile from './aws-exports';
 import router from './router';
 import './index.css';
-import './styles/index.css'; // アニメーション用のCSSを追加
 
 // Configure Amplify
 Amplify.configure(awsmobile);

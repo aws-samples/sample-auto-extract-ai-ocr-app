@@ -1,8 +1,6 @@
 from clients import dynamodb_resource
 import logging
-from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-from fastapi import HTTPException
 from datetime import datetime
 import uuid
 from config import settings
@@ -11,61 +9,32 @@ logger = logging.getLogger(__name__)
 
 
 def get_jobs_table():
-    """
-    ジョブテーブルのリソースを取得する
-
-    Returns:
-        boto3.resources.factory.dynamodb_resource.Table: DynamoDB テーブルリソース
-    """
+    """ジョブテーブルのリソースを取得する"""
     table_name = settings.JOBS_TABLE_NAME
     if not table_name:
         logger.error("JOBS_TABLE_NAME 環境変数が設定されていません")
-        raise HTTPException(
-            status_code=500, detail="Database configuration error")
-
+        raise ValueError("JOBS_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
 def get_images_table():
-    """
-    画像テーブルのリソースを取得する（job_repository内で使用）
-
-    Returns:
-        boto3.resources.factory.dynamodb_resource.Table: DynamoDB テーブルリソース
-    """
+    """画像テーブルのリソースを取得する（job_repository内で使用）"""
     table_name = settings.IMAGES_TABLE_NAME
     if not table_name:
         logger.error("IMAGES_TABLE_NAME 環境変数が設定されていません")
-        raise HTTPException(
-            status_code=500, detail="Database configuration error")
-
+        raise ValueError("IMAGES_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
 def get_job(job_id):
-    """
-    ジョブ情報を取得する
-
-    Args:
-        job_id (str): ジョブID
-
-    Returns:
-        dict: ジョブ情報
-    """
+    """ジョブ情報を取得する。見つからない場合は None を返す。"""
     table = get_jobs_table()
-
     try:
         response = table.get_item(Key={"id": job_id})
-        item = response.get("Item")
-
-        if not item:
-            raise HTTPException(status_code=404, detail="Job not found")
-
-        return item
+        return response.get("Item")
     except ClientError as e:
         logger.error(f"ジョブ取得エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def create_agent_job(image_id: str):
@@ -94,8 +63,7 @@ def create_agent_job(image_id: str):
         return job_id
     except Exception as e:
         logger.error(f"Error creating agent job: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
 
 
 def update_agent_job(job_id: str, status: str, suggestions: list = None, error: str = None):
@@ -139,5 +107,4 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
         )
     except Exception as e:
         logger.error(f"Error updating agent job: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise

@@ -18,7 +18,6 @@ class PresignedUrlResponse(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     """アップロード完了通知リクエスト"""
-    image_id: str
     filename: str
     s3_key: str
     app_name: str = "default"

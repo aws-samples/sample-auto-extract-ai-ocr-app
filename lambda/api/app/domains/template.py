@@ -3,7 +3,6 @@
 OCRとExtractionで共通して使用されるテンプレート生成機能を提供
 """
 
-import json
 import logging
 
 logger = logging.getLogger(__name__)

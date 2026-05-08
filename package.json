@@ -9,9 +9,9 @@
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
-    "cdk:deploy": "npx cdk deploy",
-    "cdk:synth": "npx cdk synth",
-    "cdk:diff": "npx cdk diff",
+    "cdk:deploy": "npx cdk deploy --all",
+    "cdk:synth": "npx cdk synth --all",
+    "cdk:diff": "npx cdk diff --all",
     "web:build": "npm --prefix web run build",
     "web:dev": "npm --prefix web run dev",
     "init-admin": "npx ts-node scripts/init-admin.ts"

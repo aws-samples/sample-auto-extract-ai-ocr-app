@@ -14,6 +14,7 @@ import { AppParameters } from "./parameters";
 
 export interface OcrAppStackProps extends cdk.StackProps {
   params: AppParameters;
+  webAclArn?: string;
 }
 
 export class OcrAppStack extends cdk.Stack {
@@ -109,7 +110,7 @@ export class OcrAppStack extends cdk.Stack {
       enableOcr: p.enableOcr,
       enableAgent: p.enableAgent,
       syncBucketName: api.syncBucket.bucketName,
-      cloudFrontGeoRestriction: p.cloudFrontGeoRestriction,
+      webAclArn: props.webAclArn,
     });
 
     new cdk.CfnOutput(this, "StateMachineArn", {

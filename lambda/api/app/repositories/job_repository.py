@@ -1,5 +1,6 @@
 from clients import dynamodb_resource
 import logging
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from datetime import datetime
 import uuid
@@ -34,6 +35,25 @@ def get_job(job_id):
         return response.get("Item")
     except ClientError as e:
         logger.error(f"ジョブ取得エラー: {str(e)}")
+        raise
+
+
+def get_latest_agent_job_by_image_id(image_id: str) -> dict | None:
+    """image_id から最新のエージェントジョブを取得"""
+    from boto3.dynamodb.conditions import Attr
+    table = get_jobs_table()
+    try:
+        response = table.query(
+            IndexName="ImageIdIndex",
+            KeyConditionExpression=Key("image_id").eq(image_id),
+            FilterExpression=Attr("job_type").eq("agent_correction"),
+            ScanIndexForward=False,
+            Limit=10,
+        )
+        items = response.get("Items", [])
+        return items[0] if items else None
+    except ClientError as e:
+        logger.error(f"image_id によるジョブ取得エラー: {str(e)}")
         raise
 
 

@@ -4,17 +4,17 @@ from clients.dsql import query, with_retry
 
 def list_tools() -> list[dict]:
     """ツール一覧"""
-    rows = query("SELECT id, name, tool_name, description, is_active FROM tools ORDER BY name")
+    rows = query("SELECT id, name, description, is_active FROM tools ORDER BY name")
     return [dict(r) for r in rows]
 
 
-def create_tool(name: str, tool_name: str, description: str | None = None) -> str:
+def create_tool(name: str, description: str | None = None) -> str:
     """ツールを作成し ID を返す"""
     def _do(conn):
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO tools (name, tool_name, description) VALUES (%s, %s, %s) RETURNING id",
-                (name, tool_name, description),
+                "INSERT INTO tools (name, description) VALUES (%s, %s) RETURNING id",
+                (name, description),
             )
             return str(cur.fetchone()["id"])
     return with_retry(_do)
@@ -108,4 +108,96 @@ def remove_tool_user(tool_id: str, user_id: str) -> None:
     def _do(conn):
         with conn.cursor() as cur:
             cur.execute("DELETE FROM user_tools WHERE user_id = %s AND tool_id = %s", (user_id, tool_id))
+    with_retry(_do)
+
+
+# --- Usecase Tools operations ---
+
+def get_usecase_tools(usecase_id: str) -> list[dict]:
+    """ユースケースに紐付くツール一覧を取得"""
+    rows = query("""
+        SELECT t.id, t.name, t.description, t.is_active
+        FROM usecase_tools uct
+        JOIN tools t ON uct.tool_id = t.id
+        WHERE uct.usecase_id = %s
+        ORDER BY t.name
+    """, (usecase_id,))
+    return [dict(r) for r in rows]
+
+
+def get_usecase_allowed_tool_names(usecase_id: str) -> list[str]:
+    """ユースケースに紐付く許可ツール名リストを取得"""
+    rows = query("""
+        SELECT t.name
+        FROM usecase_tools uct
+        JOIN tools t ON uct.tool_id = t.id
+        WHERE uct.usecase_id = %s AND t.is_active = true
+    """, (usecase_id,))
+    return [r["name"] for r in rows]
+
+
+def set_usecase_tools(usecase_id: str, tool_ids: list[str]) -> None:
+    """ユースケースのツールを一括設定（既存を置換）"""
+    def _do(conn):
+        with conn.cursor() as cur:
+            # 既存の紐付けを削除
+            cur.execute("DELETE FROM usecase_tools WHERE usecase_id = %s", (usecase_id,))
+            # 新しい紐付けを挿入
+            for tool_id in tool_ids:
+                cur.execute(
+                    "INSERT INTO usecase_tools (usecase_id, tool_id) VALUES (%s, %s)",
+                    (usecase_id, tool_id),
+                )
+    with_retry(_do)
+
+
+def add_usecase_tool(usecase_id: str, tool_id: str) -> None:
+    """ユースケースにツールを追加"""
+    def _do(conn):
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO usecase_tools (usecase_id, tool_id)
+                VALUES (%s, %s)
+                ON CONFLICT (usecase_id, tool_id) DO NOTHING
+            """, (usecase_id, tool_id))
+    with_retry(_do)
+
+
+def remove_usecase_tool(usecase_id: str, tool_id: str) -> None:
+    """ユースケースからツールを削除"""
+    def _do(conn):
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM usecase_tools WHERE usecase_id = %s AND tool_id = %s",
+                (usecase_id, tool_id),
+            )
+    with_retry(_do)
+
+
+def get_visible_tools_for_user(user_id: str) -> list[dict]:
+    """user_tools + group_tools 経由でユーザーが閲覧可能なツールを取得"""
+    rows = query("""
+        SELECT DISTINCT t.id, t.name, t.description, t.is_active
+        FROM tools t
+        WHERE t.is_active = true AND (
+            t.id IN (SELECT tool_id FROM user_tools WHERE user_id = %s)
+            OR t.id IN (
+                SELECT gt.tool_id FROM group_tools gt
+                JOIN user_groups ug ON gt.group_id = ug.group_id
+                WHERE ug.user_id = %s
+            )
+        )
+        ORDER BY t.name
+    """, (user_id, user_id))
+    return [dict(r) for r in rows]
+
+
+def delete_tool(tool_id: str) -> None:
+    """ツールを物理削除（関連する権限テーブルも削除）"""
+    def _do(conn):
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM user_tools WHERE tool_id = %s", (tool_id,))
+            cur.execute("DELETE FROM group_tools WHERE tool_id = %s", (tool_id,))
+            cur.execute("DELETE FROM usecase_tools WHERE tool_id = %s", (tool_id,))
+            cur.execute("DELETE FROM tools WHERE id = %s", (tool_id,))
     with_retry(_do)

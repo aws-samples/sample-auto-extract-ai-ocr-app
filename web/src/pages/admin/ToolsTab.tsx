@@ -29,7 +29,7 @@ export default function ToolsTab() {
   const filtered = useMemo(() => {
     if (!search) return tools;
     const q = search.toLowerCase();
-    return tools.filter((t) => t.name?.toLowerCase().includes(q) || t.tool_name?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
+    return tools.filter((t) => t.name?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
   }, [tools, search]);
 
   const { page, setPage, total, paged, pageSize, changePageSize, totalItems } = usePagination(filtered);
@@ -97,8 +97,7 @@ export default function ToolsTab() {
               {paged.map((t) => (
                 <tr key={t.id}>
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-default">{t.name}</div>
-                    <div className="text-xs text-muted font-mono">{t.tool_name}</div>
+                    <div className="text-sm font-medium text-default font-mono">{t.name}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-default">{t.description || '-'}</td>
                   <td className="px-4 py-3">

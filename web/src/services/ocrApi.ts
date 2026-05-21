@@ -34,3 +34,8 @@ export const getAgentTools = async () => {
   const response = await api.get('/ocr/agent/tools');
   return response.data;
 };
+
+export const getAgentJobByImage = async (imageId: string) => {
+  const response = await api.get(`/ocr/agent/image/${imageId}`);
+  return response.data;
+};

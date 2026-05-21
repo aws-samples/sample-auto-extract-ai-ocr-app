@@ -15,6 +15,7 @@ export interface ImageFile {
   uploaded_by_email?: string;
   verified_by?: string;
   verified_by_email?: string;
+  agent_status?: 'processing' | 'completed' | 'failed' | 'skipped';
 }
 
 export interface OcrWord {

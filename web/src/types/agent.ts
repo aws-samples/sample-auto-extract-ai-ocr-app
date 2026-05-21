@@ -1,6 +1,8 @@
 export interface Tool {
+  id: string;
   name: string;
   description: string;
+  is_active: boolean;
 }
 
 export interface Suggestion {

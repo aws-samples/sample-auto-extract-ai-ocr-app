@@ -44,7 +44,8 @@ class SchemaService:
             "display_name": request.display_name,
             "description": request.description or f"{request.display_name}からの情報抽出",
             "fields": request.fields,
-            "input_methods": request.input_methods
+            "input_methods": request.input_methods,
+            "agent_enabled": request.agent_enabled,
         }
 
     async def get_apps_list(self, user_id: str = None, role: str = None) -> Dict[str, Any]:

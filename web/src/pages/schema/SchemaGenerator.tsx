@@ -56,6 +56,11 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   const [s3SyncEnabled, setS3SyncEnabled] = useState(false);
   const [s3Uri, setS3Uri] = useState("");
 
+  // エージェント設定
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [usecaseTools, setUsecaseTools] = useState<any[]>([]);
+  const [availableTools, setAvailableTools] = useState<any[]>([]);
+
   // 既存のスキーマを読み込む（編集・閲覧モード）
   useEffect(() => {
     if ((isViewMode || isEditMode) && urlAppName) {
@@ -80,6 +85,9 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
             setS3SyncEnabled(appData.input_methods.s3_sync);
             setS3Uri(appData.input_methods.s3_uri || "");
           }
+
+          // エージェント設定を復元
+          setAgentEnabled(appData.agent_enabled || false);
         })
         .catch((err) => {
           setError(`スキーマの読み込みに失敗しました: ${err.message}`);
@@ -87,6 +95,17 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         .finally(() => {
           setIsLoading(false);
         });
+
+      // ユースケースのツール設定と利用可能ツールを取得
+      if (urlAppName) {
+        api.get(`/usecases/${urlAppName}/tools`).then((res) => {
+          setUsecaseTools(res.data.tools || []);
+        }).catch(() => {});
+
+        api.get(`/usecases/${urlAppName}/available-tools`).then((res) => {
+          setAvailableTools(res.data.tools || []);
+        }).catch(() => {});
+      }
     }
   }, [isViewMode, isEditMode, urlAppName]);
 
@@ -277,6 +296,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         display_name: appDisplayName,
         description: appDescription,
         input_methods: inputMethods,
+        agent_enabled: agentEnabled,
       };
 
       console.log("送信するスキーマデータ:", finalSchema);
@@ -490,6 +510,131 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                           </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* エージェント検証設定 */}
+              <div className="mt-4">
+                <h3 className="text-lg font-medium mb-2">エージェント検証</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="agentEnabled"
+                      checked={agentEnabled}
+                      onChange={(e) => setAgentEnabled(e.target.checked)}
+                      className="h-4 w-4 text-info focus:ring-primary border-neutral-300 rounded"
+                      disabled={isViewMode}
+                    />
+                    <label
+                      htmlFor="agentEnabled"
+                      className="ml-2 block text-sm text-neutral-900"
+                    >
+                      抽出後にエージェント検証を自動実行
+                    </label>
+                  </div>
+                  {agentEnabled && !isEditMode && !isViewMode && (
+                    <p className="pl-6 mt-2 text-sm text-neutral-500">
+                      ツールの設定は保存後に編集画面で行えます
+                    </p>
+                  )}
+                  {agentEnabled && (isEditMode || isViewMode) && (
+                    <div className="pl-6 mt-2">
+                      {isViewMode ? (
+                        <>
+                          <p className="text-sm text-muted mb-2">割当済みツール:</p>
+                          {usecaseTools.length > 0 ? (
+                            <div className="space-y-1">
+                              {usecaseTools.map((tool: any) => (
+                                <div key={tool.id} className="text-sm px-2 py-1 bg-surface rounded">
+                                  <span className="font-medium">{tool.name}</span>
+                                  {tool.description && (
+                                    <span className="text-muted ml-2">- {tool.description}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted">ツールが設定されていません</p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* 左パネル: 割当済みツール */}
+                          <div>
+                            <p className="text-sm font-medium text-muted mb-2">割当済みツール</p>
+                            <div className="border border-default rounded-lg p-2 min-h-[100px] space-y-1">
+                              {usecaseTools.length > 0 ? usecaseTools.map((tool: any) => (
+                                <div key={tool.id} className="text-sm px-2 py-1 bg-surface rounded flex justify-between items-center">
+                                  <div>
+                                    <span className="font-medium">{tool.name}</span>
+                                    {tool.description && (
+                                      <span className="text-muted ml-2 text-xs">- {tool.description}</span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const prev = usecaseTools;
+                                      const updated = usecaseTools.filter((t: any) => t.id !== tool.id);
+                                      setUsecaseTools(updated);
+                                      api.put(`/usecases/${urlAppName}/tools`, {
+                                        tool_ids: updated.map((t: any) => t.id),
+                                      }).catch((err: any) => {
+                                        setUsecaseTools(prev);
+                                        setError(`ツール解除に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                      });
+                                    }}
+                                    className="text-danger hover:text-danger-text text-xs ml-2"
+                                  >
+                                    解除
+                                  </button>
+                                </div>
+                              )) : (
+                                <p className="text-xs text-muted p-2">ツール未設定</p>
+                              )}
+                            </div>
+                          </div>
+                          {/* 右パネル: 追加可能ツール */}
+                          <div>
+                            <p className="text-sm font-medium text-muted mb-2">追加可能なツール</p>
+                            <div className="border border-default rounded-lg p-2 min-h-[100px] space-y-1">
+                              {availableTools
+                                .filter((t: any) => !usecaseTools.find((ut: any) => ut.id === t.id))
+                                .map((tool: any) => (
+                                  <div key={tool.id} className="text-sm px-2 py-1 bg-surface rounded flex justify-between items-center">
+                                    <div>
+                                      <span className="font-medium">{tool.name}</span>
+                                      {tool.description && (
+                                        <span className="text-muted ml-2 text-xs">- {tool.description}</span>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        const prev = usecaseTools;
+                                        const updated = [...usecaseTools, tool];
+                                        setUsecaseTools(updated);
+                                        api.put(`/usecases/${urlAppName}/tools`, {
+                                          tool_ids: updated.map((t: any) => t.id),
+                                        }).catch((err: any) => {
+                                          setUsecaseTools(prev);
+                                          setError(`ツール追加に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                        });
+                                      }}
+                                      className="text-primary hover:text-primary-hover text-xs ml-2"
+                                    >
+                                      追加
+                                    </button>
+                                  </div>
+                                ))}
+                              {availableTools.filter((t: any) => !usecaseTools.find((ut: any) => ut.id === t.id)).length === 0 && (
+                                <p className="text-xs text-muted p-2">追加可能なツールはありません</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

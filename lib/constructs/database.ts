@@ -41,6 +41,12 @@ export class Database extends Construct {
       pointInTimeRecovery: true,
     });
 
+    this.jobsTable.addGlobalSecondaryIndex({
+      indexName: "ImageIdIndex",
+      partitionKey: { name: "image_id", type: AttributeType.STRING },
+      sortKey: { name: "created_at", type: AttributeType.STRING },
+    });
+
     // スキーマ情報を保存するテーブル
     this.schemasTable = new Table(this, "SchemasTable", {
       partitionKey: { name: "schema_type", type: AttributeType.STRING },

@@ -60,6 +60,9 @@ export class OcrAppStack extends cdk.Stack {
         region: this.region,
         enableDemo: p.enableAgentDemo,
         schemasTable: database.schemasTable,
+        dsqlEndpoint: dsql.clusterEndpoint,
+        dsqlRegion: this.region,
+        dsqlClusterArn: dsql.clusterArn,
       });
     }
 
@@ -68,7 +71,7 @@ export class OcrAppStack extends cdk.Stack {
       jobsTable: database.jobsTable,
       schemasTable: database.schemasTable,
       userPreferencesTable: database.userPreferencesTable,
-      toolsTable: agent?.toolsTable,
+      // toolsTable removed — tools are now managed via AgentCore Gateway + DSQL
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.client.userPoolClientId,
       enableOcr: p.enableOcr,
@@ -92,6 +95,11 @@ export class OcrAppStack extends cdk.Stack {
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
       modelId: p.modelId,
       modelRegion: p.modelRegion,
+      enableAgent: p.enableAgent,
+      agentRuntimeArn: agent?.runtimeArn,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
     });
 
     stepFunctions.stateMachine.grantStartExecution(api.handler);
@@ -100,6 +108,15 @@ export class OcrAppStack extends cdk.Stack {
       "STATE_MACHINE_ARN",
       stepFunctions.stateMachine.stateMachineArn
     );
+
+    // AgentKick Lambda invoke from API
+    if (stepFunctions.agentKickFunction) {
+      api.handler.addEnvironment(
+        "AGENT_KICK_FUNCTION_NAME",
+        stepFunctions.agentKickFunction.functionName
+      );
+      stepFunctions.agentKickFunction.grantInvoke(api.handler);
+    }
 
     new Web(this, "WebConstruct", {
       buildFolder: "/dist",

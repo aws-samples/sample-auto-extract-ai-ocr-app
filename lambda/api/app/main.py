@@ -14,7 +14,7 @@ from services.user_service import UserService
 from services.sharing_service import SharingService
 
 from routers import health, ocr, upload, extraction, schema, s3_sync, agent
-from routers import admin, user, sharing
+from routers import admin, user, sharing, usecase_tools
 
 # アプリケーション全体のログレベル設定
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +31,7 @@ app.state.upload_service = UploadService(background_task)
 app.state.extraction_service = ExtractionService(background_task)
 app.state.schema_service = SchemaService()
 app.state.s3_sync_service = S3SyncService(upload_service=app.state.upload_service)
-app.state.agent_service = AgentService(background_task)
+app.state.agent_service = AgentService()
 app.state.admin_service = AdminService()
 app.state.user_service = UserService()
 app.state.sharing_service = SharingService()
@@ -55,6 +55,7 @@ app.include_router(extraction.router)
 app.include_router(schema.router)
 app.include_router(s3_sync.router)
 app.include_router(agent.router)
+app.include_router(usecase_tools.router)
 app.include_router(admin.router)
 app.include_router(user.router)
 app.include_router(sharing.router)

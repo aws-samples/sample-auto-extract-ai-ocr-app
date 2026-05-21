@@ -13,7 +13,9 @@ interface ExtractedInfoDisplayProps {
   onUpdateExtractedInfo: (info: Record<string, any>) => void;
   onRunAgent?: () => Promise<Suggestion[]>;
   agentStatus?: 'idle' | 'running' | 'completed';
+  initialAgentResult?: { status: string; suggestions?: Suggestion[]; error?: string } | null;
   onGetTools?: () => Promise<Tool[]>;
+  onEnterEditMode?: () => void;
 }
 
 const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
@@ -25,7 +27,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   onUpdateExtractedInfo,
   onRunAgent,
   agentStatus = 'idle',
+  initialAgentResult,
   onGetTools,
+  onEnterEditMode,
 }) => {
   const [editedInfo, setEditedInfo] = useState<Record<string, any>>(extractedInfo);
   const [agentSuggestions, setAgentSuggestions] = useState<Suggestion[]>([]);
@@ -37,6 +41,24 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
       setEditedInfo({ ...extractedInfo });
     }
   }, [extractedInfo, editMode]);
+
+  useEffect(() => {
+    if (initialAgentResult?.suggestions?.length) {
+      // Filter out suggestions already applied (suggested_value matches current extractedInfo)
+      const pending = initialAgentResult.suggestions.filter(s => {
+        const fieldPath = s.field.split('.');
+        let currentValue: any;
+        if (fieldPath.length === 1) {
+          currentValue = extractedInfo[fieldPath[0]];
+        } else if (fieldPath.length === 2) {
+          currentValue = extractedInfo[fieldPath[0]]?.[fieldPath[1]];
+        }
+        return currentValue !== s.suggested_value;
+      });
+      setAgentSuggestions(pending);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAgentResult]);
 
   useEffect(() => {
     if (onGetTools) {
@@ -84,6 +106,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   };
 
   const handleAcceptSuggestion = (suggestion: Suggestion) => {
+    if (!editMode && onEnterEditMode) {
+      onEnterEditMode();
+    }
     let newInfo = { ...editedInfo };
     const fieldPath = suggestion.field.split('.');
     if (fieldPath.length === 1) {
@@ -97,6 +122,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   };
 
   const handleRejectSuggestion = (suggestion: Suggestion) => {
+    if (!editMode && onEnterEditMode) {
+      onEnterEditMode();
+    }
     setAgentSuggestions(prev => prev.filter(s => s.field !== suggestion.field));
   };
 

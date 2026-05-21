@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, FileText, RefreshCw, Pencil } from "lucide-react";
 import api from "../../services/api";
-import { runAgent as apiRunAgent, getAgentTools } from "../../services/ocrApi";
+import { runAgent as apiRunAgent, getAgentTools, getAgentJobByImage, pollAgentJobStatus } from "../../services/ocrApi";
 import { updateVerificationStatus } from "../../services/imageApi";
 import { OcrWord, OcrBoundingBox, OcrResponse, PresignedDownloadUrlResponse } from "../../types/ocr";
 import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
@@ -77,6 +77,7 @@ function OcrResult() {
     type: 'success'
   });
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'completed'>('idle');
+  const [initialAgentResult, setInitialAgentResult] = useState<any>(null);
   const [showReExtractModal, setShowReExtractModal] = useState(false);
   let statusCheckTimer: NodeJS.Timeout | null = null;
 
@@ -305,6 +306,23 @@ function OcrResult() {
 
       // 抽出情報を取得
       await fetchExtractionInfo();
+
+      // 既存の agent job を取得
+      try {
+        const agentResult = await getAgentJobByImage(id);
+        if (agentResult.status === 'completed' || agentResult.status === 'failed' || agentResult.status === 'skipped') {
+          setAgentStatus('completed');
+          setInitialAgentResult(agentResult);
+        } else if (agentResult.status === 'processing') {
+          setAgentStatus('running');
+          pollAgentJobStatus(agentResult.job_id).then(result => {
+            setAgentStatus('completed');
+            setInitialAgentResult({ status: 'completed', suggestions: result.suggestions });
+          }).catch(() => setAgentStatus('idle'));
+        }
+      } catch {
+        // No agent result - that's fine
+      }
 
       setLoading(false);
     } catch (error) {
@@ -591,7 +609,7 @@ function OcrResult() {
   };
 
   // ツール一覧取得
-  const getTools = async (): Promise<Tool[]> => {
+  const getTools = useCallback(async (): Promise<Tool[]> => {
     try {
       const response = await getAgentTools();
       return response.tools || [];
@@ -600,8 +618,8 @@ function OcrResult() {
       showToast('ツール情報の取得に失敗しました', 'error');
       return [];
     }
-  };
-  
+  }, []);
+
   // 抽出ステータスの確認
   const checkExtractionStatus = async () => {
     if (!id) return;
@@ -1014,7 +1032,9 @@ function OcrResult() {
                   onUpdateExtractedInfo={updateExtractedInfo}
                   onRunAgent={runAgent}
                   agentStatus={agentStatus}
+                  initialAgentResult={initialAgentResult}
                   onGetTools={getTools}
+                  onEnterEditMode={() => setEditMode(true)}
                 />
               )}
             </div>

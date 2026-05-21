@@ -373,6 +373,11 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                       {/* ステータス */}
                       <div className="w-24 flex-shrink-0">
                         <StatusBadge status={file.status} />
+                        {file.agent_status === 'processing' && (
+                          <span className="mt-1 px-1.5 py-0.5 text-xs rounded bg-blue-50 text-blue-700 block text-center">
+                            検証中
+                          </span>
+                        )}
                       </div>
                       
                       {/* 確認済み */}

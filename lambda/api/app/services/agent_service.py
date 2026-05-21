@@ -1,26 +1,27 @@
 """Service for agent-based OCR correction."""
 
 import asyncio
+import base64
 import json
 import logging
 from typing import Dict, Any, Optional
 
+import boto3
+
 from repositories import get_image
 from repositories.job_repository import create_agent_job, update_agent_job, get_job
-from repositories.agent_tools_repository import list_agent_tools
-from clients import AgentClient
+from repositories.tool_repository import list_tools, get_usecase_allowed_tool_names
+from repositories.usecase_repository import get_usecase_by_app_name
+from clients import AgentClient, s3_client
 from config import settings
-from background import BackgroundTaskExtension
-
 logger = logging.getLogger(__name__)
 
 
 class AgentService:
     """Service for agent-based OCR correction suggestions"""
-    
-    def __init__(self, background_task: Optional[BackgroundTaskExtension] = None):
+
+    def __init__(self):
         self.agent_client = AgentClient()
-        self.background_task = background_task
     
     async def start_agent_correction(self, image_id: str) -> str:
         """Start agent correction job
@@ -36,15 +37,14 @@ class AgentService:
             job_id = create_agent_job(image_id)
             logger.info(f"Created agent job: {job_id} for image: {image_id}")
             
-            # Add to background task
-            if self.background_task:
-                task_id = self.background_task.add_task(
-                    self._process_agent_correction, job_id, image_id
-                )
-                logger.info(f"Started agent job {job_id} with task ID {task_id}")
-            else:
-                # Fallback: synchronous execution (for testing)
-                await self._process_agent_correction_async(job_id, image_id)
+            # Invoke AgentKick Lambda asynchronously
+            lambda_client = boto3.client("lambda")
+            lambda_client.invoke(
+                FunctionName=settings.AGENT_KICK_FUNCTION_NAME,
+                InvocationType="Event",  # async
+                Payload=json.dumps({"image_id": image_id, "job_id": job_id}),
+            )
+            logger.info(f"Invoked AgentKick Lambda for job {job_id}")
             
             return job_id
             
@@ -63,28 +63,43 @@ class AgentService:
     
     async def _process_agent_correction_async(self, job_id: str, image_id: str):
         """Process agent correction in background
-        
+
         Args:
             job_id: Job ID
             image_id: Image ID
         """
         try:
             logger.info(f"Processing agent correction for job: {job_id}, image: {image_id}")
-            
+
             # Get OCR extraction results
             image_data = get_image(image_id)
             if not image_data:
                 raise ValueError(f"Image not found: {image_id}")
-            
+
             extracted_info = image_data.get("extracted_info", {})
             if not extracted_info:
                 logger.warning(f"No extracted info found for image: {image_id}")
                 update_agent_job(job_id, "completed", suggestions=[])
                 return
-            
+
+            # Resolve allowed tool names from usecase (app_name → usecase_id → tools)
+            app_name = image_data.get("app_name", "")
+            usecase = get_usecase_by_app_name(app_name) if app_name else None
+            usecase_id = str(usecase["id"]) if usecase else ""
+            allowed_tool_names = get_usecase_allowed_tool_names(usecase_id) if usecase_id else []
+
+            # Skip agent execution if no tools are configured
+            if not allowed_tool_names:
+                logger.info(f"No tools configured for usecase '{app_name}'. Skipping agent.")
+                update_agent_job(job_id, "skipped")
+                return
+
+            # Fetch images from S3
+            image_content = self._fetch_images(image_data)
+
             # Create system prompt
             system_prompt = self._create_system_prompt(extracted_info)
-            
+
             # Call AgentCore Runtime
             response_text = await self.agent_client.invoke_agent(
                 messages=[],
@@ -93,16 +108,18 @@ class AgentService:
                 model_info={
                     "modelId": settings.MODEL_ID,
                     "region": settings.MODEL_REGION
-                }
+                },
+                allowed_tool_names=allowed_tool_names or None,
+                image_content=image_content or None,
             )
-            
+
             # Parse response
             suggestions = self._parse_agent_response(response_text)
-            
+
             # Update job as completed
             update_agent_job(job_id, "completed", suggestions=suggestions)
             logger.info(f"Agent correction completed for job: {job_id}")
-            
+
         except Exception as e:
             logger.error(f"Error in agent correction job {job_id}: {e}")
             update_agent_job(job_id, "failed", error=str(e))
@@ -130,19 +147,46 @@ class AgentService:
         }
     
     async def get_available_tools(self) -> Dict[str, Any]:
-        """Get available tools from AgentCore Runtime
-        
+        """Get available tools from DSQL
+
         Returns:
             Dictionary with tools list
         """
         try:
-            tools = list_agent_tools()
+            tools = list_tools()
             return {"status": "success", "tools": tools}
-        
+
         except Exception as e:
             logger.error(f"Error getting tools: {e}")
             raise
     
+    def _fetch_images(self, image_data: dict) -> list[dict]:
+        """Fetch converted images from S3 and encode as base64"""
+        converted_s3_keys = image_data.get("converted_s3_key", [])
+        if isinstance(converted_s3_keys, str):
+            converted_s3_keys = [converted_s3_keys]
+
+        image_content = []
+        for key in converted_s3_keys:
+            try:
+                response = s3_client.get_object(
+                    Bucket=settings.BUCKET_NAME, Key=key
+                )
+                image_bytes = response["Body"].read()
+                fmt = "jpeg"
+                if key.lower().endswith(".png"):
+                    fmt = "png"
+                elif key.lower().endswith(".webp"):
+                    fmt = "webp"
+                image_content.append({
+                    "format": fmt,
+                    "bytes_base64": base64.b64encode(image_bytes).decode("utf-8"),
+                })
+            except Exception as e:
+                logger.error(f"Failed to fetch image {key}: {e}")
+
+        return image_content
+
     def _create_system_prompt(self, extracted_info: dict) -> str:
         """Create system prompt for agent
         

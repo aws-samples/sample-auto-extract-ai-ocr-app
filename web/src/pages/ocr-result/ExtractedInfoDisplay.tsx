@@ -93,8 +93,11 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   const renderSuggestion = (suggestion: Suggestion) => (
     <div className="mt-2 p-3 bg-warning-light border border-warning-border rounded">
       <div className="text-sm mb-2">
-        {suggestion.tool_used && <div className="font-semibold text-warning-text mb-1">{suggestion.tool_used}経由で確認済み</div>}
-        <div className="mb-1">「{suggestion.original_value}」→「{suggestion.suggested_value}」の表記ゆれを検出</div>
+        <div className="mb-1">{suggestion.reason}</div>
+        <div className="text-xs text-neutral-600">
+          「{suggestion.original_value}」→「{suggestion.suggested_value}」
+          {suggestion.tool_used && <span className="ml-2">({suggestion.tool_used})</span>}
+        </div>
       </div>
       <div className="flex gap-2">
         <Button variant="primary" size="sm" onClick={() => handleAcceptSuggestion(suggestion)}>採用する</Button>

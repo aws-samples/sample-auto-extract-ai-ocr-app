@@ -16,9 +16,11 @@ class SuggestionStatusUpdate(BaseModel):
 
 
 @router.get("/tools")
-async def get_tools(service: AgentService = Depends(get_agent_service)):
-    """Get available tools from AgentCore Runtime"""
+async def get_tools(image_id: str = None, service: AgentService = Depends(get_agent_service)):
+    """Get tools for an image's usecase (or all tools if no image_id)"""
     try:
+        if image_id:
+            return await service.get_usecase_tools_for_image(image_id)
         return await service.get_available_tools()
     except Exception as e:
         logger.error(f"Error getting tools: {str(e)}")

@@ -25,10 +25,10 @@ class AgentService:
     
     async def start_agent_correction(self, image_id: str) -> str:
         """Start agent correction job
-        
+
         Args:
             image_id: Image ID
-            
+
         Returns:
             Job ID
         """
@@ -36,7 +36,15 @@ class AgentService:
             # Create job
             job_id = create_agent_job(image_id)
             logger.info(f"Created agent job: {job_id} for image: {image_id}")
-            
+
+            # Mark image as processing immediately
+            from repositories.image_repository import get_images_table
+            get_images_table().update_item(
+                Key={"id": image_id},
+                UpdateExpression="SET agent_status = :s, agent_suggestions_count = :zero",
+                ExpressionAttributeValues={":s": "processing", ":zero": 0},
+            )
+
             # Invoke AgentKick Lambda asynchronously
             lambda_client = boto3.client("lambda")
             lambda_client.invoke(
@@ -45,9 +53,9 @@ class AgentService:
                 Payload=json.dumps({"image_id": image_id, "job_id": job_id}),
             )
             logger.info(f"Invoked AgentKick Lambda for job {job_id}")
-            
+
             return job_id
-            
+
         except Exception as e:
             logger.error(f"Error starting agent correction: {e}")
             raise
@@ -104,7 +112,7 @@ class AgentService:
             response_text = await self.agent_client.invoke_agent(
                 messages=[],
                 system_prompt=system_prompt,
-                prompt="OCR抽出結果を検証し、誤りがあれば修正してください。",
+                prompt="添付画像はOCR対象の原本です。抽出結果と照合し、利用可能なツールで検証してください。",
                 model_info={
                     "modelId": settings.MODEL_ID,
                     "region": settings.MODEL_REGION
@@ -126,21 +134,27 @@ class AgentService:
     
     async def get_agent_job_status(self, job_id: str) -> Dict[str, Any]:
         """Get agent correction job status
-        
+
         Args:
             job_id: Job ID
-            
+
         Returns:
-            Job status and results
+            Job status and results (pending suggestions with index)
         """
         job = get_job(job_id)
         if not job:
             raise ValueError(f"Job not found: {job_id}")
-        
+
+        suggestions = job.get("suggestions", [])
+        pending = []
+        for i, s in enumerate(suggestions):
+            if s.get("status", "pending") == "pending":
+                pending.append({**s, "index": i})
+
         return {
             "job_id": job_id,
             "status": job.get("status"),
-            "suggestions": job.get("suggestions", []),
+            "suggestions": pending,
             "error": job.get("error"),
             "created_at": job.get("created_at"),
             "completed_at": job.get("completed_at")
@@ -158,6 +172,33 @@ class AgentService:
 
         except Exception as e:
             logger.error(f"Error getting tools: {e}")
+            raise
+
+    async def get_usecase_tools_for_image(self, image_id: str) -> Dict[str, Any]:
+        """Get tools assigned to the usecase of a specific image
+
+        Returns:
+            Dictionary with tools list (filtered by usecase, active only)
+        """
+        try:
+            from repositories.tool_repository import get_usecase_tools
+            from repositories.usecase_repository import get_usecase_by_app_name
+
+            image_data = get_image(image_id)
+            if not image_data:
+                return {"status": "success", "tools": []}
+
+            app_name = image_data.get("app_name", "")
+            usecase = get_usecase_by_app_name(app_name) if app_name else None
+            if not usecase:
+                return {"status": "success", "tools": []}
+
+            usecase_id = str(usecase["id"])
+            tools = get_usecase_tools(usecase_id, active_only=True)
+            return {"status": "success", "tools": tools}
+
+        except Exception as e:
+            logger.error(f"Error getting usecase tools for image {image_id}: {e}")
             raise
     
     def _fetch_images(self, image_data: dict) -> list[dict]:
@@ -189,45 +230,15 @@ class AgentService:
 
     def _create_system_prompt(self, extracted_info: dict) -> str:
         """Create system prompt for agent
-        
+
         Args:
             extracted_info: OCR extracted information
-            
+
         Returns:
-            System prompt string
+            System prompt string (data only — instructions are in runtime config)
         """
-        return f"""あなたはOCR抽出結果を検証し、誤りを修正するアシスタントです。
-
-## タスク
-以下のOCR抽出結果を検証し、誤りがあれば修正してください。
-
-## OCR抽出結果
+        return f"""## 検証対象の抽出結果
 {json.dumps(extracted_info, ensure_ascii=False, indent=2)}
-
-## 指示
-- 利用可能なツールを使って、抽出結果の正確性を検証してください
-- 数値計算がある場合は、検算ツールを使用して計算の正確性を確認してください
-- データベースに登録されている情報と照合し、不一致があれば修正案を提示してください
-
-## 出力形式
-修正が必要な場合のみ、以下のJSON形式で出力してください：
-{{
-  "suggestions": [
-    {{
-      "field": "フィールド名（例: client_info.address）",
-      "original_value": "元の値",
-      "suggested_value": "修正後の値",
-      "reason": "修正理由",
-      "confidence": "high" | "medium" | "low",
-      "tool_used": "使用したツール名（例: get_customer_by_name）"
-    }}
-  ]
-}}
-
-修正が不要な場合は空の配列を返してください：
-{{
-  "suggestions": []
-}}
 """
     
 

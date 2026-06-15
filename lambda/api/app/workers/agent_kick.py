@@ -30,6 +30,18 @@ def _update_agent_status(image_id: str, status: str):
         logger.warning(f"Failed to update agent_status for {image_id}: {e}")
 
 
+def _finalize_skipped_job(event: dict):
+    """If a pre-created job_id was passed, mark it as skipped so polling doesn't hang."""
+    job_id = event.get("job_id")
+    if not job_id:
+        return
+    try:
+        from repositories.job_repository import update_agent_job
+        update_agent_job(job_id, "skipped")
+    except Exception as e:
+        logger.warning(f"Failed to finalize skipped job {job_id}: {e}")
+
+
 def agent_kick_handler(event, context):
     """Step Functions 用: 1 枚の画像に対して Agent 検証を実行
 
@@ -51,6 +63,7 @@ def agent_kick_handler(event, context):
     app_name = image_data.get("app_name", "")
     if not app_name:
         _update_agent_status(image_id, "skipped")
+        _finalize_skipped_job(event)
         return {"status": "skipped", "reason": "no app_name"}
 
     # Check agent_enabled (avoid unnecessary job creation)
@@ -58,13 +71,15 @@ def agent_kick_handler(event, context):
     if not schema or not schema.get("agent_enabled", False):
         logger.info(f"Agent not enabled for app: {app_name}")
         _update_agent_status(image_id, "skipped")
+        _finalize_skipped_job(event)
         return {"status": "skipped", "reason": "agent_enabled=false"}
 
     # Run agent correction directly (not via start_agent_correction to avoid re-invoke)
     try:
         from repositories.job_repository import create_agent_job, update_agent_job, get_job
-        # Always create a new agent job (don't reuse OCR job_id from Step Functions)
-        job_id = create_agent_job(image_id)
+        # Reuse job_id from event if provided (manual trigger via start_agent_correction),
+        # otherwise create a new one (Step Functions trigger)
+        job_id = event.get("job_id") or create_agent_job(image_id)
         _update_agent_status(image_id, "processing")
         agent_service = AgentService()
         asyncio.run(agent_service._process_agent_correction_async(job_id, image_id))

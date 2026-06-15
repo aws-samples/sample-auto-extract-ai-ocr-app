@@ -331,7 +331,7 @@ function OcrResult() {
 
       // ツール一覧を取得
       try {
-        const toolsResponse = await getAgentTools();
+        const toolsResponse = await getAgentTools(id);
         setTools(toolsResponse.tools || []);
       } catch {
         // Tools fetch failure is non-critical
@@ -608,7 +608,7 @@ function OcrResult() {
         const agentResult = await getAgentJobByImage(id);
 
         if (agentResult.status === 'skipped') {
-          setAgentStatus('idle');
+          setAgentStatus('completed');
           return;
         }
 
@@ -653,11 +653,8 @@ function OcrResult() {
     try {
       setAgentStatus('running');
 
-      await apiRunAgent(id);
-
-      // Agent完了後、image APIから index 付きの pending suggestions を取得
-      const agentResult = await getAgentJobByImage(id);
-      const suggestions: Suggestion[] = agentResult.suggestions || [];
+      const result = await apiRunAgent(id);
+      const suggestions: Suggestion[] = result.suggestions || [];
 
       setAgentStatus('completed');
       setAgentSuggestions(suggestions);
@@ -686,23 +683,29 @@ function OcrResult() {
   }, [initialAgentResult]);
 
   const handleAcceptSuggestion = async (suggestion: Suggestion) => {
-    setAgentSuggestions(prev => prev.filter(s => s.field !== suggestion.field));
+    const prev = agentSuggestions;
+    setAgentSuggestions(prev.filter(s => s.field !== suggestion.field));
     if (id) {
       try {
         await updateSuggestionStatus(id, suggestion.index, 'accepted');
       } catch (error) {
         console.error("提案ステータス更新エラー:", error);
+        setAgentSuggestions(prev);
+        showToast('ステータス更新に失敗しました', 'error');
       }
     }
   };
 
   const handleRejectSuggestion = async (suggestion: Suggestion) => {
-    setAgentSuggestions(prev => prev.filter(s => s.field !== suggestion.field));
+    const prev = agentSuggestions;
+    setAgentSuggestions(prev.filter(s => s.field !== suggestion.field));
     if (id) {
       try {
         await updateSuggestionStatus(id, suggestion.index, 'rejected');
       } catch (error) {
         console.error("提案ステータス更新エラー:", error);
+        setAgentSuggestions(prev);
+        showToast('ステータス更新に失敗しました', 'error');
       }
     }
   };
@@ -1149,19 +1152,26 @@ function OcrResult() {
                   onStartExtraction={startExtraction}
                 />
               ) : (
-                /* 抽出結果の表示 */
-                <ExtractedInfoDisplay
-                  extractedInfo={extractedInfo}
-                  fields={appFields}
-                  editMode={editMode}
-                  onHighlightField={highlightField}
-                  onHighlightCell={highlightTableCell}
-                  onUpdateExtractedInfo={updateExtractedInfo}
-                  agentSuggestions={agentSuggestions}
-                  onAcceptSuggestion={handleAcceptSuggestion}
-                  onRejectSuggestion={handleRejectSuggestion}
-                  onEnterEditMode={() => setEditMode(true)}
-                />
+                <>
+                  {agentStatus === 'completed' && agentSuggestions.length === 0 && (
+                    <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
+                      <span className="text-green-600 font-medium text-sm">✓ AI検証完了</span>
+                      <span className="text-sm text-green-700">問題は検出されませんでした</span>
+                    </div>
+                  )}
+                  <ExtractedInfoDisplay
+                    extractedInfo={extractedInfo}
+                    fields={appFields}
+                    editMode={editMode}
+                    onHighlightField={highlightField}
+                    onHighlightCell={highlightTableCell}
+                    onUpdateExtractedInfo={updateExtractedInfo}
+                    agentSuggestions={agentSuggestions}
+                    onAcceptSuggestion={handleAcceptSuggestion}
+                    onRejectSuggestion={handleRejectSuggestion}
+                    onEnterEditMode={() => setEditMode(true)}
+                  />
+                </>
               )}
             </div>
           )}

@@ -43,7 +43,7 @@ async function executeDdl(client: pg.Client): Promise<string[]> {
       await client.query(stmt);
       results.push(`OK: ${stmt.substring(0, 60)}...`);
     } catch (err: any) {
-      if (err.code === "42P07" || err.code === "42710") {
+      if (err.code === "42P07" || err.code === "42710" || err.code === "42703") {
         results.push(`SKIP (exists): ${stmt.substring(0, 60)}...`);
       } else {
         throw err;

@@ -1,0 +1,55 @@
+{
+  "tools": [
+    {
+      "name": "verify_unit_price_calculation",
+      "description": "単価計算の検算。数量×単価が期待される金額と一致するか検証する。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "quantity": { "type": "number", "description": "数量" },
+          "unit_price": { "type": "number", "description": "単価" },
+          "expected_amount": { "type": "number", "description": "期待される金額" }
+        },
+        "required": ["quantity", "unit_price", "expected_amount"]
+      }
+    },
+    {
+      "name": "verify_subtotal_calculation",
+      "description": "小計計算の検算。金額リストの合計が期待される小計と一致するか検証する。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "amounts": { "type": "array", "items": { "type": "number" }, "description": "金額のリスト" },
+          "expected_subtotal": { "type": "number", "description": "期待される小計" }
+        },
+        "required": ["amounts", "expected_subtotal"]
+      }
+    },
+    {
+      "name": "verify_total_with_tax_calculation",
+      "description": "税込み合計計算の検算。小計＋消費税額が期待される税込み合計と一致するか検証する。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subtotal": { "type": "number", "description": "小計" },
+          "tax_amount": { "type": "number", "description": "消費税額" },
+          "expected_total": { "type": "number", "description": "期待される税込み合計" }
+        },
+        "required": ["subtotal", "tax_amount", "expected_total"]
+      }
+    },
+    {
+      "name": "verify_tax_calculation",
+      "description": "消費税計算の検算。小計×税率が実際の消費税額と一致するか検証する。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subtotal": { "type": "number", "description": "小計" },
+          "tax_rate": { "type": "number", "description": "税率（例: 0.1 for 10%）" },
+          "actual_tax_amount": { "type": "number", "description": "実際の消費税額" }
+        },
+        "required": ["subtotal", "tax_rate", "actual_tax_amount"]
+      }
+    }
+  ]
+}

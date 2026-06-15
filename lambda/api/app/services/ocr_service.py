@@ -334,6 +334,19 @@ class OcrService:
             # ステータスをprocessingに更新
             update_image_status(image_id, 'processing', job_id)
 
+            # 再抽出のため extraction_status と agent_status をリセット
+            # （前回の completed 値が残っていると、フロントのポーリングが
+            #  新しい処理の完了を待たずに即 completed と表示してしまう）
+            from repositories.image_repository import get_images_table
+            get_images_table().update_item(
+                Key={"id": image_id},
+                UpdateExpression=(
+                    "SET extraction_status = :proc, agent_status = :proc, "
+                    "agent_suggestions_count = :zero"
+                ),
+                ExpressionAttributeValues={":proc": "processing", ":zero": 0},
+            )
+
             # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(
                 stateMachineArn=settings.STATE_MACHINE_ARN,

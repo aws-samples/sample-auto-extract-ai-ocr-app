@@ -52,7 +52,7 @@ async def update_ocr_result(image_id: str, edited_ocr_data: dict, user=Depends(R
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.post("/start/{image_id}")
+@router.post("/start/image/{image_id}")
 async def start_ocr_for_image(image_id: str, skip_ocr: bool = False, user=Depends(RequireImagePermission("viewer")), service: OcrService = Depends(get_ocr_service)):
     """指定した画像IDのOCR処理を開始する（対象画像に viewer 以上の権限が必要）"""
     try:

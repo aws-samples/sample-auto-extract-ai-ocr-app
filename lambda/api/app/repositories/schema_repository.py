@@ -43,7 +43,8 @@ def load_app_schemas():
                     'description': item.get('description', ''),
                     'fields': item.get('fields', []),
                     'input_methods': item.get('input_methods', {'file_upload': True, 's3_sync': False}),
-                    'custom_prompt': item.get('custom_prompt', '')
+                    'custom_prompt': item.get('custom_prompt', ''),
+                    'agent_enabled': item.get('agent_enabled', False),
                 }
                 apps.append(app_data)
             
@@ -123,6 +124,15 @@ def get_custom_prompt_for_app(app_name):
     return ""
 
 
+def is_agent_enabled_for_app(app_name) -> bool:
+    """指定されたアプリで agent_enabled が有効かどうかを返す"""
+    app_schemas = get_app_schemas()
+    for app in app_schemas.get("apps", []):
+        if app["name"] == app_name:
+            return bool(app.get("agent_enabled", False))
+    return False
+
+
 def create_app_schema(app_name, app_data):
     """
     アプリケーションスキーマを新規作成する（同名が既に存在する場合は ClientError を raise）
@@ -138,6 +148,7 @@ def create_app_schema(app_name, app_data):
             'description': app_data.get('description', ''),
             'fields': app_data.get('fields', []),
             'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
+            'agent_enabled': app_data.get('agent_enabled', False),
             'created_at': current_time,
             'updated_at': current_time
         }
@@ -193,10 +204,11 @@ def update_app_schema(app_name, app_data):
             'description': app_data.get('description', ''),
             'fields': app_data.get('fields', []),
             'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
+            'agent_enabled': app_data.get('agent_enabled', False),
             'created_at': created_at,
             'updated_at': current_time
         }
-        
+
         # custom_prompt がある場合のみ追加
         if 'custom_prompt' in app_data and app_data['custom_prompt']:
             item['custom_prompt'] = app_data['custom_prompt']

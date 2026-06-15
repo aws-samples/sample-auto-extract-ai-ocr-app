@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, CheckCircle } from 'lucide-react';
 import { Table, Thead, Tbody, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton, Tooltip } from '../components/ui';
-import StatusBadge from '../components/shared/StatusBadge';
+import ProcessStatusBadge from '../components/shared/ProcessStatusBadge';
 import { useAppContext } from '../contexts/AppContext';
 import { formatDateTimeJST } from '../utils/dateUtils';
 import api from '../services/api';
@@ -25,6 +25,8 @@ interface ImageItem {
   verificationCompleted?: boolean;
   uploaded_by_email?: string;
   verified_by_email?: string;
+  agentStatus?: string;
+  agentSuggestionsCount?: number;
 }
 
 export default function History() {
@@ -117,12 +119,18 @@ export default function History() {
                     <td className="px-4 py-3 text-sm">{disp ? <>{disp}<span className="text-neutral-400 ml-1">（{img.appName}）</span></> : img.appName || '-'}</td>
                     <td className="px-4 py-3 text-sm text-muted">{img.uploaded_by_email || '-'}</td>
                     <td className="px-4 py-3 text-sm">{formatDateTimeJST(img.uploadTime || '')}</td>
-                    <td className="px-4 py-3"><StatusBadge status={img.status} /></td>
+                    <td className="px-4 py-3">
+                      <ProcessStatusBadge status={img.status} agentStatus={img.agentStatus} />
+                    </td>
                     <td className="px-4 py-3 text-center">
                       {img.verificationCompleted ? (
                         <Tooltip content={img.verified_by_email || '確認済み'}>
                           <CheckCircle size={18} className="text-success inline-block" />
                         </Tooltip>
+                      ) : (img.agentSuggestionsCount ?? 0) > 0 ? (
+                        <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold text-white bg-warning rounded-full">
+                          {img.agentSuggestionsCount}
+                        </span>
                       ) : (
                         <span className="text-neutral-300">-</span>
                       )}

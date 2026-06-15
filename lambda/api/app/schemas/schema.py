@@ -16,3 +16,4 @@ class SchemaSaveRequest(BaseModel):
     description: Optional[str] = None
     fields: List[Dict[str, Any]]
     input_methods: Dict[str, Any]
+    agent_enabled: bool = False

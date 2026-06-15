@@ -21,7 +21,7 @@ COPY pyproject.toml .python-version ./
 RUN uv lock && uv sync
 
 # Copy application files
-COPY app.py mcp.json ./
+COPY app.py ./
 COPY src/ ./src/
 
 # Expose port 8080 as required by AgentCore

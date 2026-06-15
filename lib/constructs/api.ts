@@ -31,7 +31,7 @@ export interface ApiProps {
   jobsTable: Table;
   schemasTable: Table;
   userPreferencesTable: Table;
-  toolsTable?: Table;
+  // toolsTable removed — tools now managed via AgentCore Gateway + DSQL
   userPoolId: string;
   userPoolClientId: string;
   enableOcr: boolean;
@@ -153,9 +153,9 @@ export class Api extends Construct {
           imagesTable.tableArn,
           jobsTable.tableArn,
           props.schemasTable.tableArn,
-          ...(props.toolsTable ? [props.toolsTable.tableArn] : []),
           props.userPreferencesTable.tableArn,
           `${imagesTable.tableArn}/index/*`, // GSIへのアクセス権限も追加
+          `${jobsTable.tableArn}/index/*`, // JobsTable GSI (ImageIdIndex)
         ],
       })
     );
@@ -181,7 +181,6 @@ export class Api extends Construct {
         IMAGES_TABLE_NAME: imagesTable.tableName,
         JOBS_TABLE_NAME: jobsTable.tableName,
         SCHEMAS_TABLE_NAME: props.schemasTable.tableName,
-        TOOLS_TABLE_NAME: props.toolsTable?.tableName || "",
         ENABLE_OCR: props.enableOcr.toString(),
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || "",
         SAGEMAKER_INFERENCE_COMPONENT_NAME:
@@ -213,6 +212,7 @@ export class Api extends Construct {
         })
       );
     }
+
 
     // Cognitoユーザープール参照
     const userPool = UserPool.fromUserPoolId(

@@ -40,7 +40,6 @@ CREATE TABLE usecases (
 CREATE TABLE tools (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name           VARCHAR(255) NOT NULL UNIQUE,
-    tool_name      VARCHAR(255) NOT NULL UNIQUE,
     description    TEXT,
     is_active      BOOLEAN NOT NULL DEFAULT true
 );
@@ -90,6 +89,9 @@ CREATE TABLE usecase_tools (
     tool_id        UUID NOT NULL,
     PRIMARY KEY (usecase_id, tool_id)
 );
+
+-- migrations
+ALTER TABLE tools DROP COLUMN IF EXISTS tool_name;
 
 -- indexes (CREATE INDEX ASYNC)
 CREATE INDEX ASYNC idx_usecases_created_by ON usecases(created_by);

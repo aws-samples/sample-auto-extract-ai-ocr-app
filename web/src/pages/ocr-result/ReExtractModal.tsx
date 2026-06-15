@@ -9,9 +9,11 @@ interface Props {
   onExecute: () => void;
   appName: string;
   loading?: boolean;
+  onViewOcr?: () => void;
+  ocrEnabled?: boolean;
 }
 
-export default function ReExtractModal({ isOpen, onClose, onExecute, appName, loading }: Props) {
+export default function ReExtractModal({ isOpen, onClose, onExecute, appName, loading, onViewOcr, ocrEnabled }: Props) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const [originalPrompt, setOriginalPrompt] = useState('');
@@ -108,11 +110,20 @@ export default function ReExtractModal({ isOpen, onClose, onExecute, appName, lo
 
       {error && <Alert type="error" className="mb-4">{error}</Alert>}
 
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-        <Button variant="primary" onClick={handleExecute} disabled={loading || savingPrompt}>
-          {savingPrompt ? '保存中...' : loading ? '実行中...' : '実行'}
-        </Button>
+      <div className="flex justify-between items-center">
+        <div>
+          {ocrEnabled && onViewOcr && (
+            <Button variant="outline" size="sm" onClick={() => { onClose(); onViewOcr(); }}>
+              OCR結果を確認
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>キャンセル</Button>
+          <Button variant="primary" size="sm" onClick={handleExecute} disabled={loading || savingPrompt}>
+            {savingPrompt ? '保存中...' : loading ? '実行中...' : '実行'}
+          </Button>
+        </div>
       </div>
     </Modal>
   );

@@ -35,9 +35,9 @@ def _resolve_usecase_id(app_name: str, user_id: str | None = None) -> str:
 
 @router.get("/tools")
 async def get_usecase_tools(app_name: str, user=Depends(RequirePermission("editor"))):
-    """ユースケースに現在割当済みのツール一覧"""
+    """ユースケースに現在割当済みのツール一覧（is_active=true のみ）"""
     usecase_id = _resolve_usecase_id(app_name, user_id=str(user["id"]))
-    return {"tools": tool_repository.get_usecase_tools(usecase_id)}
+    return {"tools": tool_repository.get_usecase_tools(usecase_id, active_only=True)}
 
 
 class UsecaseToolsUpdate(BaseModel):
@@ -50,9 +50,10 @@ async def set_usecase_tools(
     body: UsecaseToolsUpdate,
     user=Depends(RequirePermission("editor")),
 ):
-    """ユースケースのツールを一括設定（Editor: 可視ツールのみ操作可）
+    """ユースケースのツールを一括設定
 
-    Editor の場合、可視範囲外の既存ツールは維持される（削除不可）。
+    Editor: 新規追加のみ可視範囲チェック。除去は自由。
+    Admin: 制限なし。
     """
     usecase_id = _resolve_usecase_id(app_name, user_id=str(user["id"]))
 
@@ -60,21 +61,17 @@ async def set_usecase_tools(
         visible = tool_repository.get_visible_tools_for_user(str(user["id"]))
         visible_ids = {str(t["id"]) for t in visible}
 
-        # 追加しようとするツールが可視範囲内か検証
-        invalid = [tid for tid in body.tool_ids if tid not in visible_ids]
+        # 現在の割当を取得（inactive 含む完全リスト）
+        current_tools = tool_repository.get_usecase_tools(usecase_id, active_only=False)
+        current_ids = {str(t["id"]) for t in current_tools}
+
+        # 新規追加されるツールのみ可視範囲チェック（除去は自由）
+        newly_added = [tid for tid in body.tool_ids if tid not in current_ids]
+        invalid = [tid for tid in newly_added if tid not in visible_ids]
         if invalid:
             raise HTTPException(403, f"Cannot assign tools not visible to you: {invalid}")
 
-        # 既存の割当のうち、可視範囲外のツールは維持する
-        current_tools = tool_repository.get_usecase_tools(usecase_id)
-        preserved_ids = [str(t["id"]) for t in current_tools if str(t["id"]) not in visible_ids]
-
-        # 最終セット = Editor が指定したツール + 可視範囲外の既存ツール
-        final_tool_ids = list(set(body.tool_ids + preserved_ids))
-        tool_repository.set_usecase_tools(usecase_id, final_tool_ids)
-    else:
-        tool_repository.set_usecase_tools(usecase_id, body.tool_ids)
-
+    tool_repository.set_usecase_tools(usecase_id, body.tool_ids)
     return {"ok": True}
 
 

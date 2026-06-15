@@ -86,6 +86,54 @@ def create_agent_job(image_id: str):
         raise
 
 
+def update_suggestion_status(image_id: str, suggestion_index: int, status: str) -> int:
+    """Update a specific suggestion's status (accepted/rejected) and return pending count.
+
+    Args:
+        image_id: Image ID to find the latest agent job
+        suggestion_index: Index of suggestion in the suggestions array
+        status: New status ('accepted' or 'rejected')
+
+    Returns:
+        int: Number of remaining pending suggestions
+    """
+    job = get_latest_agent_job_by_image_id(image_id)
+    if not job:
+        raise ValueError("No agent job found for this image")
+
+    suggestions = job.get("suggestions", [])
+    if suggestion_index < 0 or suggestion_index >= len(suggestions):
+        raise ValueError(f"Invalid suggestion index: {suggestion_index}")
+
+    # Update the suggestion status
+    suggestions[suggestion_index]["status"] = status
+
+    # Save back to DynamoDB
+    table = get_jobs_table()
+    current_time = datetime.now().isoformat()
+    table.update_item(
+        Key={"id": job["id"]},
+        UpdateExpression="SET suggestions = :s, updated_at = :u",
+        ExpressionAttributeValues={
+            ":s": suggestions,
+            ":u": current_time,
+        },
+    )
+
+    # Count pending suggestions
+    pending_count = sum(1 for s in suggestions if s.get("status", "pending") == "pending")
+
+    # Update image record with new pending count
+    images_table = get_images_table()
+    images_table.update_item(
+        Key={"id": image_id},
+        UpdateExpression="SET agent_suggestions_count = :c",
+        ExpressionAttributeValues={":c": pending_count},
+    )
+
+    return pending_count
+
+
 def update_agent_job(job_id: str, status: str, suggestions: list = None, error: str = None):
     """Update agent correction job
 

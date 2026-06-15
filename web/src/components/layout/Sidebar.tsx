@@ -12,7 +12,7 @@ export function Sidebar() {
   const { isAdmin } = useAppContext();
 
   return (
-    <nav className="w-12 bg-bg border-r border-default flex flex-col items-center py-3 gap-1 shrink-0">
+    <nav className="w-12 bg-bg border-r border-default flex flex-col items-center py-3 gap-1 shrink-0 sticky top-10 self-start h-[calc(100vh-2.5rem)] overflow-y-auto">
       {items.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}

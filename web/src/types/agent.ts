@@ -12,6 +12,7 @@ export interface Suggestion {
   reason: string;
   confidence: string;
   tool_used?: string;
+  index: number;  // original index in backend suggestions array
 }
 
 export interface AgentResponse {

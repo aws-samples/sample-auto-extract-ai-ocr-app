@@ -567,29 +567,30 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                             <p className="text-sm font-medium text-muted mb-2">割当済みツール</p>
                             <div className="border border-default rounded-lg p-2 min-h-[100px] space-y-1">
                               {usecaseTools.length > 0 ? usecaseTools.map((tool: any) => (
-                                <div key={tool.id} className="text-sm px-2 py-1 bg-surface rounded flex justify-between items-center">
-                                  <div>
+                                <div key={tool.id} className="text-sm px-2 py-1.5 bg-surface rounded">
+                                  <div className="flex justify-between items-center">
                                     <span className="font-medium">{tool.name}</span>
-                                    {tool.description && (
-                                      <span className="text-muted ml-2 text-xs">- {tool.description}</span>
-                                    )}
+                                    <button
+                                      onClick={() => {
+                                        const prev = usecaseTools;
+                                        const updated = usecaseTools.filter((t: any) => t.id !== tool.id);
+                                        setUsecaseTools(updated);
+                                        api.put(`/usecases/${urlAppName}/tools`, {
+                                          tool_ids: updated.map((t: any) => t.id),
+                                        }).catch((err: any) => {
+                                          setUsecaseTools(prev);
+                                          setError(`ツール解除に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                        });
+                                      }}
+                                      className="w-5 h-5 flex items-center justify-center rounded text-danger hover:bg-danger-light text-sm font-bold"
+                                      title="解除"
+                                    >
+                                      −
+                                    </button>
                                   </div>
-                                  <button
-                                    onClick={() => {
-                                      const prev = usecaseTools;
-                                      const updated = usecaseTools.filter((t: any) => t.id !== tool.id);
-                                      setUsecaseTools(updated);
-                                      api.put(`/usecases/${urlAppName}/tools`, {
-                                        tool_ids: updated.map((t: any) => t.id),
-                                      }).catch((err: any) => {
-                                        setUsecaseTools(prev);
-                                        setError(`ツール解除に失敗しました: ${err.response?.data?.detail || err.message}`);
-                                      });
-                                    }}
-                                    className="text-danger hover:text-danger-text text-xs ml-2"
-                                  >
-                                    解除
-                                  </button>
+                                  {tool.description && (
+                                    <p className="text-xs text-muted mt-0.5">{tool.description}</p>
+                                  )}
                                 </div>
                               )) : (
                                 <p className="text-xs text-muted p-2">ツール未設定</p>
@@ -603,29 +604,30 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                               {availableTools
                                 .filter((t: any) => !usecaseTools.find((ut: any) => ut.id === t.id))
                                 .map((tool: any) => (
-                                  <div key={tool.id} className="text-sm px-2 py-1 bg-surface rounded flex justify-between items-center">
-                                    <div>
+                                  <div key={tool.id} className="text-sm px-2 py-1.5 bg-surface rounded">
+                                    <div className="flex justify-between items-center">
                                       <span className="font-medium">{tool.name}</span>
-                                      {tool.description && (
-                                        <span className="text-muted ml-2 text-xs">- {tool.description}</span>
-                                      )}
+                                      <button
+                                        onClick={() => {
+                                          const prev = usecaseTools;
+                                          const updated = [...usecaseTools, tool];
+                                          setUsecaseTools(updated);
+                                          api.put(`/usecases/${urlAppName}/tools`, {
+                                            tool_ids: updated.map((t: any) => t.id),
+                                          }).catch((err: any) => {
+                                            setUsecaseTools(prev);
+                                            setError(`ツール追加に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                          });
+                                        }}
+                                        className="w-5 h-5 flex items-center justify-center rounded text-primary hover:bg-primary/10 text-sm font-bold"
+                                        title="追加"
+                                      >
+                                        +
+                                      </button>
                                     </div>
-                                    <button
-                                      onClick={() => {
-                                        const prev = usecaseTools;
-                                        const updated = [...usecaseTools, tool];
-                                        setUsecaseTools(updated);
-                                        api.put(`/usecases/${urlAppName}/tools`, {
-                                          tool_ids: updated.map((t: any) => t.id),
-                                        }).catch((err: any) => {
-                                          setUsecaseTools(prev);
-                                          setError(`ツール追加に失敗しました: ${err.response?.data?.detail || err.message}`);
-                                        });
-                                      }}
-                                      className="text-primary hover:text-primary-hover text-xs ml-2"
-                                    >
-                                      追加
-                                    </button>
+                                    {tool.description && (
+                                      <p className="text-xs text-muted mt-0.5">{tool.description}</p>
+                                    )}
                                   </div>
                                 ))}
                               {availableTools.filter((t: any) => !usecaseTools.find((ut: any) => ut.id === t.id)).length === 0 && (

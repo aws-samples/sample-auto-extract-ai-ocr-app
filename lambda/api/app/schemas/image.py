@@ -19,6 +19,8 @@ class ImageInfo(BaseModel):
     page_number: Optional[int] = Field(None, serialization_alias="pageNumber")
     parent_document_id: Optional[str] = Field(None, serialization_alias="parentDocumentId")
     verification_completed: Optional[bool] = Field(False, serialization_alias="verificationCompleted")
+    agent_status: Optional[str] = Field(None, serialization_alias="agentStatus")
+    agent_suggestions_count: Optional[int] = Field(None, serialization_alias="agentSuggestionsCount")
     uploaded_by: Optional[str] = None
     uploaded_by_email: Optional[str] = None
     verified_by: Optional[str] = None

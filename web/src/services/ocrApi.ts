@@ -39,3 +39,12 @@ export const getAgentJobByImage = async (imageId: string) => {
   const response = await api.get(`/ocr/agent/image/${imageId}`);
   return response.data;
 };
+
+export const updateSuggestionStatus = async (
+  imageId: string,
+  suggestionIndex: number,
+  status: 'accepted' | 'rejected'
+): Promise<{ ok: boolean; pending_count: number }> => {
+  const response = await api.patch(`/ocr/agent/image/${imageId}/suggestions/${suggestionIndex}`, { status });
+  return response.data;
+};

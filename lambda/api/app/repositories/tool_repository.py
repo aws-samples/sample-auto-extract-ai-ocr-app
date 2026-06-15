@@ -113,15 +113,28 @@ def remove_tool_user(tool_id: str, user_id: str) -> None:
 
 # --- Usecase Tools operations ---
 
-def get_usecase_tools(usecase_id: str) -> list[dict]:
-    """ユースケースに紐付くツール一覧を取得"""
-    rows = query("""
-        SELECT t.id, t.name, t.description, t.is_active
-        FROM usecase_tools uct
-        JOIN tools t ON uct.tool_id = t.id
-        WHERE uct.usecase_id = %s
-        ORDER BY t.name
-    """, (usecase_id,))
+def get_usecase_tools(usecase_id: str, active_only: bool = False) -> list[dict]:
+    """ユースケースに紐付くツール一覧を取得
+
+    Args:
+        active_only: True の場合 is_active=true のツールのみ返す（表示用）
+    """
+    if active_only:
+        rows = query("""
+            SELECT t.id, t.name, t.description, t.is_active
+            FROM usecase_tools uct
+            JOIN tools t ON uct.tool_id = t.id
+            WHERE uct.usecase_id = %s AND t.is_active = true
+            ORDER BY t.name
+        """, (usecase_id,))
+    else:
+        rows = query("""
+            SELECT t.id, t.name, t.description, t.is_active
+            FROM usecase_tools uct
+            JOIN tools t ON uct.tool_id = t.id
+            WHERE uct.usecase_id = %s
+            ORDER BY t.name
+        """, (usecase_id,))
     return [dict(r) for r in rows]
 
 

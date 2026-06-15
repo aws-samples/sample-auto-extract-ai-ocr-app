@@ -62,13 +62,20 @@ def agent_kick_handler(event, context):
 
     # Run agent correction directly (not via start_agent_correction to avoid re-invoke)
     try:
-        from repositories.job_repository import create_agent_job, update_agent_job
+        from repositories.job_repository import create_agent_job, update_agent_job, get_job
         # Always create a new agent job (don't reuse OCR job_id from Step Functions)
         job_id = create_agent_job(image_id)
         _update_agent_status(image_id, "processing")
         agent_service = AgentService()
         asyncio.run(agent_service._process_agent_correction_async(job_id, image_id))
-        _update_agent_status(image_id, "completed")
+        # Re-read job to get suggestions count
+        job = get_job(job_id)
+        suggestions_count = len(job.get("suggestions", [])) if job else 0
+        get_images_table().update_item(
+            Key={"id": image_id},
+            UpdateExpression="SET agent_status = :s, agent_suggestions_count = :c",
+            ExpressionAttributeValues={":s": "completed", ":c": suggestions_count},
+        )
         return {"image_id": image_id, "status": "completed", "job_id": job_id}
     except Exception as e:
         logger.error(f"Agent invocation failed: {e}")

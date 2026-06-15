@@ -75,29 +75,35 @@ def agent_kick_handler(event, context):
         return {"status": "skipped", "reason": "agent_enabled=false"}
 
     # Run agent correction directly (not via start_agent_correction to avoid re-invoke)
+    from repositories.job_repository import create_agent_job, update_agent_job, get_job
+
+    job_id = event.get("job_id")
     try:
-        from repositories.job_repository import create_agent_job, update_agent_job, get_job
-        # Reuse job_id from event if provided (manual trigger via start_agent_correction),
-        # otherwise create a new one (Step Functions trigger)
-        job_id = event.get("job_id") or create_agent_job(image_id)
+        if not job_id:
+            job_id = create_agent_job(image_id)
         _update_agent_status(image_id, "processing")
         agent_service = AgentService()
         asyncio.run(agent_service._process_agent_correction_async(job_id, image_id))
-        # Re-read job to get suggestions count
+        # Re-read job to check actual status (may be failed internally)
         job = get_job(job_id)
-        suggestions_count = len(job.get("suggestions", [])) if job else 0
-        get_images_table().update_item(
-            Key={"id": image_id},
-            UpdateExpression="SET agent_status = :s, agent_suggestions_count = :c",
-            ExpressionAttributeValues={":s": "completed", ":c": suggestions_count},
-        )
-        return {"image_id": image_id, "status": "completed", "job_id": job_id}
+        job_status = job.get("status", "failed") if job else "failed"
+        if job_status == "completed":
+            suggestions_count = len(job.get("suggestions", [])) if job else 0
+            get_images_table().update_item(
+                Key={"id": image_id},
+                UpdateExpression="SET agent_status = :s, agent_suggestions_count = :c",
+                ExpressionAttributeValues={":s": "completed", ":c": suggestions_count},
+            )
+            return {"image_id": image_id, "status": "completed", "job_id": job_id}
+        else:
+            _update_agent_status(image_id, "failed")
+            return {"image_id": image_id, "status": "failed", "job_id": job_id}
     except Exception as e:
         logger.error(f"Agent invocation failed: {e}")
         _update_agent_status(image_id, "failed")
-        # Update job record so polling doesn't hang
-        try:
-            update_agent_job(job_id, "failed", error=str(e))
-        except Exception:
-            pass
+        if job_id:
+            try:
+                update_agent_job(job_id, "failed", error=str(e))
+            except Exception:
+                pass
         return {"image_id": image_id, "status": "failed", "error": str(e)}

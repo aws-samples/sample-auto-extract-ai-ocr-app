@@ -81,6 +81,7 @@ function OcrResult() {
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'completed'>('idle');
   const [initialAgentResult, setInitialAgentResult] = useState<any>(null);
   const [agentSuggestions, setAgentSuggestions] = useState<Suggestion[]>([]);
+  const [agentFoundIssues, setAgentFoundIssues] = useState(false);
   const [showReExtractModal, setShowReExtractModal] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -318,6 +319,9 @@ function OcrResult() {
         if (agentResult.status === 'completed' || agentResult.status === 'failed' || agentResult.status === 'skipped') {
           setAgentStatus('completed');
           setInitialAgentResult(agentResult);
+          if (agentResult.total_suggestions_count > 0) {
+            setAgentFoundIssues(true);
+          }
         } else if (agentResult.status === 'processing') {
           setAgentStatus('running');
           pollAgentJobStatus(agentResult.job_id).then(result => {
@@ -658,8 +662,8 @@ function OcrResult() {
 
       setAgentStatus('completed');
       setAgentSuggestions(suggestions);
-
       if (suggestions.length > 0) {
+        setAgentFoundIssues(true);
         showToast(`${suggestions.length}件の修正提案があります`, 'info');
       } else {
         showToast('問題は検出されませんでした', 'success');
@@ -679,32 +683,31 @@ function OcrResult() {
   useEffect(() => {
     if (initialAgentResult?.suggestions?.length) {
       setAgentSuggestions(initialAgentResult.suggestions);
+      setAgentFoundIssues(true);
     }
   }, [initialAgentResult]);
 
   const handleAcceptSuggestion = async (suggestion: Suggestion) => {
-    const prev = agentSuggestions;
-    setAgentSuggestions(prev.filter(s => s.field !== suggestion.field));
+    setAgentSuggestions(current => current.filter(s => s.index !== suggestion.index));
     if (id) {
       try {
         await updateSuggestionStatus(id, suggestion.index, 'accepted');
       } catch (error) {
         console.error("提案ステータス更新エラー:", error);
-        setAgentSuggestions(prev);
+        setAgentSuggestions(current => [...current, suggestion]);
         showToast('ステータス更新に失敗しました', 'error');
       }
     }
   };
 
   const handleRejectSuggestion = async (suggestion: Suggestion) => {
-    const prev = agentSuggestions;
-    setAgentSuggestions(prev.filter(s => s.field !== suggestion.field));
+    setAgentSuggestions(current => current.filter(s => s.index !== suggestion.index));
     if (id) {
       try {
         await updateSuggestionStatus(id, suggestion.index, 'rejected');
       } catch (error) {
         console.error("提案ステータス更新エラー:", error);
-        setAgentSuggestions(prev);
+        setAgentSuggestions(current => [...current, suggestion]);
         showToast('ステータス更新に失敗しました', 'error');
       }
     }
@@ -1153,7 +1156,7 @@ function OcrResult() {
                 />
               ) : (
                 <>
-                  {agentStatus === 'completed' && agentSuggestions.length === 0 && (
+                  {agentStatus === 'completed' && agentSuggestions.length === 0 && !agentFoundIssues && (
                     <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
                       <span className="text-green-600 font-medium text-sm">✓ AI検証完了</span>
                       <span className="text-sm text-green-700">問題は検出されませんでした</span>

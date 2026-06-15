@@ -105,22 +105,21 @@ def update_suggestion_status(image_id: str, suggestion_index: int, status: str) 
     if suggestion_index < 0 or suggestion_index >= len(suggestions):
         raise ValueError(f"Invalid suggestion index: {suggestion_index}")
 
-    # Update the suggestion status
-    suggestions[suggestion_index]["status"] = status
-
-    # Save back to DynamoDB
+    # Atomically update single element using DynamoDB path expression
     table = get_jobs_table()
     current_time = datetime.now().isoformat()
     table.update_item(
         Key={"id": job["id"]},
-        UpdateExpression="SET suggestions = :s, updated_at = :u",
+        UpdateExpression=f"SET suggestions[{suggestion_index}].#st = :status, updated_at = :u",
+        ExpressionAttributeNames={"#st": "status"},
         ExpressionAttributeValues={
-            ":s": suggestions,
+            ":status": status,
             ":u": current_time,
         },
     )
 
-    # Count pending suggestions
+    # Count pending suggestions (after our update applied locally)
+    suggestions[suggestion_index]["status"] = status
     pending_count = sum(1 for s in suggestions if s.get("status", "pending") == "pending")
 
     # Update image record with new pending count

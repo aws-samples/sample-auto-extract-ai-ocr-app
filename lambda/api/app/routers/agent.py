@@ -5,7 +5,7 @@ import logging
 
 from services.agent_service import AgentService
 from dependencies.services import get_agent_service
-from dependencies.auth import RequireImagePermission
+from dependencies.auth import RequireImagePermission, require_auth
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr/agent", tags=["Agent"])
@@ -16,7 +16,7 @@ class SuggestionStatusUpdate(BaseModel):
 
 
 @router.get("/tools")
-async def get_tools(image_id: str = None, service: AgentService = Depends(get_agent_service)):
+async def get_tools(image_id: str = None, user=Depends(require_auth), service: AgentService = Depends(get_agent_service)):
     """Get tools for an image's usecase (or all tools if no image_id)"""
     try:
         if image_id:
@@ -63,6 +63,7 @@ async def get_agent_job_by_image(image_id: str, user=Depends(RequireImagePermiss
             "job_id": job.get("id"),
             "status": job_status,
             "suggestions": pending,
+            "total_suggestions_count": len(suggestions),
             "error": job.get("error"),
         }
     except Exception as e:
@@ -71,7 +72,7 @@ async def get_agent_job_by_image(image_id: str, user=Depends(RequireImagePermiss
 
 
 @router.post("/{image_id}")
-async def start_agent_correction(image_id: str, service: AgentService = Depends(get_agent_service)):
+async def start_agent_correction(image_id: str, user=Depends(RequireImagePermission("viewer")), service: AgentService = Depends(get_agent_service)):
     """Start agent correction job"""
     try:
         job_id = await service.start_agent_correction(image_id)
@@ -82,7 +83,7 @@ async def start_agent_correction(image_id: str, service: AgentService = Depends(
 
 
 @router.get("/status/{job_id}")
-async def get_agent_job_status(job_id: str, service: AgentService = Depends(get_agent_service)):
+async def get_agent_job_status(job_id: str, user=Depends(require_auth), service: AgentService = Depends(get_agent_service)):
     """Get agent correction job status"""
     try:
         return await service.get_agent_job_status(job_id)

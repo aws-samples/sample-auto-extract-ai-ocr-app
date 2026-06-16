@@ -49,14 +49,14 @@ export interface WafOptions {
 // デフォルト値
 // =============================================================================
 const defaultParameters: AppParameters = {
-  modelId: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+  modelId: "us.anthropic.claude-sonnet-4-6",
   modelRegion: "us-east-1",
   enableOcr: true,
   ocrEngine: "paddle",
   sagemakerZeroScale: true,
   sagemakerScaleInCooldownSeconds: 3600,
-  enableAgent: false,
-  enableAgentDemo: false,
+  enableAgent: true,
+  enableAgentDemo: true,
   selfSignUpEnabled: true,
   allowedSignUpEmailDomains: [],
   waf: {

@@ -107,9 +107,26 @@ async def list_usecases(user=Depends(RequireRole("admin")), service: AdminServic
     return {"usecases": service.list_usecases()}
 
 
-@router.get("/usecases/{usecase_id}/permissions")
-async def get_usecase_permissions(usecase_id: str, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
-    return service.get_usecase_permissions(usecase_id)
+@router.get("/usecases/{app_name}/permissions")
+async def get_usecase_permissions(app_name: str, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
+    return service.get_usecase_permissions(app_name)
+
+
+@router.get("/usecases/{app_name}/tools")
+async def get_usecase_tools(app_name: str, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
+    """ユースケースに紐付くツール一覧"""
+    return {"tools": service.get_usecase_tools(app_name)}
+
+
+class UsecaseToolsUpdate(BaseModel):
+    tool_ids: list[str]
+
+
+@router.put("/usecases/{app_name}/tools")
+async def set_usecase_tools(app_name: str, body: UsecaseToolsUpdate, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
+    """ユースケースのツールを一括設定"""
+    service.set_usecase_tools(app_name, body.tool_ids)
+    return {"ok": True}
 
 
 # ========================================
@@ -117,7 +134,6 @@ async def get_usecase_permissions(usecase_id: str, user=Depends(RequireRole("adm
 # ========================================
 class ToolCreate(BaseModel):
     name: str
-    tool_name: str
     description: Optional[str] = None
 
 
@@ -139,7 +155,7 @@ async def get_tool_permissions(tool_id: str, user=Depends(RequireRole("admin")),
 
 @router.post("/tools")
 async def create_tool(body: ToolCreate, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
-    tid = service.create_tool(body.name, body.tool_name, body.description)
+    tid = service.create_tool(body.name, body.description)
     return {"id": tid}
 
 

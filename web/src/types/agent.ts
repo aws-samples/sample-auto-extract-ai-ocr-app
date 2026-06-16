@@ -1,6 +1,8 @@
 export interface Tool {
+  id: string;
   name: string;
   description: string;
+  is_active: boolean;
 }
 
 export interface Suggestion {
@@ -10,6 +12,7 @@ export interface Suggestion {
   reason: string;
   confidence: string;
   tool_used?: string;
+  index: number;  // original index in backend suggestions array
 }
 
 export interface AgentResponse {

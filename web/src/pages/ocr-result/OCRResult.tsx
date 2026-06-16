@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, FileText, RefreshCw, Pencil } from "lucide-react";
+import { ArrowLeft, FileText, RefreshCw, Pencil, Bot } from "lucide-react";
 import api from "../../services/api";
-import { runAgent as apiRunAgent, getAgentTools } from "../../services/ocrApi";
+import { runAgent as apiRunAgent, getAgentTools, getAgentJobByImage, pollAgentJobStatus, updateSuggestionStatus } from "../../services/ocrApi";
 import { updateVerificationStatus } from "../../services/imageApi";
 import { OcrWord, OcrBoundingBox, OcrResponse, PresignedDownloadUrlResponse } from "../../types/ocr";
 import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
 import { Field } from "../../types/app-schema";
 import { Suggestion, Tool } from "../../types/agent";
-import { isOcrEnabled } from "../../config";
+import { isOcrEnabled, isAgentEnabled } from "../../config";
 import ImagePreview from "./ImagePreview";
 import OcrResultEditor from "./OcrResultEditor";
 import ExtractionStatusDisplay from "./ExtractionStatusDisplay";
 import ExtractedInfoDisplay from "./ExtractedInfoDisplay";
 import ReExtractModal from "./ReExtractModal";
+import AgentModal from "./AgentModal";
+import StatusProgressBar from "../../components/ocr-result/StatusProgressBar";
 import Toast from "../../components/ui/Toast";
 import { Button } from "../../components/ui";
 
@@ -77,7 +79,12 @@ function OcrResult() {
     type: 'success'
   });
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'completed'>('idle');
+  const [initialAgentResult, setInitialAgentResult] = useState<any>(null);
+  const [agentSuggestions, setAgentSuggestions] = useState<Suggestion[]>([]);
+  const [agentFoundIssues, setAgentFoundIssues] = useState(false);
   const [showReExtractModal, setShowReExtractModal] = useState(false);
+  const [showAgentModal, setShowAgentModal] = useState(false);
+  const [tools, setTools] = useState<Tool[]>([]);
   let statusCheckTimer: NodeJS.Timeout | null = null;
 
   // 現在のページのバウンディングボックスを生成
@@ -305,6 +312,34 @@ function OcrResult() {
 
       // 抽出情報を取得
       await fetchExtractionInfo();
+
+      // 既存の agent job を取得
+      try {
+        const agentResult = await getAgentJobByImage(id);
+        if (agentResult.status === 'completed' || agentResult.status === 'failed' || agentResult.status === 'skipped') {
+          setAgentStatus('completed');
+          setInitialAgentResult(agentResult);
+          if (agentResult.total_suggestions_count > 0) {
+            setAgentFoundIssues(true);
+          }
+        } else if (agentResult.status === 'processing') {
+          setAgentStatus('running');
+          pollAgentJobStatus(agentResult.job_id).then(result => {
+            setAgentStatus('completed');
+            setInitialAgentResult({ status: 'completed', suggestions: result.suggestions });
+          }).catch(() => setAgentStatus('idle'));
+        }
+      } catch {
+        // No agent result - that's fine
+      }
+
+      // ツール一覧を取得
+      try {
+        const toolsResponse = await getAgentTools(id);
+        setTools(toolsResponse.tools || []);
+      } catch {
+        // Tools fetch failure is non-critical
+      }
 
       setLoading(false);
     } catch (error) {
@@ -564,24 +599,77 @@ function OcrResult() {
     setToast(prev => ({ ...prev, show: false }));
   };
 
+  // 再抽出（or 初回抽出）完了後に Step Functions で連動した AgentKick の結果を取りに行く。
+  // Agent ジョブが見つかるまで少しリトライし、processing なら追加でポーリング。
+  const syncAgentAfterExtraction = async () => {
+    if (!id) return;
+
+    const MAX_LOOKUP_ATTEMPTS = 10;
+    const LOOKUP_INTERVAL = 2000;
+
+    for (let attempt = 0; attempt < MAX_LOOKUP_ATTEMPTS; attempt++) {
+      try {
+        const agentResult = await getAgentJobByImage(id);
+
+        if (agentResult.status === 'skipped') {
+          setAgentStatus('completed');
+          return;
+        }
+
+        if (agentResult.status === 'processing') {
+          setAgentStatus('running');
+          // job_id がまだ無い場合（AgentKick がジョブ作成中）はリトライへ
+          if (!agentResult.job_id) {
+            await new Promise((resolve) => setTimeout(resolve, LOOKUP_INTERVAL));
+            continue;
+          }
+          try {
+            const result = await pollAgentJobStatus(agentResult.job_id);
+            const suggestions: Suggestion[] = result.suggestions || [];
+            setAgentStatus('completed');
+            setAgentSuggestions(suggestions);
+            if (suggestions.length > 0) {
+              showToast(`${suggestions.length}件の修正提案があります`, 'info');
+            }
+          } catch {
+            setAgentStatus('idle');
+          }
+          return;
+        }
+
+        if (agentResult.status === 'completed' || agentResult.status === 'failed') {
+          setAgentStatus('completed');
+          setAgentSuggestions(agentResult.suggestions || []);
+          return;
+        }
+        // 'none' などジョブが未生成の場合はリトライ
+      } catch {
+        // ジョブ取得失敗時もリトライ
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOOKUP_INTERVAL));
+    }
+  };
+
   // エージェント実行
   const runAgent = async (): Promise<Suggestion[]> => {
     if (!id) return [];
 
     try {
       setAgentStatus('running');
-      
-      const response = await apiRunAgent(id);
-      
+
+      const result = await apiRunAgent(id);
+      const suggestions: Suggestion[] = result.suggestions || [];
+
       setAgentStatus('completed');
-      
-      if (response.suggestions.length > 0) {
-        showToast(`${response.suggestions.length}件の修正提案があります`, 'info');
+      setAgentSuggestions(suggestions);
+      if (suggestions.length > 0) {
+        setAgentFoundIssues(true);
+        showToast(`${suggestions.length}件の修正提案があります`, 'info');
       } else {
         showToast('問題は検出されませんでした', 'success');
       }
-      
-      return response.suggestions;
+
+      return suggestions;
     } catch (error) {
       console.error("エージェント実行エラー:", error);
       setAgentStatus('idle');
@@ -590,18 +678,41 @@ function OcrResult() {
     }
   };
 
-  // ツール一覧取得
-  const getTools = async (): Promise<Tool[]> => {
-    try {
-      const response = await getAgentTools();
-      return response.tools || [];
-    } catch (error) {
-      console.error("ツール取得エラー:", error);
-      showToast('ツール情報の取得に失敗しました', 'error');
-      return [];
+  // initialAgentResult が変わったら suggestions を更新
+  // Backend already filters to pending-only with index attached
+  useEffect(() => {
+    if (initialAgentResult?.suggestions?.length) {
+      setAgentSuggestions(initialAgentResult.suggestions);
+      setAgentFoundIssues(true);
+    }
+  }, [initialAgentResult]);
+
+  const handleAcceptSuggestion = async (suggestion: Suggestion) => {
+    setAgentSuggestions(current => current.filter(s => s.index !== suggestion.index));
+    if (id) {
+      try {
+        await updateSuggestionStatus(id, suggestion.index, 'accepted');
+      } catch (error) {
+        console.error("提案ステータス更新エラー:", error);
+        setAgentSuggestions(current => [...current, suggestion]);
+        showToast('ステータス更新に失敗しました', 'error');
+      }
     }
   };
-  
+
+  const handleRejectSuggestion = async (suggestion: Suggestion) => {
+    setAgentSuggestions(current => current.filter(s => s.index !== suggestion.index));
+    if (id) {
+      try {
+        await updateSuggestionStatus(id, suggestion.index, 'rejected');
+      } catch (error) {
+        console.error("提案ステータス更新エラー:", error);
+        setAgentSuggestions(current => [...current, suggestion]);
+        showToast('ステータス更新に失敗しました', 'error');
+      }
+    }
+  };
+
   // 抽出ステータスの確認
   const checkExtractionStatus = async () => {
     if (!id) return;
@@ -619,6 +730,9 @@ function OcrResult() {
           clearInterval(statusCheckTimer);
           statusCheckTimer = null;
         }
+        // 抽出完了後、Step Functions 内で AgentKick が連動して走っているため
+        // Agent 状態を取得・反映する（agent_enabled=false のときは skipped が返る）
+        syncAgentAfterExtraction();
       } else if (status === "failed") {
         setExtractionStatus("failed");
         // ポーリングを停止
@@ -807,15 +921,18 @@ function OcrResult() {
 
   const executeReExtract = async () => {
     if (!id) return;
-    
+
     try {
       setShowReExtractModal(false);
       setExtractionStatus("processing");
       setPollingAttemptCount(0);
+      // 既存の Agent 結果をクリア（再抽出後に連動して走る AgentKick の結果で更新される）
+      setAgentSuggestions([]);
+      setAgentStatus('idle');
       showToast("情報抽出を開始しました。", "info");
-      
+
       // 情報抽出のみを実行（OCRスキップ）
-      await api.post(`/ocr/start/${id}?skip_ocr=true`);
+      await api.post(`/ocr/start/image/${id}?skip_ocr=true`);
       
       // 抽出画面に切り替え
       setActiveView("extraction");
@@ -856,7 +973,20 @@ function OcrResult() {
         onExecute={executeReExtract}
         appName={appName}
         loading={extractionStatus === 'processing'}
+        ocrEnabled={isOcrEnabled()}
+        onViewOcr={() => changeView("ocr")}
       />
+
+      {/* エージェント検証モーダル */}
+      {isAgentEnabled() && (
+        <AgentModal
+          isOpen={showAgentModal}
+          onClose={() => setShowAgentModal(false)}
+          tools={tools}
+          onRunAgent={runAgent}
+          agentStatus={agentStatus}
+        />
+      )}
       
       <div className={styles.row}>
         {/* 左側：画像プレビューとバウンディングボックス */}
@@ -911,43 +1041,64 @@ function OcrResult() {
 
         {/* 右側：OCR結果と情報抽出 */}
         <div className={styles.rightPanel}>
+          {/* ステータスプログレスバー */}
+          <div className="mb-3 px-2">
+            <StatusProgressBar
+              steps={[
+                {
+                  label: 'OCR',
+                  status: ocrWords.length > 0 || !isOcrEnabled() ? 'completed' : extractionStatus === 'processing' ? 'processing' : 'idle',
+                },
+                {
+                  label: '抽出',
+                  status: extractionStatus === 'completed' ? 'completed' : extractionStatus === 'processing' ? 'processing' : extractionStatus === 'failed' ? 'failed' : 'idle',
+                },
+                {
+                  label: 'AI検証',
+                  status: agentStatus === 'completed' ? 'completed' : agentStatus === 'running' ? 'processing' : initialAgentResult?.status === 'failed' ? 'failed' : 'idle',
+                },
+                {
+                  label: '完了',
+                  status: verificationCompleted ? 'completed' : 'idle',
+                },
+              ]}
+            />
+          </div>
+
           <div className={styles.header}>
             <h2 className={styles.title}>{currentViewTitle}</h2>
             {activeView === "extraction" && extractionStatus === "completed" && (
               <div className="flex items-center gap-2">
                 {editMode ? (
                   <>
-                    <Button variant="secondary" onClick={() => setEditMode(false)}>キャンセル</Button>
-                    <Button variant="primary" onClick={() => { saveExtractedInfo(); setEditMode(false); }}>保存</Button>
+                    <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>キャンセル</Button>
+                    <Button variant="primary" size="sm" onClick={() => { saveExtractedInfo(); setEditMode(false); }}>保存</Button>
                   </>
                 ) : (
                   <>
-                    <Button variant="success" onClick={() => setEditMode(true)}>
-                      <Pencil size={16} className="mr-1" />編集
+                    <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+                      <Pencil size={14} className="mr-1" />編集
                     </Button>
-                    <Button variant="primary" onClick={handleReExtract} disabled={loading}>
-                      <RefreshCw size={16} className="mr-1" />再抽出
+                    <Button variant="outline" size="sm" onClick={handleReExtract} disabled={loading}>
+                      <RefreshCw size={14} className="mr-1" />抽出設定
                     </Button>
-                    {isOcrEnabled() && (
-                      <Button variant="secondary" onClick={() => changeView("ocr")}>
-                        OCR確認
+                    {isAgentEnabled() && (
+                      <Button variant="outline" size="sm" onClick={() => setShowAgentModal(true)} disabled={agentStatus === 'running'}>
+                        <Bot size={14} className="mr-1" />エージェント検証
                       </Button>
                     )}
+                    <div className="h-4 w-px bg-neutral-300" />
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={verificationCompleted}
+                        onChange={(e) => handleVerificationChange(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded focus:ring-primary accent-success"
+                      />
+                      <span className="text-xs text-muted whitespace-nowrap">確認完了</span>
+                    </label>
                   </>
                 )}
-                <div className="h-5 w-px bg-neutral-300" />
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    id="verification-complete"
-                    checked={verificationCompleted}
-                    onChange={(e) => handleVerificationChange(e.target.checked)}
-                    className="w-4 h-4 rounded focus:ring-primary accent-success"
-                  />
-                  <label htmlFor="verification-complete" className="text-sm text-muted cursor-pointer whitespace-nowrap">
-                    確認完了
-                  </label>
-                </div>
               </div>
             )}
           </div>
@@ -1004,18 +1155,26 @@ function OcrResult() {
                   onStartExtraction={startExtraction}
                 />
               ) : (
-                /* 抽出結果の表示 */
-                <ExtractedInfoDisplay
-                  extractedInfo={extractedInfo}
-                  fields={appFields}
-                  editMode={editMode}
-                  onHighlightField={highlightField}
-                  onHighlightCell={highlightTableCell}
-                  onUpdateExtractedInfo={updateExtractedInfo}
-                  onRunAgent={runAgent}
-                  agentStatus={agentStatus}
-                  onGetTools={getTools}
-                />
+                <>
+                  {agentStatus === 'completed' && agentSuggestions.length === 0 && !agentFoundIssues && (
+                    <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
+                      <span className="text-green-600 font-medium text-sm">✓ AI検証完了</span>
+                      <span className="text-sm text-green-700">問題は検出されませんでした</span>
+                    </div>
+                  )}
+                  <ExtractedInfoDisplay
+                    extractedInfo={extractedInfo}
+                    fields={appFields}
+                    editMode={editMode}
+                    onHighlightField={highlightField}
+                    onHighlightCell={highlightTableCell}
+                    onUpdateExtractedInfo={updateExtractedInfo}
+                    agentSuggestions={agentSuggestions}
+                    onAcceptSuggestion={handleAcceptSuggestion}
+                    onRejectSuggestion={handleRejectSuggestion}
+                    onEnterEditMode={() => setEditMode(true)}
+                  />
+                </>
               )}
             </div>
           )}

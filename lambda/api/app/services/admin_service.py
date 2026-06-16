@@ -66,7 +66,15 @@ class AdminService:
     def list_usecases(self) -> list[dict]:
         return usecase_repository.list_usecases()
 
-    def get_usecase_permissions(self, usecase_id: str) -> dict:
+    def _resolve_usecase_id(self, app_name: str) -> str:
+        """app_name から usecase_id を解決する"""
+        usecase = usecase_repository.get_usecase_by_app_name(app_name)
+        if not usecase:
+            raise NotFoundError(f"Usecase not found for app_name: {app_name}")
+        return str(usecase["id"])
+
+    def get_usecase_permissions(self, app_name: str) -> dict:
+        usecase_id = self._resolve_usecase_id(app_name)
         return {
             "users": usecase_repository.get_usecase_user_permissions(usecase_id),
             "groups": usecase_repository.get_usecase_group_permissions(usecase_id),
@@ -76,8 +84,8 @@ class AdminService:
     def list_tools(self) -> list[dict]:
         return tool_repository.list_tools()
 
-    def create_tool(self, name: str, tool_name: str, description: str | None = None) -> str:
-        return tool_repository.create_tool(name, tool_name, description)
+    def create_tool(self, name: str, description: str | None = None) -> str:
+        return tool_repository.create_tool(name, description)
 
     def update_tool(self, tool_id: str, updates: dict) -> bool:
         return tool_repository.update_tool(tool_id, updates)
@@ -101,3 +109,12 @@ class AdminService:
 
     def remove_tool_group(self, tool_id: str, group_id: str) -> None:
         tool_repository.remove_tool_group(tool_id, group_id)
+
+    # ---- Usecase Tools ----
+    def get_usecase_tools(self, app_name: str) -> list[dict]:
+        usecase_id = self._resolve_usecase_id(app_name)
+        return tool_repository.get_usecase_tools(usecase_id)
+
+    def set_usecase_tools(self, app_name: str, tool_ids: list[str]) -> None:
+        usecase_id = self._resolve_usecase_id(app_name)
+        tool_repository.set_usecase_tools(usecase_id, tool_ids)

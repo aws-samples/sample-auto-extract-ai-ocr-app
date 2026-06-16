@@ -13,6 +13,7 @@ from . import agent
 from . import admin
 from . import user
 from . import sharing
+from . import usecase_tools
 
 __all__ = [
     'health',
@@ -25,4 +26,5 @@ __all__ = [
     'admin',
     'user',
     'sharing',
+    'usecase_tools',
 ]

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Field } from '../../types/app-schema';
-import { Suggestion, Tool } from '../../types/agent';
-import { isAgentEnabled } from '../../config';
-import { Modal, Button } from '../../components/ui';
+import { Suggestion } from '../../types/agent';
+import { Button } from '../../components/ui';
 
 interface ExtractedInfoDisplayProps {
   extractedInfo: Record<string, any>;
@@ -11,9 +10,10 @@ interface ExtractedInfoDisplayProps {
   onHighlightField: (field: string, stayOnExtractionView?: boolean) => void;
   onHighlightCell: (fieldName: string, rowIndex: number, columnName: string) => void;
   onUpdateExtractedInfo: (info: Record<string, any>) => void;
-  onRunAgent?: () => Promise<Suggestion[]>;
-  agentStatus?: 'idle' | 'running' | 'completed';
-  onGetTools?: () => Promise<Tool[]>;
+  agentSuggestions?: Suggestion[];
+  onAcceptSuggestion?: (suggestion: Suggestion) => void;
+  onRejectSuggestion?: (suggestion: Suggestion) => void;
+  onEnterEditMode?: () => void;
 }
 
 const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
@@ -23,26 +23,18 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   onHighlightField,
   onHighlightCell,
   onUpdateExtractedInfo,
-  onRunAgent,
-  agentStatus = 'idle',
-  onGetTools,
+  agentSuggestions: externalSuggestions = [],
+  onAcceptSuggestion,
+  onRejectSuggestion,
+  onEnterEditMode,
 }) => {
   const [editedInfo, setEditedInfo] = useState<Record<string, any>>(extractedInfo);
-  const [agentSuggestions, setAgentSuggestions] = useState<Suggestion[]>([]);
-  const [showToolsModal, setShowToolsModal] = useState(false);
-  const [tools, setTools] = useState<Tool[]>([]);
 
   useEffect(() => {
     if (!editMode) {
       setEditedInfo({ ...extractedInfo });
     }
   }, [extractedInfo, editMode]);
-
-  useEffect(() => {
-    if (onGetTools) {
-      onGetTools().then(setTools).catch(() => {});
-    }
-  }, [onGetTools]);
 
   const updateFieldValue = (fieldName: string, value: any) => {
     setEditedInfo(prev => {
@@ -73,17 +65,10 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     });
   };
 
-  const handleRunAgent = async () => {
-    if (!onRunAgent) return;
-    try {
-      const suggestions = await onRunAgent();
-      setAgentSuggestions(suggestions);
-    } catch (error) {
-      console.error('エージェント実行エラー:', error);
-    }
-  };
-
   const handleAcceptSuggestion = (suggestion: Suggestion) => {
+    if (!editMode && onEnterEditMode) {
+      onEnterEditMode();
+    }
     let newInfo = { ...editedInfo };
     const fieldPath = suggestion.field.split('.');
     if (fieldPath.length === 1) {
@@ -93,24 +78,30 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     }
     setEditedInfo(newInfo);
     onUpdateExtractedInfo(newInfo);
-    setAgentSuggestions(prev => prev.filter(s => s.field !== suggestion.field));
+    onAcceptSuggestion?.(suggestion);
   };
 
   const handleRejectSuggestion = (suggestion: Suggestion) => {
-    setAgentSuggestions(prev => prev.filter(s => s.field !== suggestion.field));
+    if (!editMode && onEnterEditMode) {
+      onEnterEditMode();
+    }
+    onRejectSuggestion?.(suggestion);
   };
 
-  const getSuggestionForField = (fieldName: string) => agentSuggestions.find(s => s.field === fieldName);
+  const getSuggestionForField = (fieldName: string) => externalSuggestions.find(s => s.field === fieldName);
 
   const renderSuggestion = (suggestion: Suggestion) => (
     <div className="mt-2 p-3 bg-warning-light border border-warning-border rounded">
       <div className="text-sm mb-2">
-        {suggestion.tool_used && <div className="font-semibold text-warning-text mb-1">{suggestion.tool_used}経由で確認済み</div>}
-        <div className="mb-1">「{suggestion.original_value}」→「{suggestion.suggested_value}」の表記ゆれを検出</div>
+        <div className="mb-1">{suggestion.reason}</div>
+        <div className="text-xs text-neutral-600">
+          「{suggestion.original_value}」→「{suggestion.suggested_value}」
+          {suggestion.tool_used && <span className="ml-2">({suggestion.tool_used})</span>}
+        </div>
       </div>
       <div className="flex gap-2">
         <Button variant="primary" size="sm" onClick={() => handleAcceptSuggestion(suggestion)}>採用する</Button>
-        <Button variant="secondary" size="sm" onClick={() => handleRejectSuggestion(suggestion)}>却下</Button>
+        <Button variant="outline" size="sm" onClick={() => handleRejectSuggestion(suggestion)}>却下</Button>
       </div>
     </div>
   );
@@ -291,34 +282,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
 
   return (
     <div className="bg-bg rounded-lg border border-neutral-200 p-4">
-      {/* エージェント */}
-      {onRunAgent && isAgentEnabled() && (
-        <div className="flex items-center justify-end mb-4 gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowToolsModal(true)}>登録ツール</Button>
-          <Button variant="secondary" size="sm" onClick={handleRunAgent} disabled={agentStatus === 'running'}>
-            {agentStatus === 'running' ? '検証中...' : 'エージェント検証'}
-          </Button>
-        </div>
-      )}
-
       <div className="space-y-4">
         {fields.map(field => renderField(field))}
       </div>
-
-      <Modal isOpen={showToolsModal} onClose={() => setShowToolsModal(false)} className="max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6">
-        <h2 className="text-lg font-semibold mb-4">登録ツール一覧</h2>
-        <div className="space-y-3">
-          {tools.map((tool, index) => (
-            <div key={index} className="p-3 border border-neutral-200 rounded">
-              <div className="font-semibold text-neutral-800">{tool.name}</div>
-              <div className="text-sm text-neutral-600 mt-1">{tool.description}</div>
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-end mt-4">
-          <Button variant="secondary" size="sm" onClick={() => setShowToolsModal(false)}>閉じる</Button>
-        </div>
-      </Modal>
     </div>
   );
 };

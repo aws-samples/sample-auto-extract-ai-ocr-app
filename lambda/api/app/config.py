@@ -12,7 +12,6 @@ class Settings:
     # DynamoDB設定
     IMAGES_TABLE_NAME: str = os.getenv("IMAGES_TABLE_NAME", "")
     JOBS_TABLE_NAME: str = os.getenv("JOBS_TABLE_NAME", "")
-    TOOLS_TABLE_NAME: str = os.getenv("TOOLS_TABLE_NAME", "")
 
     # 機能フラグ
     ENABLE_OCR: bool = os.getenv("ENABLE_OCR", "true").lower() == "true"
@@ -33,6 +32,7 @@ class Settings:
     
     # Agent設定
     AGENT_RUNTIME_ARN: str = os.getenv("AGENT_RUNTIME_ARN", "")
+    AGENT_KICK_FUNCTION_NAME: str = os.getenv("AGENT_KICK_FUNCTION_NAME", "")
     
     # Step Functions設定
     STATE_MACHINE_ARN: str = os.getenv("STATE_MACHINE_ARN", "")

@@ -2,7 +2,6 @@
 export interface ManagedTool {
   id: string;
   name: string;
-  tool_name: string;
   description?: string;
   is_active: boolean;
 }

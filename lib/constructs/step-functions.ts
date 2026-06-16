@@ -22,10 +22,16 @@ export interface StepFunctionsProps {
   sagemakerInferenceComponentName?: string;
   modelId: string;
   modelRegion: string;
+  enableAgent?: boolean;
+  agentRuntimeArn?: string;
+  dsqlEndpoint?: string;
+  dsqlRegion?: string;
+  dsqlClusterArn?: string;
 }
 
 export class StepFunctions extends Construct {
   public readonly stateMachine: StateMachine;
+  public readonly agentKickFunction?: DockerImageFunction;
 
   constructor(scope: Construct, id: string, props: StepFunctionsProps) {
     super(scope, id);
@@ -74,6 +80,58 @@ export class StepFunctions extends Construct {
       outputPath: '$.Payload',
     });
 
+    // AgentKick Lambda (runs after ProcessImage, checks agent_enabled internally)
+    let chainedDefinition: cdk.aws_stepfunctions.IChainable = processImageTask;
+
+    if (props.enableAgent && props.agentRuntimeArn) {
+      const agentKick = new DockerImageFunction(this, 'AgentKick', {
+        code: DockerImageCode.fromImageAsset('lambda/api', {
+          file: 'Dockerfile.agentkick',
+          platform: Platform.LINUX_AMD64,
+        }),
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 512,
+        environment: {
+          SCHEMAS_TABLE_NAME: props.schemasTable.tableName,
+          IMAGES_TABLE_NAME: props.imagesTable.tableName,
+          JOBS_TABLE_NAME: props.jobsTable.tableName,
+          BUCKET_NAME: props.documentBucket.bucketName,
+          AGENT_RUNTIME_ARN: props.agentRuntimeArn,
+          DSQL_ENDPOINT: props.dsqlEndpoint || '',
+          DSQL_REGION: props.dsqlRegion || '',
+          MODEL_ID: props.modelId,
+          MODEL_REGION: props.modelRegion,
+        },
+      });
+
+      props.imagesTable.grantReadWriteData(agentKick);
+      props.schemasTable.grantReadData(agentKick);
+      props.jobsTable.grantReadWriteData(agentKick);
+      props.documentBucket.grantRead(agentKick);
+
+      // AgentCore Runtime invoke
+      agentKick.addToRolePolicy(new PolicyStatement({
+        actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+        resources: [props.agentRuntimeArn, `${props.agentRuntimeArn}/*`],
+      }));
+
+      // DSQL access for resolving usecase tools
+      if (props.dsqlClusterArn) {
+        agentKick.addToRolePolicy(new PolicyStatement({
+          actions: ['dsql:DbConnectAdmin'],
+          resources: [props.dsqlClusterArn],
+        }));
+      }
+
+      const agentKickTask = new LambdaInvoke(this, 'AgentKickTask', {
+        lambdaFunction: agentKick,
+        outputPath: '$.Payload',
+      });
+
+      chainedDefinition = processImageTask.next(agentKickTask);
+      this.agentKickFunction = agentKick;
+    }
+
     const processImagesMap = new Map(this, 'ProcessImagesMap', {
       maxConcurrency: 5,
       itemsPath: '$.images',
@@ -82,7 +140,7 @@ export class StepFunctions extends Construct {
         'job_id.$': '$.job_id',
       },
     });
-    processImagesMap.itemProcessor(processImageTask);
+    processImagesMap.itemProcessor(chainedDefinition);
 
     this.stateMachine = new StateMachine(this, 'StateMachine', {
       definitionBody: DefinitionBody.fromChainable(processImagesMap),

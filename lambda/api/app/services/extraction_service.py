@@ -8,7 +8,6 @@ from repositories import (
     get_custom_prompt_for_app,
     get_app_display_name, update_verification_status
 )
-from schemas import ExtractionRequest
 from config import settings
 from background import BackgroundTaskExtension
 from utils import decimal_to_float
@@ -358,38 +357,6 @@ class ExtractionService:
 
         except Exception as e:
             logger.error(f"Error getting extraction result: {str(e)}")
-            raise
-
-    async def start_extraction(self, image_id: str, request: ExtractionRequest) -> Dict[str, Any]:
-        """情報抽出を開始する"""
-        try:
-            logger.info(f"情報抽出を開始: {image_id}")
-
-            self.extract_information(image_id)
-
-            # 結果を取得
-            image_data = get_image(image_id)
-            extracted_info = image_data.get("extracted_info", {})
-
-            logger.info(f"情報抽出完了: {image_id}")
-            return {"status": "success", "extracted_info": extracted_info}
-
-        except Exception as e:
-            logger.error(f"情報抽出エラー: {str(e)}")
-            update_image_status(image_id, "failed")
-            raise
-
-    async def get_extraction_status(self, image_id: str) -> Dict[str, Any]:
-        """情報抽出のステータスを取得する"""
-        try:
-            image_data = get_image(image_id)
-
-            if not image_data:
-                raise ValueError("Image not found")
-
-            return {"status": image_data.get("extraction_status") or "not_started"}
-        except Exception as e:
-            logger.error(f"Error getting extraction status: {str(e)}")
             raise
 
     async def update_extraction_result(self, image_id: str, edited_data: dict) -> None:

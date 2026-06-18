@@ -65,11 +65,11 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
         });
 
       // ツール設定を取得
-      api.get(`/usecases/${urlAppName}/tools`).then((res) => {
+      api.get(`/apps/${urlAppName}/tools`).then((res) => {
         setUsecaseTools(res.data.tools || []);
       }).catch(() => {});
 
-      api.get(`/usecases/${urlAppName}/available-tools`).then((res) => {
+      api.get(`/apps/${urlAppName}/available-tools`).then((res) => {
         setAvailableTools(res.data.tools || []);
       }).catch(() => {});
     }
@@ -355,7 +355,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                                       const prev = usecaseTools;
                                       const updated = usecaseTools.filter((t: any) => t.id !== tool.id);
                                       setUsecaseTools(updated);
-                                      api.put(`/usecases/${urlAppName}/tools`, {
+                                      api.put(`/apps/${urlAppName}/tools`, {
                                         tool_ids: updated.map((t: any) => t.id),
                                       }).catch((err: any) => {
                                         setUsecaseTools(prev);
@@ -392,7 +392,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                                         const prev = usecaseTools;
                                         const updated = [...usecaseTools, tool];
                                         setUsecaseTools(updated);
-                                        api.put(`/usecases/${urlAppName}/tools`, {
+                                        api.put(`/apps/${urlAppName}/tools`, {
                                           tool_ids: updated.map((t: any) => t.id),
                                         }).catch((err: any) => {
                                           setUsecaseTools(prev);

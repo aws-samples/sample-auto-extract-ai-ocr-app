@@ -48,12 +48,24 @@ def get_permitted_app_names(user_id: str) -> list[str]:
     return _get_permitted_app_names(user_id)
 
 
+def check_usecase_permission(user: dict, app_name: str, min_level: str = "viewer"):
+    """ユースケース権限チェック。パスに {app_name} がないルートで使う。"""
+    if user["role"] == "admin":
+        return
+    required = _LEVEL_RANK.get(min_level, 0)
+    if user["role"] == "reader" and required > _LEVEL_RANK["viewer"]:
+        raise HTTPException(status_code=403, detail="Forbidden: reader role cannot edit")
+    perm = get_usecase_permission(str(user["id"]), app_name)
+    if not perm or _LEVEL_RANK.get(perm, 0) < required:
+        raise HTTPException(status_code=403, detail=f"Forbidden: requires {min_level} permission")
+
+
 # ============================================================
 # Depends ベースの認証認可
 # ============================================================
 
-def require_auth(request: Request) -> dict:
-    """認証チェック（ログイン必須）。ユーザー情報を返す。"""
+def require_user(request: Request) -> dict:
+    """アプリ登録済みユーザーを解決する。未登録なら 401。"""
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -65,7 +77,7 @@ class RequireRole:
     def __init__(self, min_role: str):
         self.min_role = min_role
 
-    def __call__(self, user: dict = Depends(require_auth)) -> dict:
+    def __call__(self, user: dict = Depends(require_user)) -> dict:
         # _ROLE_RANK で比較: reader(1) < author(2) < admin(3)
         if _ROLE_RANK.get(user["role"], 0) < _ROLE_RANK.get(self.min_role, 0):
             raise HTTPException(status_code=403, detail=f"Forbidden: requires {self.min_role} role")
@@ -74,27 +86,19 @@ class RequireRole:
 
 class RequirePermission:
     """ユースケース単位の権限チェック Depends クラス。
-    パスパラメータ app_name を自動取得し、user_usecases / group_usecases から
-    最大権限を解決する。admin ロールは全権限スキップ。"""
+    パスパラメータ {app_name} から取得する。パスに {app_name} がないルートでは使用不可
+    （その場合は require_user + check_usecase_permission を使うこと）。"""
     def __init__(self, min_level: str):
         self.min_level = min_level
 
-    def __call__(self, app_name: str, user: dict = Depends(require_auth)) -> dict:
-        # admin は全ユースケースにフルアクセス
-        if user["role"] == "admin":
-            return user
-
-        required = _LEVEL_RANK.get(self.min_level, 0)
-
-        # reader ロールは viewer 権限までしか行使できない
-        if user["role"] == "reader" and required > _LEVEL_RANK["viewer"]:
-            raise HTTPException(status_code=403, detail="Forbidden: reader role cannot edit")
-
-        # user_usecases + group_usecases から最大権限を取得し、_LEVEL_RANK で比較:
-        # viewer(1) < editor(2) < owner(3)
-        perm = get_usecase_permission(str(user["id"]), app_name)
-        if not perm or _LEVEL_RANK.get(perm, 0) < required:
-            raise HTTPException(status_code=403, detail=f"Forbidden: requires {self.min_level} permission")
+    def __call__(self, request: Request, user: dict = Depends(require_user)) -> dict:
+        app_name = request.path_params.get("app_name")
+        if not app_name:
+            raise RuntimeError(
+                "RequirePermission requires {app_name} in path. "
+                "Use require_user + check_usecase_permission() instead."
+            )
+        check_usecase_permission(user, app_name, self.min_level)
         return user
 
 
@@ -104,31 +108,22 @@ class RequireImagePermission:
     def __init__(self, min_level: str):
         self.min_level = min_level
 
-    def __call__(self, image_id: str, request: Request, user: dict = Depends(require_auth)) -> dict:
-        # image_id → DynamoDB から画像レコードを取得
+    def __call__(self, request: Request, user: dict = Depends(require_user)) -> dict:
+        image_id = request.path_params.get("image_id")
+        if not image_id:
+            raise RuntimeError(
+                "RequireImagePermission requires {image_id} in path."
+            )
+
         image = get_image(image_id)
         if not image:
             raise HTTPException(status_code=404, detail="Image not found")
 
-        # 後続で再取得しなくて済むようキャッシュ
         request.state.image = image
 
-        # admin は全ユースケースにフルアクセス
-        if user["role"] == "admin":
-            return user
-
-        required = _LEVEL_RANK.get(self.min_level, 0)
-
-        # reader ロールは viewer 権限までしか行使できない
-        if user["role"] == "reader" and required > _LEVEL_RANK["viewer"]:
-            raise HTTPException(status_code=403, detail="Forbidden: reader role cannot edit")
-
-        # 画像の app_name からユースケース権限を解決
         app_name = image.get("app_name", "")
         if not app_name:
             raise HTTPException(status_code=403, detail="Forbidden: image has no associated usecase")
 
-        perm = get_usecase_permission(str(user["id"]), app_name)
-        if not perm or _LEVEL_RANK.get(perm, 0) < required:
-            raise HTTPException(status_code=403, detail=f"Forbidden: requires {self.min_level} permission")
+        check_usecase_permission(user, app_name, self.min_level)
         return user

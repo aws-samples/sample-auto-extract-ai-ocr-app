@@ -2,7 +2,7 @@
 import api from './api';
 
 export const runAgent = async (imageId: string) => {
-  const startResponse = await api.post(`/ocr/agent/${imageId}`);
+  const startResponse = await api.post(`/images/${imageId}/agent`);
   const jobId = startResponse.data.jobId;
   return pollAgentJobStatus(jobId);
 };
@@ -13,7 +13,7 @@ export const pollAgentJobStatus = async (
   interval = 2000
 ): Promise<any> => {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const response = await api.get(`/ocr/agent/status/${jobId}`);
+    const response = await api.get(`/jobs/${jobId}`);
     const { status, suggestions, error } = response.data;
 
     if (status === 'completed' || status === 'skipped') {
@@ -30,14 +30,13 @@ export const pollAgentJobStatus = async (
   throw new Error('Agent processing timed out');
 };
 
-export const getAgentTools = async (imageId?: string) => {
-  const params = imageId ? { image_id: imageId } : {};
-  const response = await api.get('/ocr/agent/tools', { params });
+export const getAgentToolsForImage = async (imageId: string) => {
+  const response = await api.get(`/images/${imageId}/agent/tools`);
   return response.data;
 };
 
 export const getAgentJobByImage = async (imageId: string) => {
-  const response = await api.get(`/ocr/agent/image/${imageId}`);
+  const response = await api.get(`/images/${imageId}/agent`);
   return response.data;
 };
 
@@ -46,6 +45,6 @@ export const updateSuggestionStatus = async (
   suggestionIndex: number,
   status: 'accepted' | 'rejected'
 ): Promise<{ ok: boolean; pending_count: number }> => {
-  const response = await api.patch(`/ocr/agent/image/${imageId}/suggestions/${suggestionIndex}`, { status });
+  const response = await api.patch(`/images/${imageId}/agent/suggestions/${suggestionIndex}`, { status });
   return response.data;
 };

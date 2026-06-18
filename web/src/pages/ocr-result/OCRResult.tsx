@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, FileText, RefreshCw, Pencil, Bot } from "lucide-react";
 import api from "../../services/api";
-import { runAgent as apiRunAgent, getAgentTools, getAgentJobByImage, pollAgentJobStatus, updateSuggestionStatus } from "../../services/ocrApi";
+import { runAgent as apiRunAgent, getAgentToolsForImage, getAgentJobByImage, pollAgentJobStatus, updateSuggestionStatus } from "../../services/ocrApi";
 import { updateVerificationStatus } from "../../services/imageApi";
 import { OcrWord, OcrBoundingBox, OcrResponse, PresignedDownloadUrlResponse } from "../../types/ocr";
 import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
@@ -250,7 +250,7 @@ function OcrResult() {
       setLoading(true);
 
       // OCR結果を取得
-      const response = await api.get<OcrResponse>(`/ocr/result/${id}`);
+      const response = await api.get<OcrResponse>(`/images/${id}/ocr`);
       const { ocrResult, filename, app_name } = response.data;
       
       // ファイル名を設定
@@ -264,7 +264,7 @@ function OcrResult() {
       // 署名付きURLで画像を取得
       try {
         const urlResponse = await api.get<PresignedDownloadUrlResponse>(
-          `/generate-presigned-download-url/${id}`
+          `/images/${id}/download-url`
         );
         
         if (urlResponse.data.is_multipage && urlResponse.data.presigned_urls) {
@@ -287,11 +287,10 @@ function OcrResult() {
         }
       } catch (error) {
         console.error("署名付きURL取得エラー:", error);
-        // フォールバック: 直接APIエンドポイントを使用
-        setImageSrc(`/image/${id}`);
+        setImageSrc("");
         setIsMultipage(false);
         setTotalPages(1);
-        setImageUrls([{page: 1, url: `/image/${id}`}]);
+        setImageUrls([]);
       }
 
       // OCR結果を設定（OCRが有効な場合のみ）
@@ -335,7 +334,7 @@ function OcrResult() {
 
       // ツール一覧を取得
       try {
-        const toolsResponse = await getAgentTools(id);
+        const toolsResponse = await getAgentToolsForImage(id);
         setTools(toolsResponse.tools || []);
       } catch {
         // Tools fetch failure is non-critical
@@ -353,7 +352,7 @@ function OcrResult() {
     if (!id) return;
 
     try {
-      const response = await api.get<ExtractionResponse>(`/ocr/extract/${id}`);
+      const response = await api.get<ExtractionResponse>(`/images/${id}/extraction`);
 
       // ステータスを明示的に設定
       setExtractionStatus(response.data.status || "pending");
@@ -486,19 +485,15 @@ function OcrResult() {
       setExtractionStatus("processing");
       setPollingAttemptCount(0);
 
-      // 抽出処理を開始
-      const response = await api.post(`/ocr/extract/${id}`, {
-        words: ocrWords,
+      // 抽出処理を開始（パイプラインで実行）
+      await api.post(`/images/${id}/process`, {
+        start_from: "extraction",
       });
 
-      if (response.data.status === "success") {
-        // 抽出画面に切り替え
-        setActiveView("extraction");
-        // ポーリングを開始
-        startPolling();
-      } else {
-        setExtractionStatus("failed");
-      }
+      // 抽出画面に切り替え
+      setActiveView("extraction");
+      // ポーリングを開始
+      startPolling();
     } catch (error) {
       console.error("情報抽出の開始に失敗しました:", error);
       setExtractionStatus("failed");
@@ -548,7 +543,7 @@ function OcrResult() {
     if (!id) return;
 
     try {
-      const response = await api.post(`/ocr/edit/${id}`, {
+      const response = await api.put(`/images/${id}/ocr`, {
         words: words,
       });
 
@@ -569,7 +564,7 @@ function OcrResult() {
       const infoToSave = dataToSave || extractedInfo;
       // 最新の状態を使用してPOSTリクエストを送信
 
-      const response = await api.post(`/ocr/extract/edit/${id}`, {
+      const response = await api.put(`/images/${id}/extraction`, {
         extracted_info: infoToSave,
         mapping: mapping,
       });
@@ -718,8 +713,8 @@ function OcrResult() {
     if (!id) return;
 
     try {
-      const response = await api.get(`/ocr/extract/status/${id}`);
-      const status = response.data.status;
+      const response = await api.get(`/images/${id}/status`);
+      const status = response.data.extraction_status;
 
       if (status === "completed") {
         setExtractionStatus("completed");
@@ -932,7 +927,7 @@ function OcrResult() {
       showToast("情報抽出を開始しました。", "info");
 
       // 情報抽出のみを実行（OCRスキップ）
-      await api.post(`/ocr/start/image/${id}?skip_ocr=true`);
+      await api.post(`/images/${id}/process`, { start_from: "extraction" });
       
       // 抽出画面に切り替え
       setActiveView("extraction");

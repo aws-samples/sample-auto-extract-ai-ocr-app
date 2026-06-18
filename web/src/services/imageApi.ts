@@ -6,7 +6,7 @@ export const deleteImage = async (imageId: string) => {
 };
 
 export const updateVerificationStatus = async (imageId: string, completed: boolean) => {
-  return api.post(`/ocr/extract/verification/${imageId}`, {
+  return api.patch(`/images/${imageId}/verification`, {
     verification_completed: completed
   });
 };

@@ -8,12 +8,12 @@ auth は dependencies.auth から直接 import するか、ここから import �
 """
 from .auth import (
     get_cognito_sub, get_current_user, get_usecase_permission,
-    get_permitted_app_names, require_auth,
-    RequireRole, RequirePermission,
+    get_permitted_app_names, require_user, check_usecase_permission,
+    RequireRole, RequirePermission, RequireImagePermission,
 )
 
 __all__ = [
     "get_cognito_sub", "get_current_user", "get_usecase_permission",
-    "get_permitted_app_names", "require_auth",
-    "RequireRole", "RequirePermission",
+    "get_permitted_app_names", "require_user", "check_usecase_permission",
+    "RequireRole", "RequirePermission", "RequireImagePermission",
 ]

@@ -20,8 +20,8 @@ export const updateGroupMembers = (groupId: string, userIds: string[]) =>
 
 // Usecases
 export const getUsecases = () => api.get('/admin/usecases').then(r => r.data);
-export const getUsecasePermissions = (usecaseId: string) =>
-  api.get(`/admin/usecases/${usecaseId}/permissions`).then(r => r.data);
+export const getUsecasePermissions = (appName: string) =>
+  api.get(`/admin/usecases/${appName}/permissions`).then(r => r.data);
 
 // Tools
 export const getTools = () => api.get('/admin/tools').then(r => r.data);

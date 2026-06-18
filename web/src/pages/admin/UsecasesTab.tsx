@@ -46,7 +46,7 @@ export default function UsecasesTab() {
   const { page, setPage, total, paged, pageSize, changePageSize, totalItems } = usePagination(filtered);
 
   const loadPerms = async (uc: Usecase) => {
-    const data = await adminApi.getUsecasePermissions(uc.id);
+    const data = await adminApi.getUsecasePermissions(uc.app_name);
     setPerms(data);
     setIsPublic(data.groups.some((g: { name?: string }) => g.name === 'all'));
   };

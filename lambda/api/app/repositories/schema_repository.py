@@ -124,13 +124,6 @@ def get_custom_prompt_for_app(app_name):
     return ""
 
 
-def is_agent_enabled_for_app(app_name) -> bool:
-    """指定されたアプリで agent_enabled が有効かどうかを返す"""
-    app_schemas = get_app_schemas()
-    for app in app_schemas.get("apps", []):
-        if app["name"] == app_name:
-            return bool(app.get("agent_enabled", False))
-    return False
 
 
 def create_app_schema(app_name, app_data):

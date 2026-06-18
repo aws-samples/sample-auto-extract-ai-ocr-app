@@ -2,7 +2,7 @@ from clients import s3_client
 import uuid
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 
 from repositories import (
     create_image_record, get_image, get_images, update_image_status, update_converted_image,
@@ -210,37 +210,6 @@ class UploadService:
             }
         except Exception as e:
             logger.error(f"PDF conversion setup error: {str(e)}")
-            raise
-
-    async def get_image_stream(self, image_id: str) -> Tuple[bytes, str, str]:
-        """画像データを返す
-
-        Returns:
-            (image_bytes, content_type, filename) のタプル
-        """
-        try:
-            # 画像情報を取得
-            image_data = get_image(image_id)
-            if not image_data:
-                raise ValueError("Image not found")
-
-            s3_key = image_data.get("s3_key")
-            if isinstance(s3_key, list):
-                s3_key = s3_key[0]  # リストの場合は最初の要素
-
-            # S3から画像を取得
-            s3_response = s3_client.get_object(
-                Bucket=self.bucket_name, Key=s3_key)
-            image_data_bytes = s3_response['Body'].read()
-
-            content_type = s3_response.get(
-                'ContentType', 'application/octet-stream')
-            filename = image_data.get('filename', 'image')
-
-            return (image_data_bytes, content_type, filename)
-
-        except Exception as e:
-            logger.error(f"Error getting image stream: {str(e)}")
             raise
 
     async def generate_download_url(self, image_id: str) -> Dict[str, Any]:

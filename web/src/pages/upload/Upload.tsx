@@ -75,7 +75,7 @@ function Upload() {
   const startOcr = async () => {
     try {
       setIsProcessing(true);
-      const response = await api.post(`/ocr/start/${appName}`);
+      const response = await api.post(`/apps/${appName}/jobs`);
 
       if (response.data && response.data.jobId) {
         // 成功したら即座に一覧を更新
@@ -92,14 +92,14 @@ function Upload() {
         // 10秒ごとにポーリング
         const pollInterval = setInterval(async () => {
           try {
-            const statusResponse = await api.get('/ocr/endpoint-status');
+            const statusResponse = await api.get('/system/ocr-endpoint-status');
             
             if (statusResponse.data.ready) {
               clearInterval(pollInterval);
               setIsEndpointWarming(false);
               
               // リトライ
-              const retryResponse = await api.post(`/ocr/start/${appName}`);
+              const retryResponse = await api.post(`/apps/${appName}/jobs`);
               if (retryResponse.data?.jobId) {
                 fetchFiles();
               }
@@ -242,7 +242,7 @@ function Upload() {
         setUploadProgress({ ...uploadProgress, [file.name]: 0 });
 
         // 1. 署名付きURLを取得
-        const presignedUrlResponse = await api.post(`/generate-presigned-url?app_name=${encodeURIComponent(appName || 'default')}`, {
+        const presignedUrlResponse = await api.post(`/images/upload-url`, {
           filename: file.name,
           content_type: file.type,
           app_name: appName || undefined,
@@ -264,7 +264,7 @@ function Upload() {
         setUploadProgress((prev) => ({ ...prev, [file.name]: 50 }));
 
         // 3. アップロード完了を通知
-        await api.post(`/upload-complete/${image_id}`, {
+        await api.post(`/images/${image_id}/upload-complete`, {
           filename: file.name,
           s3_key,
           app_name: appName || undefined,

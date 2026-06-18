@@ -98,11 +98,11 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
       // ユースケースのツール設定と利用可能ツールを取得
       if (urlAppName) {
-        api.get(`/usecases/${urlAppName}/tools`).then((res) => {
+        api.get(`/apps/${urlAppName}/tools`).then((res) => {
           setUsecaseTools(res.data.tools || []);
         }).catch(() => {});
 
-        api.get(`/usecases/${urlAppName}/available-tools`).then((res) => {
+        api.get(`/apps/${urlAppName}/available-tools`).then((res) => {
           setAvailableTools(res.data.tools || []);
         }).catch(() => {});
       }
@@ -197,7 +197,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
     try {
       // 1. まず署名付きURLを取得
-      const presignedUrlResponse = await api.post("/apps/schema/generate-presigned-url", {
+      const presignedUrlResponse = await api.post("/apps/schema/upload-url", {
         filename: uploadedFile.name,
         content_type: uploadedFile.type
       });
@@ -575,7 +575,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                                         const prev = usecaseTools;
                                         const updated = usecaseTools.filter((t: any) => t.id !== tool.id);
                                         setUsecaseTools(updated);
-                                        api.put(`/usecases/${urlAppName}/tools`, {
+                                        api.put(`/apps/${urlAppName}/tools`, {
                                           tool_ids: updated.map((t: any) => t.id),
                                         }).catch((err: any) => {
                                           setUsecaseTools(prev);
@@ -612,7 +612,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                                           const prev = usecaseTools;
                                           const updated = [...usecaseTools, tool];
                                           setUsecaseTools(updated);
-                                          api.put(`/usecases/${urlAppName}/tools`, {
+                                          api.put(`/apps/${urlAppName}/tools`, {
                                             tool_ids: updated.map((t: any) => t.id),
                                           }).catch((err: any) => {
                                             setUsecaseTools(prev);

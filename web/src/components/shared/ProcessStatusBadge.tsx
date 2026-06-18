@@ -13,10 +13,10 @@ const ProcessStatusBadge: React.FC<ProcessStatusBadgeProps> = ({
   const getDisplay = (): { label: string; style: string; spinning?: boolean } => {
     // OCR未完了
     if (status === 'uploading' || status === 'converting') {
-      return { label: '前処理中', style: 'bg-info-light text-info-text', spinning: true };
+      return { label: 'アップロード中', style: 'bg-info-light text-info-text', spinning: true };
     }
     if (status === 'pending') {
-      return { label: '未処理', style: 'bg-neutral-100 text-neutral-600' };
+      return { label: '処理待ち', style: 'bg-neutral-100 text-neutral-600' };
     }
     if (status === 'processing') {
       return { label: '処理中', style: 'bg-info-light text-info-text', spinning: true };

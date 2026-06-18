@@ -49,8 +49,7 @@ def get_permitted_app_names(user_id: str) -> list[str]:
 
 
 def check_usecase_permission(user: dict, app_name: str, min_level: str = "viewer"):
-    """ボディやロジックで取得した app_name に対する権限を手動チェック。
-    RequirePermission がパスパラメータ前提のため、パスに app_name がないルート用。"""
+    """ユースケース権限チェック。パスに {app_name} がないルートで使う。"""
     if user["role"] == "admin":
         return
     required = _LEVEL_RANK.get(min_level, 0)

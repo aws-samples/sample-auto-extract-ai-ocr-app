@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from services.ocr_service import OcrService
 from services.upload_service import UploadService
+from services.image_list_service import ImageListService
 from services.extraction_service import ExtractionService
 from services.schema_service import SchemaService
 from services.s3_sync_service import S3SyncService
@@ -28,6 +29,7 @@ background_task = BackgroundTaskExtension()
 # 全サービスを app.state に集約
 app.state.ocr_service = OcrService()
 app.state.upload_service = UploadService(background_task)
+app.state.image_list_service = ImageListService()
 app.state.extraction_service = ExtractionService(background_task)
 app.state.schema_service = SchemaService()
 app.state.s3_sync_service = S3SyncService(upload_service=app.state.upload_service)

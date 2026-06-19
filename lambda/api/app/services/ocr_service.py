@@ -174,29 +174,17 @@ class OcrService:
     def _process_ocr_individual_page(self, image_id: str, image_data: dict) -> None:
         """個別ページのOCR処理"""
         logger.info(f"個別ページ処理を実行: {image_id}")
-
         s3_key = image_data.get("s3_key")
-        if isinstance(s3_key, list):
-            s3_key = s3_key[0]
-
-        s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
-        image_bytes = s3_response['Body'].read()
-
-        ocr_result = self._invoke_ocr(image_bytes)
-
-        if "error" in ocr_result:
-            logger.error(f"OCR処理でエラーが発生: {ocr_result['error']}")
-            update_image_status(image_id, "failed")
-            return
-
-        logger.info(f"Successfully processed {len(ocr_result.get('words', []))} words for image {image_id}")
-        db_update_ocr_result(image_id, ocr_result, "processing")
+        self._process_ocr_page(image_id, s3_key)
 
     def _process_ocr_single_image(self, image_id: str, image_data: dict) -> None:
         """単一画像のOCR処理"""
         logger.info(f"単一画像処理を実行: {image_id}")
-
         s3_key = image_data.get("converted_s3_key") or image_data.get("s3_key")
+        self._process_ocr_page(image_id, s3_key)
+
+    def _process_ocr_page(self, image_id: str, s3_key) -> None:
+        """単一S3キーに対するOCR処理（共通ロジック）"""
         if isinstance(s3_key, list):
             s3_key = s3_key[0]
 

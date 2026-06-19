@@ -5,9 +5,10 @@ from typing import Optional, Literal
 import logging
 
 from dependencies.auth import RequireRole
+from schemas import UsecaseToolsUpdate
 from services.admin_service import AdminService, NotFoundError
-from services.upload_service import UploadService
-from dependencies.services import get_upload_service, get_admin_service
+from services.image_list_service import ImageListService
+from dependencies.services import get_image_list_service, get_admin_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -118,10 +119,6 @@ async def get_usecase_tools(app_name: str, user=Depends(RequireRole("admin")), s
     return {"tools": service.get_usecase_tools(app_name)}
 
 
-class UsecaseToolsUpdate(BaseModel):
-    tool_ids: list[str]
-
-
 @router.put("/usecases/{app_name}/tools")
 async def set_usecase_tools(app_name: str, body: UsecaseToolsUpdate, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
     """ユースケースのツールを一括設定"""
@@ -209,6 +206,6 @@ async def remove_tool_group(tool_id: str, group_id: str, user=Depends(RequireRol
 # Images (admin: 全履歴)
 # ========================================
 @router.get("/images")
-async def list_all_images(app_name: str = None, user=Depends(RequireRole("admin")), service: UploadService = Depends(get_upload_service)):
+async def list_all_images(app_name: str = None, user=Depends(RequireRole("admin")), service: ImageListService = Depends(get_image_list_service)):
     """全ユーザーの画像一覧（admin 用）"""
     return await service.get_images_list(app_name, uploaded_by=None)

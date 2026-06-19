@@ -3,7 +3,6 @@
 App CRUD, schema, s3-sync, usecase tools, batch jobs.
 """
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
 import logging
 from typing import Optional
 
@@ -11,6 +10,7 @@ from schemas import (
     SchemaGenerateRequest,
     PresignedUrlRequest, CustomPromptRequest, SchemaSaveRequest,
     OcrStartRequest, JobStartResponse,
+    S3ImportRequest, UsecaseToolsUpdate,
 )
 from services.schema_service import SchemaService
 from services.s3_sync_service import S3SyncService
@@ -184,13 +184,6 @@ async def start_batch_job(
 
 # === S3 Sync ===
 
-class S3ImportRequest(BaseModel):
-    bucket: str
-    key: str
-    filename: str
-    page_processing_mode: str = "combined"
-
-
 @router.post("/apps/{app_name}/s3-sync")
 async def sync_s3_files(
     app_name: str,
@@ -257,10 +250,6 @@ def _resolve_usecase_id(app_name: str, user_id: str | None = None) -> str:
     if not usecase:
         raise HTTPException(500, f"Failed to auto-register usecase: {app_name}")
     return str(usecase["id"])
-
-
-class UsecaseToolsUpdate(BaseModel):
-    tool_ids: list[str]
 
 
 @router.get("/apps/{app_name}/tools")

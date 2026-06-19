@@ -7,6 +7,4 @@ boto3
 python-jose[cryptography]
 PyMuPDF
 Pillow
-opencv-python-headless
 requests
-python-magic

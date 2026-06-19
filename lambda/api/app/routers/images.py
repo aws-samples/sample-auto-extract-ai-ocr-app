@@ -84,6 +84,10 @@ async def delete_image(
         return await service.delete_image(image_id, sub, is_admin)
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

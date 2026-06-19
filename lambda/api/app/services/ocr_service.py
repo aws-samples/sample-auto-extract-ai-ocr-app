@@ -2,7 +2,7 @@ import uuid
 import logging
 import json
 import base64
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from repositories import (
     get_images,
@@ -12,7 +12,6 @@ from repositories import (
 from clients import get_inference_component_status, trigger_endpoint_wakeup
 from schemas import OcrResult, OcrResultResponse
 from config import settings
-from background import BackgroundTaskExtension
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response
 from services.pdf_conversion_service import sync_parent_status
@@ -29,9 +28,8 @@ class EndpointNotReadyError(Exception):
 class OcrService:
     """OCR処理を管理するサービスクラス"""
 
-    def __init__(self, background_task: Optional[BackgroundTaskExtension] = None):
+    def __init__(self):
         self.enable_ocr = settings.ENABLE_OCR
-        self.background_task = background_task
 
     def get_endpoint_status(self) -> dict:
         """OCR エンドポイントの状態を返す"""

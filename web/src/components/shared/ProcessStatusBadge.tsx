@@ -1,5 +1,4 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
 
 interface ProcessStatusBadgeProps {
   status: string;
@@ -10,39 +9,36 @@ const ProcessStatusBadge: React.FC<ProcessStatusBadgeProps> = ({
   status,
   agentStatus,
 }) => {
-  const getDisplay = (): { label: string; style: string; spinning?: boolean } => {
-    // OCR未完了
+  const getDisplay = (): { label: string; color: string; pulse?: boolean } => {
     if (status === 'uploading' || status === 'converting') {
-      return { label: 'アップロード中', style: 'bg-info-light text-info-text', spinning: true };
+      return { label: 'アップロード中', color: 'bg-info', pulse: true };
     }
     if (status === 'pending') {
-      return { label: '処理待ち', style: 'bg-neutral-100 text-neutral-600' };
+      return { label: '処理待ち', color: 'bg-neutral-400' };
     }
     if (status === 'processing') {
-      return { label: '処理中', style: 'bg-info-light text-info-text', spinning: true };
+      return { label: '処理中', color: 'bg-info', pulse: true };
     }
     if (status === 'failed') {
-      return { label: '失敗', style: 'bg-danger-light text-danger-text' };
+      return { label: '失敗', color: 'bg-danger' };
     }
 
-    // status=completed: agentStatus で分岐
     if (agentStatus === 'processing') {
-      return { label: '検証中', style: 'bg-info-light text-info-text', spinning: true };
+      return { label: '検証中', color: 'bg-info', pulse: true };
     }
     if (agentStatus === 'failed') {
-      return { label: '検証失敗', style: 'bg-danger-light text-danger-text' };
+      return { label: '検証失敗', color: 'bg-danger' };
     }
 
-    // completed + (agent=completed or skipped or null)
-    return { label: '完了', style: 'bg-success-light text-success-text' };
+    return { label: '完了', color: 'bg-success' };
   };
 
-  const { label, style, spinning } = getDisplay();
+  const { label, color, pulse } = getDisplay();
 
   return (
-    <span className={`px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${style}`}>
+    <span className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-neutral-700">
+      <span className={`w-2 h-2 rounded-full ${color} ${pulse ? 'animate-pulse' : ''}`} />
       {label}
-      {spinning && <Loader2 size={14} className="animate-spin ml-1" />}
     </span>
   );
 };

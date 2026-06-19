@@ -38,13 +38,9 @@ app.state.admin_service = AdminService()
 app.state.user_service = UserService()
 app.state.sharing_service = SharingService()
 
-# CORS 設定
-origins = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

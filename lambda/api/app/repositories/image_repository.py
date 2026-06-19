@@ -314,17 +314,16 @@ def update_converted_image(image_id, converted_s3_key, status=None, original_siz
             update_expression += ", total_pages = :total_pages"
             expression_values[":total_pages"] = total_pages
 
-        expression_names = {}
+        update_kwargs = {
+            "Key": {"id": image_id},
+            "UpdateExpression": update_expression,
+            "ExpressionAttributeValues": expression_values,
+            "ReturnValues": "UPDATED_NEW",
+        }
         if status:
-            expression_names["#status"] = "status"
+            update_kwargs["ExpressionAttributeNames"] = {"#status": "status"}
 
-        response = table.update_item(
-            Key={"id": image_id},
-            UpdateExpression=update_expression,
-            ExpressionAttributeValues=expression_values,
-            ExpressionAttributeNames=expression_names if expression_names else {},
-            ReturnValues="UPDATED_NEW"
-        )
+        response = table.update_item(**update_kwargs)
 
         logger.info(f"変換後画像情報を更新しました: {image_id}, {converted_s3_key}")
         return True

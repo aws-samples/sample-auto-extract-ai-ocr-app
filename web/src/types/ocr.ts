@@ -3,7 +3,7 @@ export interface ImageFile {
   name: string;
   s3_key: string;
   uploadTime: string;
-  status: 'uploading' | 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'uploading' | 'converting' | 'pending' | 'processing' | 'completed' | 'failed';
   jobId?: string;
   appName?: string;
   pageProcessingMode?: 'combined' | 'individual';
@@ -53,10 +53,6 @@ export interface OcrResponse {
   app_name?: string;
 }
 
-export interface OcrStartResponse {
-  jobId: string;
-}
-
 export interface PresignedUrlResponse {
   presigned_url: string;
   s3_key: string;
@@ -70,15 +66,6 @@ export interface UploadCompleteResponse {
   is_converting?: boolean;
   page_processing_mode?: 'combined' | 'individual';
 }
-export interface OcrStatusResponse {
-  status: string;
-  images: {
-    id: string;
-    filename: string;
-    status: string;
-  }[];
-}
-
 export interface PresignedDownloadUrlResponse {
   presigned_url: string;
   presigned_urls: Array<{

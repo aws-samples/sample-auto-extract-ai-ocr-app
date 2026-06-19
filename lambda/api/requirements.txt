@@ -4,7 +4,6 @@ setuptools
 python-multipart
 psycopg2-binary
 boto3
-python-jose[cryptography]
 PyMuPDF
 Pillow
 requests

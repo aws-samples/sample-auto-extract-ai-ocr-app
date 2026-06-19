@@ -43,14 +43,6 @@ export interface S3SyncFile {
   is_existing?: boolean;
 }
 
-export interface S3SyncResponse {
-  app_name: string;
-  bucket: string;
-  prefix: string;
-  structure: FolderTree;
-  files: S3SyncFile[];
-}
-
 export interface FolderTree {
   [key: string]: {
     type: "folder" | "file";

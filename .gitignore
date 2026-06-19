@@ -33,21 +33,3 @@ web/dist
 !.kiro/steering/product.md
 !.kiro/steering/structure.md
 !.kiro/steering/tech.md
-
-# Temporary test files
-test_temp/
-
-# Planning/design docs (local only)
-*_PLAN.md
-*_DESIGN.md
-*_DISCUSSION*.md
-*_IMPLEMENTATION.md
-*_MISSING_FEATURES.md
-
-# Screenshots and media artifacts (local only)
-/*.png
-/*.pdf
-/*.drawio
-
-# Playwright MCP
-.playwright-mcp/

@@ -34,10 +34,8 @@ def get_multipage_ocr_results(image_id: str) -> list:
         image_data = get_image(image_id)
         ocr_result = image_data.get("ocr_result", {}) if isinstance(image_data, dict) else {}
 
-        # 複数ページOCR結果を取得
         pages_results = ocr_result.get("pages", []) if isinstance(ocr_result, dict) else []
 
-        # pages_resultsがリストの場合
         if isinstance(pages_results, list):
             processed_pages = []
             for i, page_result in enumerate(pages_results):
@@ -51,13 +49,10 @@ def get_multipage_ocr_results(image_id: str) -> list:
                     continue
             if processed_pages:
                 return processed_pages
-        # pages_resultsが辞書の場合は単一ページとして扱う
         elif isinstance(pages_results, dict):
             return [pages_results]
 
-        # 従来形式の場合は単一ページとして扱う
         words = ocr_result.get("words", []) if isinstance(ocr_result, dict) else []
-        # wordsがリストでない場合は空リストに
         if not isinstance(words, list):
             logger.warning(f"単語データがリスト形式ではありません: {type(words)}")
             words = []
@@ -68,226 +63,196 @@ def get_multipage_ocr_results(image_id: str) -> list:
         return []
 
 
-def get_s3_object_bytes(s3_key: str) -> bytes:
-    """S3から画像バイトデータを取得"""
-    try:
-        s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
-        return s3_response['Body'].read()
-    except Exception as e:
-        logger.error(f"S3オブジェクト取得エラー: {s3_key}, {str(e)}")
-        raise
-
-
 # ===== 抽出プロセッサークラス =====
 
 class InformationExtractor(ABC):
-    """情報抽出の基底クラス"""
+    """情報抽出の基底クラス（テンプレートメソッドパターン）"""
 
-    def __init__(self, image_id: str, image_data: dict):
+    def __init__(self, image_id: str):
         self.image_id = image_id
-        self.image_data = image_data
+
+    def extract(self) -> None:
+        """情報抽出を実行（テンプレートメソッド）"""
+        logger.info(f"{self.__class__.__name__} 情報抽出を実行: {self.image_id}")
+
+        try:
+            image_data = get_image(self.image_id)
+            if not image_data:
+                logger.error(f"画像 {self.image_id} が見つかりません")
+                update_image_status(self.image_id, "failed")
+                raise ValueError(f"画像 {self.image_id} が見つかりません")
+
+            app_name = image_data.get("app_name")
+            if not app_name:
+                logger.error(f"app_name not found for image {self.image_id}")
+                raise ValueError(f"app_name not found for image {self.image_id}")
+
+            app_extraction_fields = get_extraction_fields_for_app(app_name)
+            field_names = extract_field_names(app_extraction_fields.get("fields", []))
+            custom_prompt = get_custom_prompt_for_app(app_name)
+
+            logger.info(
+                f"処理アプリ: {app_name}, フィールド数: {len(app_extraction_fields.get('fields', []))}")
+
+            page_images, content_type = self._fetch_images(image_data)
+
+            if settings.ENABLE_OCR:
+                ocr_data = self._get_ocr_data(image_data)
+                messages, system_prompts = self._build_ocr_request(
+                    page_images, content_type, ocr_data, app_extraction_fields, custom_prompt
+                )
+                response = self._call_bedrock(messages, system_prompts)
+                ai_response = parse_converse_response(response)
+                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
+                result = finalize_extraction_result(extracted_info, mapping)
+            else:
+                logger.info("OCR無効: without_ocrモードで情報抽出を実行")
+                messages, system_prompts = self._build_no_ocr_request(
+                    page_images, content_type, app_extraction_fields, field_names, custom_prompt
+                )
+                response = call_bedrock(messages, system_prompts)
+                ai_response = parse_converse_response(response)
+                extracted_info = extract_json_from_response(ai_response)
+                if not extracted_info:
+                    extracted_info = {"error": "Failed to extract JSON from response"}
+                result = finalize_extraction_result(extracted_info)
+                result["mapping"] = {}
+
+            update_extracted_info(
+                self.image_id,
+                result["extracted_info"],
+                result.get("mapping", {}),
+                'completed'
+            )
+            update_image_status(self.image_id, "completed")
+
+            logger.info(f"情報抽出完了: {self.image_id}")
+
+        except Exception as e:
+            logger.error(f"情報抽出エラー ({self.__class__.__name__}): {str(e)}")
+            update_image_status(self.image_id, "failed")
+            raise
 
     @abstractmethod
-    def extract(self) -> None:
-        """情報抽出を実行"""
+    def _fetch_images(self, image_data: dict) -> tuple:
+        """S3から画像データを取得。returns (images, content_type)"""
+        pass
+
+    @abstractmethod
+    def _get_ocr_data(self, image_data: dict):
+        """OCR結果を取得"""
+        pass
+
+    @abstractmethod
+    def _build_ocr_request(self, images, content_type, ocr_data, fields, custom_prompt) -> tuple:
+        """OCR有りのBedrockリクエストを構築"""
+        pass
+
+    @abstractmethod
+    def _build_no_ocr_request(self, images, content_type, fields, field_names, custom_prompt) -> tuple:
+        """OCR無しのBedrockリクエストを構築"""
+        pass
+
+    @abstractmethod
+    def _call_bedrock(self, messages, system_prompts):
+        """Bedrockを呼び出す"""
         pass
 
 
 class MultiImageExtractor(InformationExtractor):
     """複数画像情報抽出プロセッサー"""
 
-    def extract(self) -> None:
-        """複数画像からの情報抽出を実行"""
-        logger.info(f"複数画像での情報抽出を実行: {self.image_id}")
+    def _fetch_images(self, image_data: dict) -> tuple:
+        converted_s3_keys = image_data.get("converted_s3_key", [])
+        if not converted_s3_keys:
+            raise ValueError("変換済み画像が見つかりません")
+        if not isinstance(converted_s3_keys, list):
+            converted_s3_keys = [converted_s3_keys]
 
-        try:
-            image_data = get_image(self.image_id)
-            if not image_data:
-                logger.error(f"画像 {self.image_id} が見つかりません")
-                update_image_status(self.image_id, "failed")
-                raise ValueError(f"画像 {self.image_id} が見つかりません")
+        page_images = []
+        content_type = 'image/jpeg'
+        for s3_key in converted_s3_keys:
+            try:
+                s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
+                image_bytes = s3_response['Body'].read()
+                page_images.append(image_bytes)
+                if len(page_images) == 1:
+                    content_type = s3_response.get('ContentType', 'image/jpeg')
+            except Exception as s3_error:
+                logger.error(f"S3画像取得エラー {s3_key}: {str(s3_error)}")
+                continue
 
-            app_name = image_data.get("app_name")
-            if not app_name:
-                logger.error(f"app_name not found for image {self.image_id}")
-                raise ValueError(f"app_name not found for image {self.image_id}")
-            
-            app_extraction_fields = get_extraction_fields_for_app(app_name)
-            field_names = extract_field_names(app_extraction_fields.get("fields", []))
-            custom_prompt = get_custom_prompt_for_app(app_name)
+        if not page_images:
+            raise ValueError("画像データを取得できませんでした")
+        return page_images, content_type
 
-            logger.info(
-                f"処理アプリ: {app_name}, フィールド数: {len(app_extraction_fields.get('fields', []))}")
+    def _get_ocr_data(self, image_data: dict):
+        ocr_results = get_multipage_ocr_results(self.image_id)
+        if not ocr_results:
+            raise ValueError("OCR結果が見つかりません")
+        return ocr_results
 
-            converted_s3_keys = image_data.get("converted_s3_key", [])
+    def _build_ocr_request(self, images, content_type, ocr_data, fields, custom_prompt) -> tuple:
+        return build_multi_images_with_ocr_request(
+            page_images=images,
+            content_type=content_type,
+            ocr_results=ocr_data,
+            app_extraction_fields=fields,
+            custom_prompt=custom_prompt
+        )
 
-            if not converted_s3_keys:
-                raise ValueError("変換済み画像が見つかりません")
+    def _build_no_ocr_request(self, images, content_type, fields, field_names, custom_prompt) -> tuple:
+        images_data = [{'bytes': img, 'content_type': content_type} for img in images]
+        return build_multi_images_without_ocr_request(
+            images_data=images_data,
+            app_extraction_fields=fields,
+            field_names=field_names,
+            custom_prompt=custom_prompt
+        )
 
-            if not isinstance(converted_s3_keys, list):
-                converted_s3_keys = [converted_s3_keys]
-
-            # S3から画像データを取得（OCR有無に関わらず必要）
-            page_images = []
-            content_type = 'image/jpeg'
-            for s3_key in converted_s3_keys:
-                try:
-                    s3_response = s3_client.get_object(
-                        Bucket=settings.BUCKET_NAME,
-                        Key=s3_key
-                    )
-                    image_bytes = s3_response['Body'].read()
-                    page_images.append(image_bytes)
-                    if len(page_images) == 1:
-                        content_type = s3_response.get(
-                            'ContentType', 'image/jpeg')
-                except Exception as s3_error:
-                    logger.error(f"S3画像取得エラー {s3_key}: {str(s3_error)}")
-                    continue
-
-            if not page_images:
-                raise ValueError("画像データを取得できませんでした")
-
-            if settings.ENABLE_OCR:
-                ocr_results = get_multipage_ocr_results(self.image_id)
-
-                if not ocr_results:
-                    raise ValueError("OCR結果が見つかりません")
-
-                messages, system_prompts = build_multi_images_with_ocr_request(
-                    page_images=page_images,
-                    content_type=content_type,
-                    ocr_results=ocr_results,
-                    app_extraction_fields=app_extraction_fields,
-                    custom_prompt=custom_prompt
-                )
-                response = call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
-                result = finalize_extraction_result(extracted_info, mapping)
-            else:
-                logger.info("OCR無効: without_ocrモードで複数画像情報抽出を実行")
-                images_data = [
-                    {'bytes': img, 'content_type': content_type}
-                    for img in page_images
-                ]
-                messages, system_prompts = build_multi_images_without_ocr_request(
-                    images_data=images_data,
-                    app_extraction_fields=app_extraction_fields,
-                    field_names=field_names,
-                    custom_prompt=custom_prompt
-                )
-                response = call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info = extract_json_from_response(ai_response)
-                if not extracted_info:
-                    extracted_info = {"error": "Failed to extract JSON from response"}
-                result = finalize_extraction_result(extracted_info)
-                result["mapping"] = {}
-
-            update_extracted_info(
-                self.image_id,
-                result["extracted_info"],
-                result.get("mapping", {}),
-                'completed'
-            )
-            update_image_status(self.image_id, "completed")
-
-            logger.info(f"複数画像情報抽出完了: {self.image_id}")
-
-        except Exception as e:
-            logger.error(f"複数画像情報抽出エラー: {str(e)}")
-            update_image_status(self.image_id, "failed")
-            raise
+    def _call_bedrock(self, messages, system_prompts):
+        return call_bedrock(messages, system_prompts)
 
 
 class SingleImageExtractor(InformationExtractor):
     """単一画像情報抽出プロセッサー"""
 
-    def extract(self) -> None:
-        """単一画像からの情報抽出を実行"""
-        logger.info(f"単一画像での情報抽出を実行: {self.image_id}")
+    def _fetch_images(self, image_data: dict) -> tuple:
+        converted_s3_keys = image_data.get("converted_s3_key", [])
+        if not converted_s3_keys:
+            raise ValueError("変換済み画像が見つかりません")
 
-        try:
-            image_data = get_image(self.image_id)
-            if not image_data:
-                logger.error(f"画像 {self.image_id} が見つかりません")
-                update_image_status(self.image_id, "failed")
-                raise ValueError(f"画像 {self.image_id} が見つかりません")
+        s3_key = converted_s3_keys[0] if isinstance(converted_s3_keys, list) else converted_s3_keys
+        if not s3_key:
+            raise ValueError("有効なS3キーが見つかりません")
 
-            app_name = image_data.get("app_name")
-            if not app_name:
-                logger.error(f"app_name not found for image {self.image_id}")
-                raise ValueError(f"app_name not found for image {self.image_id}")
-            
-            app_extraction_fields = get_extraction_fields_for_app(app_name)
-            field_names = extract_field_names(app_extraction_fields.get("fields", []))
-            custom_prompt = get_custom_prompt_for_app(app_name)
+        s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
+        image_bytes = s3_response['Body'].read()
+        content_type = s3_response.get('ContentType', 'image/jpeg')
+        return image_bytes, content_type
 
-            logger.info(
-                f"処理アプリ: {app_name}, フィールド数: {len(app_extraction_fields.get('fields', []))}")
+    def _get_ocr_data(self, image_data: dict):
+        return image_data.get("ocr_result", {})
 
-            converted_s3_keys = image_data.get("converted_s3_key", [])
+    def _build_ocr_request(self, images, content_type, ocr_data, fields, custom_prompt) -> tuple:
+        return build_single_image_with_ocr_request(
+            image_data=images,
+            content_type=content_type,
+            ocr_result=ocr_data,
+            app_extraction_fields=fields,
+            custom_prompt=custom_prompt
+        )
 
-            if not converted_s3_keys:
-                raise ValueError("変換済み画像が見つかりません")
+    def _build_no_ocr_request(self, images, content_type, fields, field_names, custom_prompt) -> tuple:
+        return build_single_image_without_ocr_request(
+            image_bytes=images,
+            app_extraction_fields=fields,
+            field_names=field_names,
+            custom_prompt=custom_prompt
+        )
 
-            s3_key = converted_s3_keys[0] if isinstance(
-                converted_s3_keys, list) else converted_s3_keys
-
-            if not s3_key:
-                raise ValueError("有効なS3キーが見つかりません")
-
-            s3_response = s3_client.get_object(
-                Bucket=settings.BUCKET_NAME,
-                Key=s3_key
-            )
-            image_bytes = s3_response['Body'].read()
-            content_type = s3_response.get('ContentType', 'image/jpeg')
-
-            if settings.ENABLE_OCR:
-                ocr_result = image_data.get("ocr_result", {})
-                messages, system_prompts = build_single_image_with_ocr_request(
-                    image_data=image_bytes,
-                    content_type=content_type,
-                    ocr_result=ocr_result,
-                    app_extraction_fields=app_extraction_fields,
-                    custom_prompt=custom_prompt
-                )
-                response = call_bedrock_with_retry(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
-                result = finalize_extraction_result(extracted_info, mapping)
-            else:
-                logger.info("OCR無効: without_ocrモードで単一画像情報抽出を実行")
-                messages, system_prompts = build_single_image_without_ocr_request(
-                    image_bytes=image_bytes,
-                    app_extraction_fields=app_extraction_fields,
-                    field_names=field_names,
-                    custom_prompt=custom_prompt
-                )
-                response = call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info = extract_json_from_response(ai_response)
-                if not extracted_info:
-                    extracted_info = {"error": "Failed to extract JSON from response"}
-                result = finalize_extraction_result(extracted_info)
-                result["mapping"] = {}
-
-            update_extracted_info(
-                self.image_id,
-                result["extracted_info"],
-                result.get("mapping", {}),
-                'completed'
-            )
-            update_image_status(self.image_id, "completed")
-
-            logger.info(f"単一画像情報抽出完了: {self.image_id}")
-
-        except Exception as e:
-            logger.error(f"単一画像情報抽出エラー: {str(e)}")
-            update_image_status(self.image_id, "failed")
-            raise
+    def _call_bedrock(self, messages, system_prompts):
+        return call_bedrock_with_retry(messages, system_prompts)
 
 
 # ===== サービスクラス =====
@@ -311,7 +276,7 @@ class ExtractionService:
             if not app_name:
                 logger.error(f"app_name not found for image {image_id}")
                 raise ValueError(f"app_name not found for image {image_id}")
-            
+
             app_display_name = get_app_display_name(app_name)
             app_extraction_fields = get_extraction_fields_for_app(app_name)[
                 "fields"]
@@ -408,9 +373,9 @@ class ExtractionService:
         )
 
         if is_multiimage_combined:
-            return MultiImageExtractor(image_id, image_data)
+            return MultiImageExtractor(image_id)
         else:
-            return SingleImageExtractor(image_id, image_data)
+            return SingleImageExtractor(image_id)
 
     async def update_verification_status(self, image_id: str, verification_completed: bool, verified_by: str = None) -> Dict[str, Any]:
         """確認完了ステータスを更新する"""

@@ -47,6 +47,7 @@ function Upload() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isEndpointWarming, setIsEndpointWarming] = useState(false);
+  const warmingPollRef = useRef<NodeJS.Timeout | null>(null);
   // pollingEnabledは使用されているので削除しない
   const [pollingEnabled] = useState(true);
 
@@ -57,6 +58,15 @@ function Upload() {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (warmingPollRef.current) {
+        clearInterval(warmingPollRef.current);
+        warmingPollRef.current = null;
+      }
+    };
   }, []);
 
   // ファイル一覧を取得
@@ -88,17 +98,19 @@ function Upload() {
       if (error.response?.status === 503 && error.response?.data?.detail?.error === 'endpoint_not_ready') {
         setIsEndpointWarming(true);
         setIsProcessing(false);
-        
-        // 10秒ごとにポーリング
-        const pollInterval = setInterval(async () => {
+
+        if (warmingPollRef.current) clearInterval(warmingPollRef.current);
+        warmingPollRef.current = setInterval(async () => {
           try {
             const statusResponse = await api.get('/system/ocr-endpoint-status');
-            
+
             if (statusResponse.data.ready) {
-              clearInterval(pollInterval);
+              if (warmingPollRef.current) {
+                clearInterval(warmingPollRef.current);
+                warmingPollRef.current = null;
+              }
               setIsEndpointWarming(false);
-              
-              // リトライ
+
               const retryResponse = await api.post(`/apps/${appName}/jobs`);
               if (retryResponse.data?.jobId) {
                 fetchFiles();
@@ -108,7 +120,7 @@ function Upload() {
             console.error('ポーリングエラー:', pollError);
           }
         }, 10000);
-        
+
         return;
       }
     } finally {

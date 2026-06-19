@@ -2,8 +2,7 @@ import uuid
 import logging
 import json
 import base64
-from decimal import Decimal
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from repositories import (
     get_images,
@@ -13,10 +12,10 @@ from repositories import (
 from clients import get_inference_component_status, trigger_endpoint_wakeup
 from schemas import OcrResult, OcrResultResponse
 from config import settings
-from background import BackgroundTaskExtension
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response
 from services.pdf_conversion_service import sync_parent_status
+from utils.helpers import float_to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +28,8 @@ class EndpointNotReadyError(Exception):
 class OcrService:
     """OCR処理を管理するサービスクラス"""
 
-    def __init__(self, background_task: Optional[BackgroundTaskExtension] = None):
+    def __init__(self):
         self.enable_ocr = settings.ENABLE_OCR
-        self.background_task = background_task
 
     def get_endpoint_status(self) -> dict:
         """OCR エンドポイントの状態を返す"""
@@ -174,29 +172,17 @@ class OcrService:
     def _process_ocr_individual_page(self, image_id: str, image_data: dict) -> None:
         """個別ページのOCR処理"""
         logger.info(f"個別ページ処理を実行: {image_id}")
-
         s3_key = image_data.get("s3_key")
-        if isinstance(s3_key, list):
-            s3_key = s3_key[0]
-
-        s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
-        image_bytes = s3_response['Body'].read()
-
-        ocr_result = self._invoke_ocr(image_bytes)
-
-        if "error" in ocr_result:
-            logger.error(f"OCR処理でエラーが発生: {ocr_result['error']}")
-            update_image_status(image_id, "failed")
-            return
-
-        logger.info(f"Successfully processed {len(ocr_result.get('words', []))} words for image {image_id}")
-        db_update_ocr_result(image_id, ocr_result, "processing")
+        self._process_ocr_page(image_id, s3_key)
 
     def _process_ocr_single_image(self, image_id: str, image_data: dict) -> None:
         """単一画像のOCR処理"""
         logger.info(f"単一画像処理を実行: {image_id}")
-
         s3_key = image_data.get("converted_s3_key") or image_data.get("s3_key")
+        self._process_ocr_page(image_id, s3_key)
+
+    def _process_ocr_page(self, image_id: str, s3_key) -> None:
+        """単一S3キーに対するOCR処理（共通ロジック）"""
         if isinstance(s3_key, list):
             s3_key = s3_key[0]
 
@@ -244,17 +230,7 @@ class OcrService:
                 updated_page["words"] = page_words
                 updated_pages.append(updated_page)
 
-            def convert_floats_to_decimal(obj):
-                if isinstance(obj, dict):
-                    return {k: convert_floats_to_decimal(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_floats_to_decimal(item) for item in obj]
-                elif isinstance(obj, float):
-                    return Decimal(str(obj))
-                return obj
-
-            # 統合結果を保存（Float型をDecimal型に変換）
-            combined_result = convert_floats_to_decimal({
+            combined_result = float_to_decimal({
                 "words": all_words,
                 "pages": updated_pages,
                 "total_pages": len(ocr_results)

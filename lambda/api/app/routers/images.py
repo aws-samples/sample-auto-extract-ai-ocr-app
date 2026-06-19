@@ -3,20 +3,22 @@
 Upload, OCR, extraction, agent, verification endpoints unified under /images.
 """
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
 import logging
-from typing import Literal, Optional
+from typing import Optional
 
 from schemas import (
     PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest,
     OcrResultResponse,
+    ProcessRequest, VerificationRequest, SuggestionStatusUpdate,
 )
 from services.ocr_service import OcrService, EndpointNotReadyError
 from services.upload_service import UploadService
+from services.image_list_service import ImageListService
 from services.extraction_service import ExtractionService
 from services.agent_service import AgentService
 from dependencies.services import (
-    get_ocr_service, get_upload_service, get_extraction_service, get_agent_service,
+    get_ocr_service, get_upload_service, get_image_list_service,
+    get_extraction_service, get_agent_service,
 )
 from dependencies.auth import (
     require_user, get_cognito_sub, check_usecase_permission,
@@ -54,7 +56,7 @@ async def generate_presigned_url(
 async def list_images(
     app_name: Optional[str] = None,
     user=Depends(require_user),
-    service: UploadService = Depends(get_upload_service),
+    service: ImageListService = Depends(get_image_list_service),
 ):
     """画像一覧を取得する"""
     try:
@@ -73,7 +75,7 @@ async def delete_image(
     image_id: str,
     req: Request,
     user=Depends(RequireImagePermission("viewer")),
-    service: UploadService = Depends(get_upload_service),
+    service: ImageListService = Depends(get_image_list_service),
 ):
     """画像を削除する"""
     try:
@@ -82,6 +84,10 @@ async def delete_image(
         return await service.delete_image(image_id, sub, is_admin)
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
@@ -117,10 +123,6 @@ async def upload_complete(
 
 
 # === Process (Pipeline) ===
-
-class ProcessRequest(BaseModel):
-    start_from: Optional[str] = None
-
 
 @router.post("/{image_id}/process")
 async def process_image(
@@ -236,10 +238,6 @@ async def update_extraction_result(
 
 # === Verification ===
 
-class VerificationRequest(BaseModel):
-    verification_completed: bool = False
-
-
 @router.patch("/{image_id}/verification")
 async def update_verification_status(
     image_id: str,
@@ -258,10 +256,6 @@ async def update_verification_status(
 
 
 # === Agent ===
-
-class SuggestionStatusUpdate(BaseModel):
-    status: Literal["accepted", "rejected"]
-
 
 @router.post("/{image_id}/agent")
 async def start_agent_correction(

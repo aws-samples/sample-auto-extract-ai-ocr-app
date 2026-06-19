@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, FileText, RefreshCw, Pencil, Bot } from "lucide-react";
 import api from "../../services/api";
@@ -85,7 +85,8 @@ function OcrResult() {
   const [showReExtractModal, setShowReExtractModal] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
-  let statusCheckTimer: NodeJS.Timeout | null = null;
+  const statusCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingAttemptRef = useRef(0);
 
   // 現在のページのバウンディングボックスを生成
   const updateBoundingBoxesForCurrentPage = useCallback((pageIndex?: number) => {
@@ -366,31 +367,26 @@ function OcrResult() {
       setVerificationCompleted(response.data.verification_completed || false);
 
       if (response.data.status === "completed") {
-        // ポーリングを停止
-        if (statusCheckTimer) {
-          clearInterval(statusCheckTimer);
-          statusCheckTimer = null;
+        if (statusCheckTimerRef.current) {
+          clearInterval(statusCheckTimerRef.current);
+          statusCheckTimerRef.current = null;
         }
 
-        // 抽出フィールド情報を更新
         if (response.data.fields) {
           setAppFields(response.data.fields);
         }
 
-        // 抽出情報が空でも明示的に設定
         setExtractedInfo(response.data.extracted_info || {});
         if (response.data.mapping) {
           setMapping(response.data.mapping);
         } else {
-          // マッピング情報がない場合はシンプルな推測を試みる
           generateSimpleMapping();
         }
       } else if (response.data.status === "failed") {
         setExtractionStatus("failed");
       } else if (response.data.status === "processing") {
         setExtractionStatus("processing");
-        // ポーリングを開始（まだ開始されていない場合）
-        if (!statusCheckTimer) {
+        if (!statusCheckTimerRef.current) {
           startPolling();
         }
       } else {
@@ -502,36 +498,32 @@ function OcrResult() {
 
   // 抽出ステータスのポーリング
   const startPolling = () => {
-    if (statusCheckTimer) {
-      clearInterval(statusCheckTimer);
+    if (statusCheckTimerRef.current) {
+      clearInterval(statusCheckTimerRef.current);
     }
+    pollingAttemptRef.current = 0;
 
-    statusCheckTimer = setInterval(async () => {
-      setPollingAttemptCount((prev) => prev + 1);
+    statusCheckTimerRef.current = setInterval(async () => {
+      pollingAttemptRef.current += 1;
+      setPollingAttemptCount(pollingAttemptRef.current);
 
       try {
-        // 情報抽出のステータスを確認
         await checkExtractionStatus();
 
-        // タイムアウト処理
-        if (
-          pollingAttemptCount >= MAX_POLLING_ATTEMPTS &&
-          extractionStatus === "processing"
-        ) {
+        if (pollingAttemptRef.current >= MAX_POLLING_ATTEMPTS) {
           console.warn("抽出処理に時間がかかっています。処理は継続中です。");
-          if (statusCheckTimer) {
-            clearInterval(statusCheckTimer);
-            statusCheckTimer = null;
+          if (statusCheckTimerRef.current) {
+            clearInterval(statusCheckTimerRef.current);
+            statusCheckTimerRef.current = null;
           }
         }
       } catch (error) {
         console.error("ステータスチェック中にエラーが発生しました:", error);
-        // エラーが発生しても即座に失敗にはせず、タイムアウトまで継続
-        if (pollingAttemptCount >= MAX_POLLING_ATTEMPTS) {
+        if (pollingAttemptRef.current >= MAX_POLLING_ATTEMPTS) {
           setExtractionStatus("failed");
-          if (statusCheckTimer) {
-            clearInterval(statusCheckTimer);
-            statusCheckTimer = null;
+          if (statusCheckTimerRef.current) {
+            clearInterval(statusCheckTimerRef.current);
+            statusCheckTimerRef.current = null;
           }
         }
       }
@@ -718,22 +710,17 @@ function OcrResult() {
 
       if (status === "completed") {
         setExtractionStatus("completed");
-        // 抽出情報を再取得
         await fetchExtractionInfo();
-        // ポーリングを停止
-        if (statusCheckTimer) {
-          clearInterval(statusCheckTimer);
-          statusCheckTimer = null;
+        if (statusCheckTimerRef.current) {
+          clearInterval(statusCheckTimerRef.current);
+          statusCheckTimerRef.current = null;
         }
-        // 抽出完了後、Step Functions 内で AgentKick が連動して走っているため
-        // Agent 状態を取得・反映する（agent_enabled=false のときは skipped が返る）
         syncAgentAfterExtraction();
       } else if (status === "failed") {
         setExtractionStatus("failed");
-        // ポーリングを停止
-        if (statusCheckTimer) {
-          clearInterval(statusCheckTimer);
-          statusCheckTimer = null;
+        if (statusCheckTimerRef.current) {
+          clearInterval(statusCheckTimerRef.current);
+          statusCheckTimerRef.current = null;
         }
       } else {
         setExtractionStatus("processing");
@@ -883,13 +870,11 @@ function OcrResult() {
 
     // コンポーネントのアンマウント時にクリーンアップ
     return () => {
-      // ステータスチェックタイマーのクリア
-      if (statusCheckTimer) {
-        clearInterval(statusCheckTimer);
-        statusCheckTimer = null;
+      if (statusCheckTimerRef.current) {
+        clearInterval(statusCheckTimerRef.current);
+        statusCheckTimerRef.current = null;
       }
 
-      // オブジェクトURLを解放
       if (imageSrc && imageSrc.startsWith("blob:")) {
         URL.revokeObjectURL(imageSrc);
       }

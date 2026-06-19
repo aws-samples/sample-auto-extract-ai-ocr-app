@@ -111,15 +111,14 @@ class S3SyncService:
             # アップロード完了処理を実行（OCR処理開始）
             upload_service = self._upload_service or UploadService()
             upload_request = UploadCompleteRequest(
-                image_id=image_id,
                 filename=filename,
                 s3_key=destination_key,
                 app_name=app_name,
                 page_processing_mode=page_processing_mode
             )
-            
+
             # 直接アップロードと同じOCR処理フローを実行
-            await upload_service.handle_upload_complete(upload_request)
+            await upload_service.handle_upload_complete(image_id, upload_request)
 
             logger.info(f"Imported S3 file {source_key} as image {image_id} and started processing")
 

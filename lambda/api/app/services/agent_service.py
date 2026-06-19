@@ -1,6 +1,5 @@
 """Service for agent-based OCR correction."""
 
-import asyncio
 import base64
 import json
 import logging
@@ -59,15 +58,6 @@ class AgentService:
         except Exception as e:
             logger.error(f"Error starting agent correction: {e}")
             raise
-    
-    def _process_agent_correction(self, job_id: str, image_id: str):
-        """Process agent correction in background (sync wrapper)
-        
-        Args:
-            job_id: Job ID
-            image_id: Image ID
-        """
-        asyncio.run(self._process_agent_correction_async(job_id, image_id))
     
     async def _process_agent_correction_async(self, job_id: str, image_id: str):
         """Process agent correction in background

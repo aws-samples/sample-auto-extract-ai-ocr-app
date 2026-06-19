@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, FileText, RefreshCw, Pencil, Bot } from "lucide-react";
 import api from "../../services/api";
-import { runAgent as apiRunAgent, getAgentTools, getAgentJobByImage, pollAgentJobStatus, updateSuggestionStatus } from "../../services/ocrApi";
+import { runAgent as apiRunAgent, getAgentToolsForImage, getAgentJobByImage, pollAgentJobStatus, updateSuggestionStatus } from "../../services/ocrApi";
 import { updateVerificationStatus } from "../../services/imageApi";
 import { OcrWord, OcrBoundingBox, OcrResponse, PresignedDownloadUrlResponse } from "../../types/ocr";
 import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
@@ -85,7 +85,8 @@ function OcrResult() {
   const [showReExtractModal, setShowReExtractModal] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
-  let statusCheckTimer: NodeJS.Timeout | null = null;
+  const statusCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingAttemptRef = useRef(0);
 
   // 現在のページのバウンディングボックスを生成
   const updateBoundingBoxesForCurrentPage = useCallback((pageIndex?: number) => {
@@ -250,7 +251,7 @@ function OcrResult() {
       setLoading(true);
 
       // OCR結果を取得
-      const response = await api.get<OcrResponse>(`/ocr/result/${id}`);
+      const response = await api.get<OcrResponse>(`/images/${id}/ocr`);
       const { ocrResult, filename, app_name } = response.data;
       
       // ファイル名を設定
@@ -264,7 +265,7 @@ function OcrResult() {
       // 署名付きURLで画像を取得
       try {
         const urlResponse = await api.get<PresignedDownloadUrlResponse>(
-          `/generate-presigned-download-url/${id}`
+          `/images/${id}/download-url`
         );
         
         if (urlResponse.data.is_multipage && urlResponse.data.presigned_urls) {
@@ -287,11 +288,10 @@ function OcrResult() {
         }
       } catch (error) {
         console.error("署名付きURL取得エラー:", error);
-        // フォールバック: 直接APIエンドポイントを使用
-        setImageSrc(`/image/${id}`);
+        setImageSrc("");
         setIsMultipage(false);
         setTotalPages(1);
-        setImageUrls([{page: 1, url: `/image/${id}`}]);
+        setImageUrls([]);
       }
 
       // OCR結果を設定（OCRが有効な場合のみ）
@@ -335,7 +335,7 @@ function OcrResult() {
 
       // ツール一覧を取得
       try {
-        const toolsResponse = await getAgentTools(id);
+        const toolsResponse = await getAgentToolsForImage(id);
         setTools(toolsResponse.tools || []);
       } catch {
         // Tools fetch failure is non-critical
@@ -353,7 +353,7 @@ function OcrResult() {
     if (!id) return;
 
     try {
-      const response = await api.get<ExtractionResponse>(`/ocr/extract/${id}`);
+      const response = await api.get<ExtractionResponse>(`/images/${id}/extraction`);
 
       // ステータスを明示的に設定
       setExtractionStatus(response.data.status || "pending");
@@ -367,31 +367,26 @@ function OcrResult() {
       setVerificationCompleted(response.data.verification_completed || false);
 
       if (response.data.status === "completed") {
-        // ポーリングを停止
-        if (statusCheckTimer) {
-          clearInterval(statusCheckTimer);
-          statusCheckTimer = null;
+        if (statusCheckTimerRef.current) {
+          clearInterval(statusCheckTimerRef.current);
+          statusCheckTimerRef.current = null;
         }
 
-        // 抽出フィールド情報を更新
         if (response.data.fields) {
           setAppFields(response.data.fields);
         }
 
-        // 抽出情報が空でも明示的に設定
         setExtractedInfo(response.data.extracted_info || {});
         if (response.data.mapping) {
           setMapping(response.data.mapping);
         } else {
-          // マッピング情報がない場合はシンプルな推測を試みる
           generateSimpleMapping();
         }
       } else if (response.data.status === "failed") {
         setExtractionStatus("failed");
       } else if (response.data.status === "processing") {
         setExtractionStatus("processing");
-        // ポーリングを開始（まだ開始されていない場合）
-        if (!statusCheckTimer) {
+        if (!statusCheckTimerRef.current) {
           startPolling();
         }
       } else {
@@ -486,19 +481,15 @@ function OcrResult() {
       setExtractionStatus("processing");
       setPollingAttemptCount(0);
 
-      // 抽出処理を開始
-      const response = await api.post(`/ocr/extract/${id}`, {
-        words: ocrWords,
+      // 抽出処理を開始（パイプラインで実行）
+      await api.post(`/images/${id}/process`, {
+        start_from: "extraction",
       });
 
-      if (response.data.status === "success") {
-        // 抽出画面に切り替え
-        setActiveView("extraction");
-        // ポーリングを開始
-        startPolling();
-      } else {
-        setExtractionStatus("failed");
-      }
+      // 抽出画面に切り替え
+      setActiveView("extraction");
+      // ポーリングを開始
+      startPolling();
     } catch (error) {
       console.error("情報抽出の開始に失敗しました:", error);
       setExtractionStatus("failed");
@@ -507,36 +498,32 @@ function OcrResult() {
 
   // 抽出ステータスのポーリング
   const startPolling = () => {
-    if (statusCheckTimer) {
-      clearInterval(statusCheckTimer);
+    if (statusCheckTimerRef.current) {
+      clearInterval(statusCheckTimerRef.current);
     }
+    pollingAttemptRef.current = 0;
 
-    statusCheckTimer = setInterval(async () => {
-      setPollingAttemptCount((prev) => prev + 1);
+    statusCheckTimerRef.current = setInterval(async () => {
+      pollingAttemptRef.current += 1;
+      setPollingAttemptCount(pollingAttemptRef.current);
 
       try {
-        // 情報抽出のステータスを確認
         await checkExtractionStatus();
 
-        // タイムアウト処理
-        if (
-          pollingAttemptCount >= MAX_POLLING_ATTEMPTS &&
-          extractionStatus === "processing"
-        ) {
+        if (pollingAttemptRef.current >= MAX_POLLING_ATTEMPTS) {
           console.warn("抽出処理に時間がかかっています。処理は継続中です。");
-          if (statusCheckTimer) {
-            clearInterval(statusCheckTimer);
-            statusCheckTimer = null;
+          if (statusCheckTimerRef.current) {
+            clearInterval(statusCheckTimerRef.current);
+            statusCheckTimerRef.current = null;
           }
         }
       } catch (error) {
         console.error("ステータスチェック中にエラーが発生しました:", error);
-        // エラーが発生しても即座に失敗にはせず、タイムアウトまで継続
-        if (pollingAttemptCount >= MAX_POLLING_ATTEMPTS) {
+        if (pollingAttemptRef.current >= MAX_POLLING_ATTEMPTS) {
           setExtractionStatus("failed");
-          if (statusCheckTimer) {
-            clearInterval(statusCheckTimer);
-            statusCheckTimer = null;
+          if (statusCheckTimerRef.current) {
+            clearInterval(statusCheckTimerRef.current);
+            statusCheckTimerRef.current = null;
           }
         }
       }
@@ -548,7 +535,7 @@ function OcrResult() {
     if (!id) return;
 
     try {
-      const response = await api.post(`/ocr/edit/${id}`, {
+      const response = await api.put(`/images/${id}/ocr`, {
         words: words,
       });
 
@@ -569,7 +556,7 @@ function OcrResult() {
       const infoToSave = dataToSave || extractedInfo;
       // 最新の状態を使用してPOSTリクエストを送信
 
-      const response = await api.post(`/ocr/extract/edit/${id}`, {
+      const response = await api.put(`/images/${id}/extraction`, {
         extracted_info: infoToSave,
         mapping: mapping,
       });
@@ -718,27 +705,22 @@ function OcrResult() {
     if (!id) return;
 
     try {
-      const response = await api.get(`/ocr/extract/status/${id}`);
-      const status = response.data.status;
+      const response = await api.get(`/images/${id}/status`);
+      const status = response.data.extraction_status;
 
       if (status === "completed") {
         setExtractionStatus("completed");
-        // 抽出情報を再取得
         await fetchExtractionInfo();
-        // ポーリングを停止
-        if (statusCheckTimer) {
-          clearInterval(statusCheckTimer);
-          statusCheckTimer = null;
+        if (statusCheckTimerRef.current) {
+          clearInterval(statusCheckTimerRef.current);
+          statusCheckTimerRef.current = null;
         }
-        // 抽出完了後、Step Functions 内で AgentKick が連動して走っているため
-        // Agent 状態を取得・反映する（agent_enabled=false のときは skipped が返る）
         syncAgentAfterExtraction();
       } else if (status === "failed") {
         setExtractionStatus("failed");
-        // ポーリングを停止
-        if (statusCheckTimer) {
-          clearInterval(statusCheckTimer);
-          statusCheckTimer = null;
+        if (statusCheckTimerRef.current) {
+          clearInterval(statusCheckTimerRef.current);
+          statusCheckTimerRef.current = null;
         }
       } else {
         setExtractionStatus("processing");
@@ -888,13 +870,11 @@ function OcrResult() {
 
     // コンポーネントのアンマウント時にクリーンアップ
     return () => {
-      // ステータスチェックタイマーのクリア
-      if (statusCheckTimer) {
-        clearInterval(statusCheckTimer);
-        statusCheckTimer = null;
+      if (statusCheckTimerRef.current) {
+        clearInterval(statusCheckTimerRef.current);
+        statusCheckTimerRef.current = null;
       }
 
-      // オブジェクトURLを解放
       if (imageSrc && imageSrc.startsWith("blob:")) {
         URL.revokeObjectURL(imageSrc);
       }
@@ -932,7 +912,7 @@ function OcrResult() {
       showToast("情報抽出を開始しました。", "info");
 
       // 情報抽出のみを実行（OCRスキップ）
-      await api.post(`/ocr/start/image/${id}?skip_ocr=true`);
+      await api.post(`/images/${id}/process`, { start_from: "extraction" });
       
       // 抽出画面に切り替え
       setActiveView("extraction");

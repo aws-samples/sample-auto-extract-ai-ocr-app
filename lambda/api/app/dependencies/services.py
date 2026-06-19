@@ -3,6 +3,7 @@ from fastapi import Request
 
 from services.ocr_service import OcrService
 from services.upload_service import UploadService
+from services.image_list_service import ImageListService
 from services.extraction_service import ExtractionService
 from services.schema_service import SchemaService
 from services.s3_sync_service import S3SyncService
@@ -18,6 +19,10 @@ def get_ocr_service(request: Request) -> OcrService:
 
 def get_upload_service(request: Request) -> UploadService:
     return request.app.state.upload_service
+
+
+def get_image_list_service(request: Request) -> ImageListService:
+    return request.app.state.image_list_service
 
 
 def get_extraction_service(request: Request) -> ExtractionService:

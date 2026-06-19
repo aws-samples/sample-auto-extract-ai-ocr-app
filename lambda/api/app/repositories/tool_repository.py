@@ -164,29 +164,6 @@ def set_usecase_tools(usecase_id: str, tool_ids: list[str]) -> None:
     with_retry(_do)
 
 
-def add_usecase_tool(usecase_id: str, tool_id: str) -> None:
-    """ユースケースにツールを追加"""
-    def _do(conn):
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO usecase_tools (usecase_id, tool_id)
-                VALUES (%s, %s)
-                ON CONFLICT (usecase_id, tool_id) DO NOTHING
-            """, (usecase_id, tool_id))
-    with_retry(_do)
-
-
-def remove_usecase_tool(usecase_id: str, tool_id: str) -> None:
-    """ユースケースからツールを削除"""
-    def _do(conn):
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM usecase_tools WHERE usecase_id = %s AND tool_id = %s",
-                (usecase_id, tool_id),
-            )
-    with_retry(_do)
-
-
 def get_visible_tools_for_user(user_id: str) -> list[dict]:
     """user_tools + group_tools 経由でユーザーが閲覧可能なツールを取得"""
     rows = query("""
@@ -205,12 +182,3 @@ def get_visible_tools_for_user(user_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def delete_tool(tool_id: str) -> None:
-    """ツールを物理削除（関連する権限テーブルも削除）"""
-    def _do(conn):
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM user_tools WHERE tool_id = %s", (tool_id,))
-            cur.execute("DELETE FROM group_tools WHERE tool_id = %s", (tool_id,))
-            cur.execute("DELETE FROM usecase_tools WHERE tool_id = %s", (tool_id,))
-            cur.execute("DELETE FROM tools WHERE id = %s", (tool_id,))
-    with_retry(_do)

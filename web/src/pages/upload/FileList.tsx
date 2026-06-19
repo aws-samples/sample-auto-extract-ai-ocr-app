@@ -265,7 +265,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                         {formatDateTimeJST(file.uploadTime)}
                       </div>
 
-                      <div className="w-28 flex-shrink-0 flex justify-center">
+                      <div className="w-32 flex-shrink-0 flex justify-center">
                         <ProcessStatusBadge status={overallStatus} />
                       </div>
 
@@ -304,7 +304,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                               {formatDateTimeJST(childFile.uploadTime)}
                             </div>
 
-                            <div className="w-28 flex-shrink-0 flex justify-center">
+                            <div className="w-32 flex-shrink-0 flex justify-center">
                               <ProcessStatusBadge
                                 status={childFile.status}
                                 agentStatus={childFile.agentStatus}
@@ -365,7 +365,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                         {formatDateTimeJST(file.uploadTime)}
                       </div>
 
-                      <div className="w-28 flex-shrink-0 flex justify-center">
+                      <div className="w-32 flex-shrink-0 flex justify-center">
                         <ProcessStatusBadge
                           status={file.status}
                           agentStatus={file.agentStatus}

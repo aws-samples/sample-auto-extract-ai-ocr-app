@@ -27,7 +27,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
     setError(null);
     
     try {
-      const response = await api.get(`/s3-sync/${appName}/list`);
+      const response = await api.get(`/apps/${appName}/s3-sync/files`);
       setFiles(response.data.files || []);
     } catch (err: any) {
       console.error('S3ファイル一覧の取得に失敗しました:', err);
@@ -94,7 +94,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
           ...file,
           page_processing_mode: pageProcessingMode
         };
-        await api.post<S3ImportResponse>(`/s3-sync/${appName}/import`, importData);
+        await api.post<S3ImportResponse>(`/apps/${appName}/s3-sync/import`, importData);
       }
       
       await fetchS3Files();

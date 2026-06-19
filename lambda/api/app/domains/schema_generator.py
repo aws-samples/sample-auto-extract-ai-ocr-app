@@ -1,7 +1,9 @@
+import io
 import json
 import logging
 import re
-import imghdr
+
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +19,11 @@ def build_schema_generation_request(image_data, instructions=None):
         tuple: (messages, system_prompts)
     """
     try:
-        # 画像のMIMEタイプを判定
-        image_type = imghdr.what(None, h=image_data)
-        if not image_type:
-            image_type = 'jpeg'  # デフォルト
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            image_type = (img.format or 'JPEG').lower()
+        except Exception:
+            image_type = 'jpeg'
         content_type = f"image/{image_type}"
 
         # システムプロンプト

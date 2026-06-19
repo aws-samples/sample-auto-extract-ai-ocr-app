@@ -2,7 +2,6 @@ import uuid
 import logging
 import json
 import base64
-from decimal import Decimal
 from typing import Optional, Dict, Any
 
 from repositories import (
@@ -17,6 +16,7 @@ from background import BackgroundTaskExtension
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response
 from services.pdf_conversion_service import sync_parent_status
+from utils.helpers import float_to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -232,17 +232,7 @@ class OcrService:
                 updated_page["words"] = page_words
                 updated_pages.append(updated_page)
 
-            def convert_floats_to_decimal(obj):
-                if isinstance(obj, dict):
-                    return {k: convert_floats_to_decimal(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_floats_to_decimal(item) for item in obj]
-                elif isinstance(obj, float):
-                    return Decimal(str(obj))
-                return obj
-
-            # 統合結果を保存（Float型をDecimal型に変換）
-            combined_result = convert_floats_to_decimal({
+            combined_result = float_to_decimal({
                 "words": all_words,
                 "pages": updated_pages,
                 "total_pages": len(ocr_results)

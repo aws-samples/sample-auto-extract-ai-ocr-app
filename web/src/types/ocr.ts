@@ -22,7 +22,6 @@ export interface ImageFile {
 export interface OcrWord {
   content: string;
   rec_score?: number;
-  det_score?: number;
   points?: number[][];
   id?: number;
   page?: number;  // ページ番号を追加（マルチページ対応）
@@ -53,19 +52,6 @@ export interface OcrResponse {
   app_name?: string;
 }
 
-export interface PresignedUrlResponse {
-  presigned_url: string;
-  s3_key: string;
-  image_id: string;
-}
-
-export interface UploadCompleteResponse {
-  status: string;
-  message: string;
-  image_id: string;
-  is_converting?: boolean;
-  page_processing_mode?: 'combined' | 'individual';
-}
 export interface PresignedDownloadUrlResponse {
   presigned_url: string;
   presigned_urls: Array<{

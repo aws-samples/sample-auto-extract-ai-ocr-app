@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-setuptools
 python-multipart
 psycopg2-binary
 boto3

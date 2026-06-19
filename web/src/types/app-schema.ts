@@ -1,9 +1,3 @@
-export interface Column {
-  name: string;
-  display_name: string;
-  type: string;
-}
-
 export interface Field {
   name: string;
   display_name: string;
@@ -30,10 +24,6 @@ export interface AppSchema {
   permission?: string;
 }
 
-export interface AppSchemaResponse {
-  apps: AppSchema[];
-}
-
 export interface S3SyncFile {
   key: string;
   size: number;
@@ -41,14 +31,6 @@ export interface S3SyncFile {
   filename: string;
   bucket?: string;
   is_existing?: boolean;
-}
-
-export interface FolderTree {
-  [key: string]: {
-    type: "folder" | "file";
-    children?: FolderTree;
-    data?: S3SyncFile & { relative_path: string };
-  };
 }
 
 export interface S3ImportResponse {

@@ -82,6 +82,9 @@ class S3SyncService:
             if not all([source_bucket, source_key, filename]):
                 raise ValueError("bucket, key, filename are required")
 
+            if source_bucket != self.sync_bucket_name:
+                raise ValueError("Invalid source bucket")
+
             # 重複チェック
             existing_files = get_images_by_sync_source(filename, source_key, app_name)
             if existing_files:

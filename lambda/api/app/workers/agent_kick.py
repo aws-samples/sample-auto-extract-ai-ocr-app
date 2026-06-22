@@ -14,6 +14,7 @@ from repositories import get_image
 from repositories.image_repository import get_images_table
 from repositories.schema_repository import get_app_schema
 from services.agent_service import AgentService
+from services.pdf_conversion_service import sync_parent_agent_status
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ def agent_kick_handler(event, context):
     if not app_name:
         _update_agent_status(image_id, "skipped")
         _finalize_skipped_job(event)
+        sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "no app_name"}
 
     # Check agent_enabled (avoid unnecessary job creation)
@@ -72,6 +74,7 @@ def agent_kick_handler(event, context):
         logger.info(f"Agent not enabled for app: {app_name}")
         _update_agent_status(image_id, "skipped")
         _finalize_skipped_job(event)
+        sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "agent_enabled=false"}
 
     # Run agent correction directly (not via start_agent_correction to avoid re-invoke)
@@ -82,6 +85,7 @@ def agent_kick_handler(event, context):
         if not job_id:
             job_id = create_agent_job(image_id)
         _update_agent_status(image_id, "processing")
+        sync_parent_agent_status(image_id)
         agent_service = AgentService()
         asyncio.run(agent_service._process_agent_correction_async(job_id, image_id))
         # Re-read job to check actual status (may be failed internally)
@@ -94,13 +98,16 @@ def agent_kick_handler(event, context):
                 UpdateExpression="SET agent_status = :s, agent_suggestions_count = :c",
                 ExpressionAttributeValues={":s": "completed", ":c": suggestions_count},
             )
+            sync_parent_agent_status(image_id)
             return {"image_id": image_id, "status": "completed", "job_id": job_id}
         else:
             _update_agent_status(image_id, "failed")
+            sync_parent_agent_status(image_id)
             return {"image_id": image_id, "status": "failed", "job_id": job_id}
     except Exception as e:
         logger.error(f"Agent invocation failed: {e}")
         _update_agent_status(image_id, "failed")
+        sync_parent_agent_status(image_id)
         if job_id:
             try:
                 update_agent_job(job_id, "failed", error=str(e))

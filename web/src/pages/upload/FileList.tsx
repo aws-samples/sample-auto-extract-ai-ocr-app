@@ -24,6 +24,7 @@ type SortField = 'uploadTime' | 'status' | 'name';
 const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
   const navigate = useNavigate();
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const collapsedByUser = React.useRef<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; imageId: string; imageName: string }>({
     show: false,
     imageId: '',
@@ -56,11 +57,19 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
     });
   }, [files, filter]);
 
-  // 親ドキュメントをデフォルトで開く
+  // 新しく追加された親ドキュメントのみ展開（既存の展開状態は保持）
   React.useEffect(() => {
     const grouped = groupFiles(filteredFiles);
     const parentIds = grouped.parentDocuments.map(p => p.id);
-    setExpandedParents(new Set(parentIds));
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      for (const id of parentIds) {
+        if (!prev.has(id) && !collapsedByUser.current.has(id)) {
+          next.add(id);
+        }
+      }
+      return next;
+    });
   }, [filteredFiles]);
 
   const sortFiles = (fileList: ImageFile[]) => {
@@ -111,8 +120,10 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
     const newExpanded = new Set(expandedParents);
     if (newExpanded.has(parentId)) {
       newExpanded.delete(parentId);
+      collapsedByUser.current.add(parentId);
     } else {
       newExpanded.add(parentId);
+      collapsedByUser.current.delete(parentId);
     }
     setExpandedParents(newExpanded);
   };

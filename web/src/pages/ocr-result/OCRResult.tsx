@@ -81,6 +81,9 @@ function OcrResult() {
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'completed'>('idle');
   const [initialAgentResult, setInitialAgentResult] = useState<any>(null);
   const [agentSuggestions, setAgentSuggestions] = useState<Suggestion[]>([]);
+  const [pendingSuggestionActions, setPendingSuggestionActions] = useState<{ index: number; status: 'accepted' | 'rejected' }[]>([]);
+  const suggestionsSnapshotRef = useRef<Suggestion[]>([]);
+  const extractedInfoSnapshotRef = useRef<Record<string, any>>({});
   const [agentFoundIssues, setAgentFoundIssues] = useState(false);
   const [showReExtractModal, setShowReExtractModal] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
@@ -674,29 +677,37 @@ function OcrResult() {
     }
   }, [initialAgentResult]);
 
-  const handleAcceptSuggestion = async (suggestion: Suggestion) => {
+  const handleAcceptSuggestion = (suggestion: Suggestion) => {
+    setPendingSuggestionActions(prev => [
+      ...prev.filter(a => a.index !== suggestion.index),
+      { index: suggestion.index, status: 'accepted' },
+    ]);
     setAgentSuggestions(current => current.filter(s => s.index !== suggestion.index));
-    if (id) {
-      try {
-        await updateSuggestionStatus(id, suggestion.index, 'accepted');
-      } catch (error) {
-        console.error("提案ステータス更新エラー:", error);
-        setAgentSuggestions(current => [...current, suggestion]);
-        showToast('ステータス更新に失敗しました', 'error');
-      }
-    }
   };
 
-  const handleRejectSuggestion = async (suggestion: Suggestion) => {
+  const handleRejectSuggestion = (suggestion: Suggestion) => {
+    setPendingSuggestionActions(prev => [
+      ...prev.filter(a => a.index !== suggestion.index),
+      { index: suggestion.index, status: 'rejected' },
+    ]);
     setAgentSuggestions(current => current.filter(s => s.index !== suggestion.index));
-    if (id) {
+  };
+
+  const flushPendingSuggestionActions = async () => {
+    if (!id || pendingSuggestionActions.length === 0) return;
+    const actions = [...pendingSuggestionActions];
+    setPendingSuggestionActions([]);
+    let failedCount = 0;
+    for (const action of actions) {
       try {
-        await updateSuggestionStatus(id, suggestion.index, 'rejected');
+        await updateSuggestionStatus(id, action.index, action.status);
       } catch (error) {
         console.error("提案ステータス更新エラー:", error);
-        setAgentSuggestions(current => [...current, suggestion]);
-        showToast('ステータス更新に失敗しました', 'error');
+        failedCount++;
       }
+    }
+    if (failedCount > 0) {
+      showToast(`提案ステータスの更新に${failedCount}件失敗しました`, 'error');
     }
   };
 
@@ -1051,12 +1062,21 @@ function OcrResult() {
               <div className="flex items-center gap-2">
                 {editMode ? (
                   <>
-                    <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>キャンセル</Button>
-                    <Button variant="primary" size="sm" onClick={() => { saveExtractedInfo(); setEditMode(false); }}>保存</Button>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setAgentSuggestions(suggestionsSnapshotRef.current);
+                      setExtractedInfo(extractedInfoSnapshotRef.current);
+                      setPendingSuggestionActions([]);
+                      setEditMode(false);
+                    }}>キャンセル</Button>
+                    <Button variant="primary" size="sm" onClick={async () => {
+                      await saveExtractedInfo();
+                      await flushPendingSuggestionActions();
+                      setEditMode(false);
+                    }}>保存</Button>
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+                    <Button variant="outline" size="sm" onClick={() => { suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}>
                       <Pencil size={14} className="mr-1" />編集
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleReExtract} disabled={loading}>
@@ -1152,7 +1172,7 @@ function OcrResult() {
                     agentSuggestions={agentSuggestions}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
-                    onEnterEditMode={() => setEditMode(true)}
+                    onEnterEditMode={() => { suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}
                   />
                 </>
               )}

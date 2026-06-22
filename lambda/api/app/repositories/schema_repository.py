@@ -177,7 +177,8 @@ def update_app_schema(app_name, app_data):
         # 現在の日時を取得
         current_time = datetime.now().isoformat()
         
-        # 既存のレコードを取得して created_at を保持
+        # 既存のレコードを取得して created_at, custom_prompt を保持
+        existing_item = {}
         try:
             existing_response = schemas_table.get_item(
                 Key={
@@ -185,9 +186,10 @@ def update_app_schema(app_name, app_data):
                     'name': app_name
                 }
             )
-            created_at = existing_response.get('Item', {}).get('created_at', current_time)
-        except:
-            created_at = current_time
+            existing_item = existing_response.get('Item', {})
+        except Exception:
+            pass
+        created_at = existing_item.get('created_at', current_time)
         
         # 新しい構造でスキーマを保存
         item = {
@@ -202,9 +204,11 @@ def update_app_schema(app_name, app_data):
             'updated_at': current_time
         }
 
-        # custom_prompt がある場合のみ追加
+        # custom_prompt: リクエストに含まれていればそれを使い、なければ既存値を保持
         if 'custom_prompt' in app_data and app_data['custom_prompt']:
             item['custom_prompt'] = app_data['custom_prompt']
+        elif existing_item.get('custom_prompt'):
+            item['custom_prompt'] = existing_item['custom_prompt']
         
         schemas_table.put_item(Item=item)
         

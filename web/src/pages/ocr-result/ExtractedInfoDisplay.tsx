@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Field } from '../../types/app-schema';
 import { Suggestion } from '../../types/agent';
 import { Button } from '../../components/ui';
@@ -29,6 +30,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   onEnterEditMode,
 }) => {
   const [editedInfo, setEditedInfo] = useState<Record<string, any>>(extractedInfo);
+  const [expandedSuggestionRow, setExpandedSuggestionRow] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!editMode) {
@@ -44,16 +48,6 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     });
   };
 
-  const updateMapFieldValue = (fieldName: string, subFieldName: string, value: any) => {
-    setEditedInfo(prev => {
-      const next = {
-        ...prev,
-        [fieldName]: { ...(prev[fieldName] || {}), [subFieldName]: value }
-      };
-      onUpdateExtractedInfo(next);
-      return next;
-    });
-  };
 
   const updateListItemProperty = (fieldName: string, itemIndex: number, propertyName: string, value: any) => {
     setEditedInfo(prev => {
@@ -65,19 +59,42 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     });
   };
 
+  const setNestedValue = (obj: any, path: string, value: any): any => {
+    const tokens: (string | number)[] = [];
+    const re = /(\w+)|\[(\d+)\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(path)) !== null) {
+      tokens.push(m[2] !== undefined ? parseInt(m[2], 10) : m[1]);
+    }
+    if (tokens.length === 0) return obj;
+
+    const root = Array.isArray(obj) ? [...obj] : { ...obj };
+    let cur: any = root;
+    for (let i = 0; i < tokens.length - 1; i++) {
+      const key = tokens[i];
+      const nextKey = tokens[i + 1];
+      const nextIsArray = typeof nextKey === 'number';
+      if (Array.isArray(cur[key])) {
+        cur[key] = [...cur[key]];
+      } else if (cur[key] && typeof cur[key] === 'object') {
+        cur[key] = { ...cur[key] };
+      } else {
+        cur[key] = nextIsArray ? [] : {};
+      }
+      cur = cur[key];
+    }
+    cur[tokens[tokens.length - 1]] = value;
+    return root;
+  };
+
   const handleAcceptSuggestion = (suggestion: Suggestion) => {
     if (!editMode && onEnterEditMode) {
       onEnterEditMode();
     }
-    let newInfo = { ...editedInfo };
-    const fieldPath = suggestion.field.split('.');
-    if (fieldPath.length === 1) {
-      newInfo[fieldPath[0]] = suggestion.suggested_value;
-    } else if (fieldPath.length === 2) {
-      newInfo[fieldPath[0]] = { ...(newInfo[fieldPath[0]] || {}), [fieldPath[1]]: suggestion.suggested_value };
-    }
+    const newInfo = setNestedValue(editedInfo, suggestion.field, suggestion.suggested_value);
     setEditedInfo(newInfo);
     onUpdateExtractedInfo(newInfo);
+    setExpandedSuggestionRow(null);
     onAcceptSuggestion?.(suggestion);
   };
 
@@ -85,10 +102,18 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     if (!editMode && onEnterEditMode) {
       onEnterEditMode();
     }
+    setExpandedSuggestionRow(null);
     onRejectSuggestion?.(suggestion);
   };
 
-  const getSuggestionForField = (fieldName: string) => externalSuggestions.find(s => s.field === fieldName);
+  const getSuggestionForField = (fieldName: string) =>
+    externalSuggestions.find(s => s.field === fieldName);
+
+  const getSuggestionsForListRow = (listFieldName: string, rowIndex: number) =>
+    externalSuggestions.filter(s => {
+      const prefix = `${listFieldName}[${rowIndex}]`;
+      return s.field === prefix || s.field.startsWith(`${prefix}.`);
+    });
 
   const renderSuggestion = (suggestion: Suggestion) => (
     <div className="mt-2 p-3 bg-warning-light border border-warning-border rounded">
@@ -137,15 +162,36 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     );
   };
 
-  const renderMapField = (field: Field) => {
+  const getValueAtPath = (path: string): any => {
+    const source = editMode ? editedInfo : extractedInfo;
+    return path.split('.').reduce((cur, key) => cur?.[key], source);
+  };
+
+  const setValueAtPath = (path: string, value: any) => {
+    const newInfo = setNestedValue(editedInfo, path, value);
+    setEditedInfo(newInfo);
+    onUpdateExtractedInfo(newInfo);
+  };
+
+  const renderMapField = (field: Field, parentPath?: string) => {
     if (!field.fields) return null;
-    const mapValue = editMode ? editedInfo[field.name] || {} : extractedInfo[field.name] || {};
+    const basePath = parentPath ? `${parentPath}.${field.name}` : field.name;
+    const mapValue = getValueAtPath(basePath) || {};
+
     return (
       <div key={field.name} className="mb-6">
         <h3 className="text-lg font-medium mb-2">{field.display_name}</h3>
         <div className="pl-4 border-l-2 border-neutral-200 space-y-3">
           {field.fields.map(subField => {
-            const fieldPath = `${field.name}.${subField.name}`;
+            const fieldPath = `${basePath}.${subField.name}`;
+
+            if (subField.type === 'map' && subField.fields) {
+              return renderMapField(subField, basePath);
+            }
+            if (subField.type === 'list' && subField.items) {
+              return renderNestedListField(subField, basePath);
+            }
+
             const suggestion = getSuggestionForField(fieldPath);
             return (
               <div key={subField.name} className="mb-3">
@@ -158,7 +204,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                   <input
                     type="text"
                     value={mapValue[subField.name] || ''}
-                    onChange={(e) => updateMapFieldValue(field.name, subField.name, e.target.value)}
+                    onChange={(e) => setValueAtPath(fieldPath, e.target.value)}
                     onFocus={() => onHighlightField(fieldPath, true)}
                     className="w-full p-2 border border-neutral-300 rounded"
                   />
@@ -179,62 +225,171 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
     );
   };
 
+  const renderNestedListField = (field: Field, parentPath: string) => {
+    if (!field.items) return null;
+    const basePath = `${parentPath}.${field.name}`;
+    const listData = getValueAtPath(basePath) || [];
+
+    return (
+      <div key={field.name} className="mb-4">
+        <label className="block text-sm font-medium text-neutral-700 mb-1">{field.display_name}</label>
+        <ul className="list-disc pl-5">
+          {listData.map((item: any, i: number) => (
+            <li key={i} className="mb-1">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={item || ''}
+                  onChange={(e) => {
+                    const updated = [...listData];
+                    updated[i] = e.target.value;
+                    setValueAtPath(basePath, updated);
+                  }}
+                  className="w-full p-1 border border-neutral-300 rounded text-sm"
+                />
+              ) : (
+                <span className="text-sm">{item || ''}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
   const renderListField = (field: Field) => {
     if (!field.items) return null;
     const listData = editMode ? editedInfo[field.name] || [] : extractedInfo[field.name] || [];
 
     if (field.items.type === 'map' && field.items.fields) {
+      const itemFields = field.items.fields;
+      const colCount = itemFields.length;
+
       return (
         <div key={field.name} className="mb-6">
           <h3 className="text-lg font-medium mb-2">{field.display_name}</h3>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full table-fixed divide-y divide-gray-200">
+              <colgroup>
+                {itemFields.map(itemField => {
+                  const name = itemField.name.toLowerCase();
+                  let width: string;
+                  if (name === 'no' || name === 'number' || name === 'index') {
+                    width = '5%';
+                  } else if (name === 'quantity' || name === '数量' || name.includes('qty')) {
+                    width = '8%';
+                  } else if (name === 'unit' || name === '単位') {
+                    width = '7%';
+                  } else if (name.includes('price') || name.includes('単価') || name.includes('amount') || name.includes('金額')) {
+                    width = '13%';
+                  } else if (name.includes('description') || name.includes('項目') || name.includes('item') || name.includes('name')) {
+                    width = '34%';
+                  } else {
+                    width = `${Math.floor(60 / itemFields.length)}%`;
+                  }
+                  return <col key={itemField.name} style={{ width }} />;
+                })}
+              </colgroup>
               <thead className="bg-neutral-50">
                 <tr>
-                  {field.items.fields.map(itemField => (
-                    <th key={itemField.name} className={`text-left text-xs font-medium text-neutral-500 uppercase tracking-wider ${editMode ? 'px-3 py-2' : 'px-6 py-3'}`}>
+                  {itemFields.map(itemField => (
+                    <th key={itemField.name} className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
                       {itemField.display_name}
                     </th>
                   ))}
-                  {editMode && (
-                    <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">操作</th>
-                  )}
                 </tr>
               </thead>
               <tbody className="bg-bg divide-y divide-gray-200">
-                {listData.map((item: any, itemIndex: number) => (
-                  <tr key={itemIndex}>
-                    {field.items!.fields!.map(itemField => (
-                      <td key={itemField.name} className={editMode ? "px-3 py-2" : "px-6 py-4 whitespace-nowrap"}>
-                        {editMode ? (
-                          <input
-                            type="text"
-                            value={item[itemField.name] || ''}
-                            onChange={(e) => updateListItemProperty(field.name, itemIndex, itemField.name, e.target.value)}
-                            onFocus={() => onHighlightCell(field.name, itemIndex, itemField.name)}
-                            className="w-full p-1 border border-neutral-300 rounded"
-                          />
-                        ) : (
-                          <div
-                            className="text-sm text-neutral-900 cursor-pointer hover:bg-info-light p-1 rounded"
-                            onClick={() => onHighlightCell(field.name, itemIndex, itemField.name)}
-                          >
-                            {item[itemField.name] || ''}
-                          </div>
-                        )}
-                      </td>
-                    ))}
-                    {editMode && (
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <button type="button" onClick={() => {
-                          const updated = [...listData];
-                          updated.splice(itemIndex, 1);
-                          updateFieldValue(field.name, updated);
-                        }} className="text-danger hover:text-danger-text">削除</button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                {listData.map((item: any, itemIndex: number) => {
+                  const rowSuggestions = getSuggestionsForListRow(field.name, itemIndex);
+                  const rowKey = `${field.name}[${itemIndex}]`;
+                  const isExpanded = expandedSuggestionRow === rowKey;
+
+                  return (
+                    <React.Fragment key={itemIndex}>
+                      <tr className={`group ${rowSuggestions.length > 0 ? 'bg-warning-light/30' : ''}`}>
+                        {itemFields.map((itemField, colIdx) => {
+                          const cellPath = `${field.name}[${itemIndex}].${itemField.name}`;
+                          const cellSuggestion = getSuggestionForField(cellPath);
+                          const isEditing = editingCell === cellPath;
+                          const isLastCol = colIdx === itemFields.length - 1;
+
+                          return (
+                            <td key={itemField.name} className="px-3 py-1.5 relative">
+                              {editMode && isEditing ? (
+                                <input
+                                  ref={editInputRef}
+                                  type="text"
+                                  value={item[itemField.name] || ''}
+                                  onChange={(e) => updateListItemProperty(field.name, itemIndex, itemField.name, e.target.value)}
+                                  onFocus={() => onHighlightCell(field.name, itemIndex, itemField.name)}
+                                  onBlur={() => setEditingCell(null)}
+                                  onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setEditingCell(null); }}
+                                  className={`w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-info ${cellSuggestion ? 'border-warning-border bg-warning-light/50' : 'border-neutral-300'}`}
+                                />
+                              ) : (
+                                <div
+                                  className={`text-sm text-neutral-900 px-2 py-1 rounded break-words cursor-pointer ${cellSuggestion ? 'text-warning-text font-medium hover:bg-warning-light/50' : 'hover:bg-info-light'}`}
+                                  onClick={() => {
+                                    onHighlightCell(field.name, itemIndex, itemField.name);
+                                    if (editMode) {
+                                      setEditingCell(cellPath);
+                                      setTimeout(() => editInputRef.current?.focus(), 0);
+                                    }
+                                    if (rowSuggestions.length > 0) {
+                                      setExpandedSuggestionRow(isExpanded ? null : rowKey);
+                                    }
+                                  }}
+                                >
+                                  {item[itemField.name] || <span className="text-neutral-400">-</span>}
+                                  {cellSuggestion && <span className="ml-1">⚠</span>}
+                                </div>
+                              )}
+                              {editMode && isLastCol && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const updated = [...listData];
+                                    updated.splice(itemIndex, 1);
+                                    updateFieldValue(field.name, updated);
+                                  }}
+                                  className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-danger p-1"
+                                  title="行を削除"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      {isExpanded && rowSuggestions.length > 0 && (
+                        <tr>
+                          <td colSpan={colCount} className="px-3 py-2 bg-warning-light/20">
+                            <div className="space-y-2">
+                              {rowSuggestions.map((suggestion, i) => (
+                                <div key={i} className="p-3 bg-warning-light border border-warning-border rounded">
+                                  <div className="text-sm mb-2">
+                                    <div className="mb-1">{suggestion.reason}</div>
+                                    <div className="text-xs text-neutral-600">
+                                      「{suggestion.original_value}」→「{suggestion.suggested_value}」
+                                      {suggestion.tool_used && <span className="ml-2">({suggestion.tool_used})</span>}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button variant="primary" size="sm" onClick={() => handleAcceptSuggestion(suggestion)}>採用する</Button>
+                                    <Button variant="outline" size="sm" onClick={() => handleRejectSuggestion(suggestion)}>却下</Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -243,7 +398,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
               const newItem: Record<string, string> = {};
               field.items!.fields!.forEach(f => { newItem[f.name] = ''; });
               updateFieldValue(field.name, [...listData, newItem]);
-            }} className="mt-2 text-info hover:text-info-text">+ 行を追加</button>
+            }} className="mt-2 text-info hover:text-info-text text-sm">+ 行を追加</button>
           )}
         </div>
       );

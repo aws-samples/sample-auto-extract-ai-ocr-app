@@ -192,9 +192,7 @@ class OcrService:
         ocr_result = self._invoke_ocr(image_bytes)
 
         if "error" in ocr_result:
-            logger.error(f"OCR処理でエラーが発生: {ocr_result['error']}")
-            update_image_status(image_id, "failed")
-            return
+            raise RuntimeError(f"OCR処理でエラーが発生: {ocr_result['error']}")
 
         logger.info(f"Successfully processed {len(ocr_result.get('words', []))} words for image {image_id}")
         db_update_ocr_result(image_id, ocr_result, "processing")
@@ -277,14 +275,20 @@ class OcrService:
                 update_image_status(img['id'], 'processing', job_id)
 
             # Step Functions起動
-            execution_response = sfn_client.start_execution(
-                stateMachineArn=settings.STATE_MACHINE_ARN,
-                name=f"ocr-job-{job_id}",
-                input=json.dumps({
-                    'job_id': job_id,
-                    'images': [{'image_id': img['id']} for img in pending_images]
-                })
-            )
+            try:
+                execution_response = sfn_client.start_execution(
+                    stateMachineArn=settings.STATE_MACHINE_ARN,
+                    name=f"ocr-job-{job_id}",
+                    input=json.dumps({
+                        'job_id': job_id,
+                        'images': [{'image_id': img['id']} for img in pending_images]
+                    })
+                )
+            except Exception as sfn_error:
+                logger.error(f"Step Functions start failed, reverting image statuses: {sfn_error}")
+                for img in pending_images:
+                    update_image_status(img['id'], 'pending')
+                raise
 
             logger.info(f"Started Step Functions execution: {execution_response['executionArn']}")
 

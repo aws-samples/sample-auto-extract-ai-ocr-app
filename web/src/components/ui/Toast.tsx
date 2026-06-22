@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface ToastProps {
   message: string;
@@ -8,22 +8,25 @@ interface ToastProps {
   duration?: number;
 }
 
-const Toast: React.FC<ToastProps> = ({ 
-  message, 
-  type = 'info', 
-  show, 
-  onClose, 
-  duration = 3000 
+const Toast: React.FC<ToastProps> = ({
+  message,
+  type = 'info',
+  show,
+  onClose,
+  duration = 3000
 }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (show) {
       const timer = setTimeout(() => {
-        onClose();
+        onCloseRef.current();
       }, duration);
-      
+
       return () => clearTimeout(timer);
     }
-  }, [show, duration, onClose]);
+  }, [show, duration]);
 
   if (!show) return null;
 

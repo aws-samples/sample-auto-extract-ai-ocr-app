@@ -21,7 +21,7 @@ from repositories import (
     create_individual_page_record, get_app_input_methods,
     get_children_by_parent_id,
 )
-from domains.image_status import determine_parent_status
+from domains.image_status import determine_parent_status, determine_parent_agent_status
 from utils.helpers import resize_image
 
 logger = logging.getLogger(__name__)
@@ -220,3 +220,29 @@ def sync_parent_status(image_id: str) -> None:
 
     except Exception as e:
         logger.error(f"親ステータス更新エラー: {str(e)}")
+
+
+def sync_parent_agent_status(image_id: str) -> None:
+    """子ページの agent_status 変更後に親ドキュメントの agent_status を連動更新する"""
+    try:
+        image_data = get_image(image_id)
+        if not image_data or not image_data.get("parent_document_id"):
+            return
+
+        parent_id = image_data["parent_document_id"]
+        children = get_children_by_parent_id(parent_id)
+        new_agent_status = determine_parent_agent_status(children)
+
+        parent_data = get_image(parent_id)
+        current_agent_status = parent_data.get("agent_status") or "idle" if parent_data else "idle"
+        if current_agent_status != new_agent_status:
+            from repositories.image_repository import get_images_table
+            get_images_table().update_item(
+                Key={"id": parent_id},
+                UpdateExpression="SET agent_status = :s",
+                ExpressionAttributeValues={":s": new_agent_status},
+            )
+            logger.info(f"親ドキュメント agent_status 更新: {parent_id} -> {new_agent_status}")
+
+    except Exception as e:
+        logger.error(f"親 agent_status 更新エラー: {str(e)}")

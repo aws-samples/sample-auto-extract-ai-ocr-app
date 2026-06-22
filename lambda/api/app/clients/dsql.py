@@ -12,19 +12,30 @@ logger = logging.getLogger(__name__)
 DSQL_ENDPOINT = os.environ.get("DSQL_ENDPOINT", "")
 DSQL_REGION = os.environ.get("DSQL_REGION", "")
 MAX_RETRIES = 3
+TOKEN_REFRESH_SECONDS = 10 * 60  # 10分で再接続（token有効期限15分の余裕）
 
 _conn = None
+_conn_created_at = 0.0
 
 
 def get_connection():
-    """DSQL 接続を取得（再利用）"""
-    global _conn
-    if _conn and not _conn.closed:
+    """DSQL 接続を取得（再利用、token期限前に再接続）"""
+    global _conn, _conn_created_at
+
+    token_expired = (time.time() - _conn_created_at) >= TOKEN_REFRESH_SECONDS
+
+    if _conn and not _conn.closed and not token_expired:
         try:
             _conn.cursor().execute("SELECT 1")
             return _conn
         except Exception:
             _conn = None
+
+    if _conn and not _conn.closed:
+        try:
+            _conn.close()
+        except Exception:
+            pass
 
     client = boto3.client("dsql", region_name=DSQL_REGION)
     token = client.generate_db_connect_admin_auth_token(DSQL_ENDPOINT, DSQL_REGION)
@@ -37,6 +48,7 @@ def get_connection():
         sslmode="require",
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
+    _conn_created_at = time.time()
     return _conn
 
 

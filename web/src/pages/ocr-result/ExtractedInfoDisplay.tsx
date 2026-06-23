@@ -151,10 +151,10 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
           />
         ) : (
           <div
-            className="p-2 bg-neutral-50 border border-neutral-200 rounded cursor-pointer hover:bg-neutral-100"
+            className="p-2 bg-neutral-50 border border-neutral-200 rounded cursor-pointer hover:bg-neutral-100 min-h-[2.5rem]"
             onClick={() => onHighlightField(field.name, true)}
           >
-            {value || '(抽出されませんでした)'}
+            {value || ''}
           </div>
         )}
         {suggestion && renderSuggestion(suggestion)}
@@ -210,10 +210,10 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                   />
                 ) : (
                   <div
-                    className="p-2 bg-neutral-50 border border-neutral-200 rounded cursor-pointer hover:bg-neutral-100"
+                    className="p-2 bg-neutral-50 border border-neutral-200 rounded cursor-pointer hover:bg-neutral-100 min-h-[2.5rem]"
                     onClick={() => onHighlightField(fieldPath, true)}
                   >
-                    {mapValue[subField.name] || '(抽出されませんでした)'}
+                    {mapValue[subField.name] || ''}
                   </div>
                 )}
                 {suggestion && renderSuggestion(suggestion)}
@@ -341,7 +341,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                                     }
                                   }}
                                 >
-                                  {item[itemField.name] || <span className="text-neutral-400">-</span>}
+                                  {item[itemField.name] || ''}
                                   {cellSuggestion && <span className="ml-1">⚠</span>}
                                 </div>
                               )}

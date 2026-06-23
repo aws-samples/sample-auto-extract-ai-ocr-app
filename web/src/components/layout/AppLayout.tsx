@@ -18,7 +18,7 @@ export function AppLayout() {
         style={{ position: 'sticky', top: 0, zIndex: 1000 }}
       >
         <div className="flex items-center gap-2">
-          <Link to="/" className="font-semibold text-sm hover:text-neutral-200">OCR App</Link>
+          <Link to="/" className="font-semibold text-sm hover:text-neutral-200">AutoExtract</Link>
           {currentAppName && (
             <>
               <span className="text-neutral-300 text-sm">/</span>

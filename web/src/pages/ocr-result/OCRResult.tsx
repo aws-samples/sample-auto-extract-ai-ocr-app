@@ -1058,6 +1058,13 @@ function OcrResult() {
 
           <div className={styles.header}>
             <h2 className={styles.title}>{currentViewTitle}</h2>
+            {activeView === "ocr" && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => changeView("extraction")}>
+                  <ArrowLeft size={14} className="mr-1" />抽出結果
+                </Button>
+              </div>
+            )}
             {activeView === "extraction" && extractionStatus === "completed" && (
               <div className="flex items-center gap-2">
                 {editMode ? (
@@ -1113,11 +1120,6 @@ function OcrResult() {
               {isOcrEnabled() ? (
                 ocrWords.length > 0 ? (
                   <>
-                    <div className="mb-4 p-2">
-                      <Button variant="secondary" onClick={() => changeView("extraction")}>
-                        抽出画面へ戻る
-                      </Button>
-                    </div>
                     <OcrResultEditor
                       ocrResults={ocrWords}
                       selectedIndex={selectedIndex}

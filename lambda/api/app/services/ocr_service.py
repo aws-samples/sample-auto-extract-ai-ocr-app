@@ -15,7 +15,7 @@ from config import settings
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response
 from services.pdf_conversion_service import sync_parent_status
-from utils.helpers import float_to_decimal
+from utils.helpers import float_to_decimal, compress_image_for_payload
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ class OcrService:
             raise ValueError("SageMaker endpoint not configured")
 
         try:
+            image_data = compress_image_for_payload(image_data)
             image_base64 = base64.b64encode(image_data).decode("utf-8")
             response = sagemaker_runtime_client.invoke_endpoint(
                 EndpointName=settings.SAGEMAKER_ENDPOINT_NAME,

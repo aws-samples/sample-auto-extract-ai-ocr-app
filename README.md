@@ -74,12 +74,16 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 
 `lib/parameters.ts` の `modelId` と `modelRegion` を変更してください。モデルの ID は [Amazon Bedrock でサポートされている基盤モデル](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/models-supported.html) を参照してください。また、使用するモデルを変更する場合は、モデルアクセスを有効化する必要があります。
 
-#### OCR エンジンへの変更(PaddleOCR or DeepSeek OCR)
+#### OCR エンジンの変更
 
 `lib/parameters.ts` の `ocrEngine` を変更してください。
 
-- `paddle`: PaddleOCR（デフォルト）
-- `deepseek`: DeepSeek OCR
+- `paddle`: PaddleOCR（デフォルト）— 自前コンテナ、ゼロスケール対応
+- `deepseek`: DeepSeek OCR — 自前コンテナ、ゼロスケール対応
+- `yomitoku-mp`: Yomitoku Pro（AWS Marketplace）— 高精度日本語 OCR
+
+> [!Note]
+> OCR エンジンを切り替える際、既存のエンドポイントと新しいエンドポイントで InferenceComponent の有無が異なる場合（例: `paddle` → `yomitoku-mp`）、インプレース更新ができません。一度 `enableOcr: false` でデプロイしてから `enableOcr: true` に戻して再デプロイしてください。
 
 ### CDK による AWS リソースのデプロイ
 
@@ -149,15 +153,28 @@ cdk destroy
 - `sagemakerZeroScale`: ゼロスケーリング機能の有効/無効（デフォルト: `true`）
 - `sagemakerScaleInCooldownSeconds`: スケールダウンまでの待機時間（秒）（デフォルト: `3600` = 1時間）
 
-## 高精度日本語 OCR エンジンへの変更
+## 高精度日本語 OCR エンジン（Yomitoku）
 
-デフォルトでは OCR エンジンとして PaddleOCR を利用していますが、高精度の日本語 OCR エンジン「Yomitoku」に切り替えることも可能です。Yomitoku の場合は、[AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-64qkuwrqi4lhi) からサブスクライブした後、利用することが可能です。利用方法としては、[ocr.py](lambda/api/app/ocr.py#L36) における SageMaker Endpoint の呼び出しにおいて、Yomitoku の SageMaker Endpoint を指定します。また、[Inference Component](lambda/api/app/ocr.py#L40) の記述をコメントアウトする必要があります。DeepSeek OCR に切り替えたい場合は、[OCR エンジンへの変更(PaddleOCR or DeepSeek OCR)](#ocr-エンジンへの変更paddleocr-or-deepseek-ocr) をご参照ください。
+デフォルトでは OCR エンジンとして PaddleOCR を利用していますが、高精度の日本語 OCR エンジン「Yomitoku Pro」に切り替えることが可能です。
 
-また、GitHub で公開されている [Yomitoku](https://github.com/kotaro-kinoshita/yomitoku) を利用して、本サンプルを動作させることも可能です。実装例については[こちら](https://github.com/gteu/sample-auto-extract-ai-ocr-app)を参照してください。
+### AWS Marketplace 版（yomitoku-mp）
+
+[AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-64qkuwrqi4lhi) からサブスクライブ後、`lib/parameters.ts` で以下を設定するだけで利用できます。
+
+```typescript
+ocrEngine: "yomitoku-mp",
+marketplaceModelPackageArn: "arn:aws:sagemaker:<region>:<account>:model-package/yomitoku-pro-document-analyzer-...",
+sagemakerZeroScale: false, // Marketplace モデルはゼロスケール非対応
+```
+
+Marketplace 版は InferenceComponent を使用しないため、ゼロスケーリングには対応していません。エンドポイントは常時起動（ml.g5.xlarge: 約 $1.7/h）となります。
+
+### OSS 版（yomitoku）
+
+GitHub で公開されている [Yomitoku](https://github.com/kotaro-kinoshita/yomitoku) を利用した実装例は[こちら](https://github.com/gteu/sample-auto-extract-ai-ocr-app)を参照してください。
 
 > [!Warning]
->
-> GitHub 版の Yomitoku は CC BY-NC-SA 4.0 ライセンスが適用されます（[詳細](https://github.com/kotaro-kinoshita/yomitoku?tab=readme-ov-file#license)）。このライセンスでは商用利用が制限されているため、ご注意ください。
+> OSS 版の Yomitoku は CC BY-NC-SA 4.0 ライセンスが適用されます（[詳細](https://github.com/kotaro-kinoshita/yomitoku?tab=readme-ov-file#license)）。商用利用が制限されているためご注意ください。
 
 ## AI Agent による情報検証機能（Experimental）
 

@@ -18,6 +18,7 @@ export interface StepFunctionsProps {
   schemasTable: cdk.aws_dynamodb.Table;
   documentBucket: cdk.aws_s3.Bucket;
   enableOcr: boolean;
+  ocrEngine?: string;
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
   modelId: string;
@@ -55,6 +56,7 @@ export class StepFunctions extends Construct {
         ENABLE_OCR: props.enableOcr.toString(),
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || '',
         SAGEMAKER_INFERENCE_COMPONENT_NAME: props.sagemakerInferenceComponentName || '',
+        OCR_ENGINE: props.ocrEngine || 'paddle',
       },
     });
     

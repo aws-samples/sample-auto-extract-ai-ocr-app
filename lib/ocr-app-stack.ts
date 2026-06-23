@@ -50,6 +50,7 @@ export class OcrAppStack extends cdk.Stack {
         enableZeroScale: p.sagemakerZeroScale,
         scaleInCooldownSeconds: p.sagemakerScaleInCooldownSeconds,
         ocrEngine: p.ocrEngine,
+        marketplaceModelPackageArn: p.marketplaceModelPackageArn,
       });
       ocrEndpoint = ocr;
     }
@@ -75,6 +76,7 @@ export class OcrAppStack extends cdk.Stack {
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.client.userPoolClientId,
       enableOcr: p.enableOcr,
+      ocrEngine: p.ocrEngine,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
       agentRuntimeArn: agent?.runtimeArn,
@@ -91,6 +93,7 @@ export class OcrAppStack extends cdk.Stack {
       schemasTable: database.schemasTable,
       documentBucket: api.documentBucket,
       enableOcr: p.enableOcr,
+      ocrEngine: p.ocrEngine,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
       modelId: p.modelId,

@@ -26,6 +26,7 @@ class Settings:
         "SAGEMAKER_ENDPOINT_NAME", "")
     SAGEMAKER_INFERENCE_COMPONENT_NAME: str = os.getenv(
         "SAGEMAKER_INFERENCE_COMPONENT_NAME", "")
+    OCR_ENGINE: str = os.getenv("OCR_ENGINE", "paddle")
 
     # API設定
     API_BASE_URL: str = os.getenv("API_BASE_URL", "")

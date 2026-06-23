@@ -92,6 +92,16 @@ def get_inference_component_status(component_name: str) -> dict:
     }
 
 
+def get_endpoint_status_direct(endpoint_name: str) -> dict:
+    """InferenceComponent を使わないエンドポイントの状態取得（Marketplace モデル用）"""
+    response = sagemaker_client.describe_endpoint(EndpointName=endpoint_name)
+    status = response['EndpointStatus']
+    return {
+        'ready': status == 'InService',
+        'status': status.lower(),
+    }
+
+
 def trigger_endpoint_wakeup(endpoint_name: str, component_name: str):
     """エンドポイントのスケールアウトをトリガー（ダミーリクエスト送信）"""
     try:

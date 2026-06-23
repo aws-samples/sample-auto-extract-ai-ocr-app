@@ -44,3 +44,30 @@ def parse_ocr_response(response_body: dict) -> dict:
         "words": words,
         "word_count": len(words),
     }
+
+
+def parse_yomitoku_mp_response(response_body: dict) -> dict:
+    """Yomitoku Marketplace レスポンスを既存 OCR 結果形式に変換する"""
+    if "error" in response_body:
+        logger.error(f"Yomitoku MP エラー: {response_body['error']}")
+        return {"error": response_body["error"], "text": "", "words": [], "word_count": 0}
+
+    results = response_body.get("result", [])
+    if not results:
+        logger.error("Yomitoku MP: レスポンスに result フィールドがありません")
+        return {"error": "No result from Yomitoku", "text": "", "words": [], "word_count": 0}
+
+    all_words = []
+    word_id = 0
+    for page_result in results:
+        for word in page_result.get("words", []):
+            all_words.append({
+                "id": word_id,
+                "content": word["content"],
+                "points": word["points"],
+                "direction": word.get("direction", "horizontal"),
+            })
+            word_id += 1
+
+    full_text = " ".join(w["content"] for w in all_words)
+    return {"text": full_text, "words": all_words, "word_count": len(all_words)}

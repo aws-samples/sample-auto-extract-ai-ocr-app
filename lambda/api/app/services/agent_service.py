@@ -3,13 +3,13 @@
 import base64
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import boto3
 
-from repositories import get_image
+from repositories import get_image, update_agent_status
 from repositories.job_repository import create_agent_job, update_agent_job, get_job
-from repositories.tool_repository import list_tools, get_usecase_allowed_tool_names
+from repositories.tool_repository import list_tools, get_usecase_allowed_tool_names, get_usecase_tools
 from repositories.usecase_repository import get_usecase_by_app_name
 from clients import AgentClient, s3_client
 from config import settings
@@ -36,13 +36,7 @@ class AgentService:
             job_id = create_agent_job(image_id)
             logger.info(f"Created agent job: {job_id} for image: {image_id}")
 
-            # Mark image as processing immediately
-            from repositories.image_repository import get_images_table
-            get_images_table().update_item(
-                Key={"id": image_id},
-                UpdateExpression="SET agent_status = :s, agent_suggestions_count = :zero",
-                ExpressionAttributeValues={":s": "processing", ":zero": 0},
-            )
+            update_agent_status(image_id, "processing", suggestions_count=0)
 
             # Invoke AgentKick Lambda asynchronously
             lambda_client = boto3.client("lambda")
@@ -171,9 +165,6 @@ class AgentService:
             Dictionary with tools list (filtered by usecase, active only)
         """
         try:
-            from repositories.tool_repository import get_usecase_tools
-            from repositories.usecase_repository import get_usecase_by_app_name
-
             image_data = get_image(image_id)
             if not image_data:
                 return {"status": "success", "tools": []}

@@ -1,17 +1,11 @@
 """ユーザー API"""
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
 from dependencies.auth import require_user, get_cognito_sub
-from fastapi import Request
-
+from schemas.user import UpdateProfileRequest
 from services.user_service import UserService
 from dependencies.services import get_user_service
 
 router = APIRouter(prefix="/user", tags=["User"])
-
-
-class UpdateProfileRequest(BaseModel):
-    display_name: str
 
 
 @router.get("/me")

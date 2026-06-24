@@ -42,8 +42,3 @@ inclusion: always
 - フロントエンド: 関数コンポーネント + Hooks パターン
 - CDK: Construct パターンで機能単位に分割
 
-## 静的解析
-- `lambda/api/app/` 配下の Python ファイルを変更した場合、必ず pyflakes で構文エラー・未使用 import を確認する
-```bash
-cd lambda/api/app && python -m pyflakes routers/ services/ domains/ schemas/ utils/ repositories/ clients/ workers/ dependencies/
-```

@@ -1,11 +1,13 @@
 """管理者 API エンドポイント（DSQL RBAC）"""
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional, Literal
 import logging
 
 from dependencies.auth import RequireRole
 from schemas import UsecaseToolsUpdate
+from schemas.admin import (
+    UserRoleUpdate, GroupCreate, GroupUpdate, GroupMemberUpdate,
+    ToolCreate, ToolUpdate, ToolUserBody, ToolGroupBody,
+)
 from services.admin_service import AdminService, NotFoundError
 from services.image_list_service import ImageListService
 from dependencies.services import get_image_list_service, get_admin_service
@@ -17,10 +19,6 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # ========================================
 # Users
 # ========================================
-class UserRoleUpdate(BaseModel):
-    role: Literal["admin", "author", "reader"]
-
-
 @router.get("/users")
 async def list_users(user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
     return {"users": service.list_users()}
@@ -36,20 +34,6 @@ async def update_user_role(user_id: str, body: UserRoleUpdate, user=Depends(Requ
 # ========================================
 # Groups
 # ========================================
-class GroupCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-
-
-class GroupUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-
-
-class GroupMemberUpdate(BaseModel):
-    user_ids: list[str]
-
-
 @router.get("/groups")
 async def list_groups(user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
     return {"groups": service.list_groups()}
@@ -129,17 +113,6 @@ async def set_usecase_tools(app_name: str, body: UsecaseToolsUpdate, user=Depend
 # ========================================
 # Tools
 # ========================================
-class ToolCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-
-
-class ToolUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-
-
 @router.get("/tools")
 async def list_tools(user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
     return {"tools": service.list_tools()}
@@ -164,14 +137,6 @@ async def update_tool(tool_id: str, body: ToolUpdate, user=Depends(RequireRole("
     if not service.update_tool(tool_id, updates):
         raise HTTPException(404, "Tool not found")
     return {"ok": True}
-
-
-class ToolUserBody(BaseModel):
-    user_id: str
-
-
-class ToolGroupBody(BaseModel):
-    group_id: str
 
 
 @router.post("/tools/{tool_id}/users")

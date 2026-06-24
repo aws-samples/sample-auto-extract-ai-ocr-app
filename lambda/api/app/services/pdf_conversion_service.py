@@ -19,7 +19,7 @@ from repositories import (
     get_image, update_image_status, update_converted_image,
     update_ocr_result, update_parent_document_status,
     create_individual_page_record, get_app_input_methods,
-    get_children_by_parent_id,
+    get_children_by_parent_id, update_agent_status,
 )
 from domains.image_status import determine_parent_status, determine_parent_agent_status
 from utils.helpers import resize_image
@@ -236,12 +236,7 @@ def sync_parent_agent_status(image_id: str) -> None:
         parent_data = get_image(parent_id)
         current_agent_status = parent_data.get("agent_status") or "idle" if parent_data else "idle"
         if current_agent_status != new_agent_status:
-            from repositories.image_repository import get_images_table
-            get_images_table().update_item(
-                Key={"id": parent_id},
-                UpdateExpression="SET agent_status = :s",
-                ExpressionAttributeValues={":s": new_agent_status},
-            )
+            update_agent_status(parent_id, new_agent_status)
             logger.info(f"親ドキュメント agent_status 更新: {parent_id} -> {new_agent_status}")
 
     except Exception as e:

@@ -24,7 +24,7 @@ def load_app_schemas():
     取得できない場合はエラーを返す
     """
     try:
-        logger.info(f"DynamoDB からスキーマを取得します")
+        logger.info("DynamoDB からスキーマを取得します")
         schemas_table = _get_schemas_table()
         
         # schema_type='app' の全てのレコードを取得

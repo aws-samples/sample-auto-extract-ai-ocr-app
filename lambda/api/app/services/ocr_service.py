@@ -8,6 +8,7 @@ from repositories import (
     get_images,
     get_image, update_ocr_result as db_update_ocr_result,
     update_image_status,
+    reset_processing_status,
 )
 from clients import get_inference_component_status, get_endpoint_status_direct, trigger_endpoint_wakeup
 from schemas import OcrResult, OcrResultResponse
@@ -342,18 +343,7 @@ class OcrService:
             # ステータスをprocessingに更新
             update_image_status(image_id, 'processing', job_id)
 
-            # 再抽出のため extraction_status と agent_status をリセット
-            # （前回の completed 値が残っていると、フロントのポーリングが
-            #  新しい処理の完了を待たずに即 completed と表示してしまう）
-            from repositories.image_repository import get_images_table
-            get_images_table().update_item(
-                Key={"id": image_id},
-                UpdateExpression=(
-                    "SET extraction_status = :proc, agent_status = :proc, "
-                    "agent_suggestions_count = :zero"
-                ),
-                ExpressionAttributeValues={":proc": "processing", ":zero": 0},
-            )
+            reset_processing_status(image_id)
 
             # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(

@@ -123,7 +123,7 @@ def get_images(app_name=None, uploaded_by=None):
                 ScanIndexForward=False  # 降順（新しい順）
             )
             items = [i for i in response.get('Items', []) if i.get('app_name') == app_name]
-            logger.info(f"UploadedByIndex + app_name フィルタで画像を取得")
+            logger.info("UploadedByIndex + app_name フィルタで画像を取得")
         elif uploaded_by:
             # UploadedByIndex で自分の画像のみ取得
             response = table.query(
@@ -132,7 +132,7 @@ def get_images(app_name=None, uploaded_by=None):
                 ScanIndexForward=False  # 降順（新しい順）
             )
             items = response.get('Items', [])
-            logger.info(f"UploadedByIndex 経由でユーザーの画像を取得")
+            logger.info("UploadedByIndex 経由でユーザーの画像を取得")
         elif app_name:
             # GSI(AppNameIndex)を使用してアプリ名でフィルタリング
             # queryは効率的で1MB制限の影響を受けにくい
@@ -323,7 +323,7 @@ def update_converted_image(image_id, converted_s3_key, status=None, original_siz
         if status:
             update_kwargs["ExpressionAttributeNames"] = {"#status": "status"}
 
-        response = table.update_item(**update_kwargs)
+        table.update_item(**update_kwargs)
 
         logger.info(f"変換後画像情報を更新しました: {image_id}, {converted_s3_key}")
         return True
@@ -410,6 +410,44 @@ def update_verification_status(image_id: str, verification_completed: bool, veri
         logger.info(f"確認完了ステータスを更新: {image_id} -> {verification_completed} (by: {verified_by})")
     except Exception as e:
         logger.error(f"確認完了ステータス更新エラー: {str(e)}")
+        raise
+
+
+def update_agent_status(image_id: str, status: str, suggestions_count: int = None) -> None:
+    """agent_status を更新する"""
+    table = get_images_table()
+    try:
+        if suggestions_count is not None:
+            table.update_item(
+                Key={"id": image_id},
+                UpdateExpression="SET agent_status = :s, agent_suggestions_count = :c",
+                ExpressionAttributeValues={":s": status, ":c": suggestions_count},
+            )
+        else:
+            table.update_item(
+                Key={"id": image_id},
+                UpdateExpression="SET agent_status = :s",
+                ExpressionAttributeValues={":s": status},
+            )
+    except Exception as e:
+        logger.error(f"agent_status 更新エラー: {str(e)}")
+        raise
+
+
+def reset_processing_status(image_id: str) -> None:
+    """再処理のため extraction_status / agent_status / agent_suggestions_count をリセットする"""
+    table = get_images_table()
+    try:
+        table.update_item(
+            Key={"id": image_id},
+            UpdateExpression=(
+                "SET extraction_status = :proc, agent_status = :proc, "
+                "agent_suggestions_count = :zero"
+            ),
+            ExpressionAttributeValues={":proc": "processing", ":zero": 0},
+        )
+    except Exception as e:
+        logger.error(f"処理ステータスリセットエラー: {str(e)}")
         raise
 
 

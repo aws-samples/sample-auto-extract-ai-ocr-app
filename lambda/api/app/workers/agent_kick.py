@@ -10,8 +10,8 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from repositories import get_image
-from repositories.image_repository import get_images_table
+from repositories import get_image, update_agent_status
+from repositories.job_repository import create_agent_job, update_agent_job, get_job
 from repositories.schema_repository import get_app_schema
 from services.agent_service import AgentService
 from services.pdf_conversion_service import sync_parent_agent_status
@@ -22,11 +22,7 @@ logger = logging.getLogger(__name__)
 def _update_agent_status(image_id: str, status: str):
     """image レコードの agent_status を更新"""
     try:
-        get_images_table().update_item(
-            Key={"id": image_id},
-            UpdateExpression="SET agent_status = :s",
-            ExpressionAttributeValues={":s": status},
-        )
+        update_agent_status(image_id, status)
     except Exception as e:
         logger.warning(f"Failed to update agent_status for {image_id}: {e}")
 
@@ -37,7 +33,6 @@ def _finalize_skipped_job(event: dict):
     if not job_id:
         return
     try:
-        from repositories.job_repository import update_agent_job
         update_agent_job(job_id, "skipped")
     except Exception as e:
         logger.warning(f"Failed to finalize skipped job {job_id}: {e}")
@@ -77,9 +72,6 @@ def agent_kick_handler(event, context):
         sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "agent_enabled=false"}
 
-    # Run agent correction directly (not via start_agent_correction to avoid re-invoke)
-    from repositories.job_repository import create_agent_job, update_agent_job, get_job
-
     job_id = event.get("job_id")
     try:
         if not job_id:
@@ -93,11 +85,7 @@ def agent_kick_handler(event, context):
         job_status = job.get("status", "failed") if job else "failed"
         if job_status == "completed":
             suggestions_count = len(job.get("suggestions", [])) if job else 0
-            get_images_table().update_item(
-                Key={"id": image_id},
-                UpdateExpression="SET agent_status = :s, agent_suggestions_count = :c",
-                ExpressionAttributeValues={":s": "completed", ":c": suggestions_count},
-            )
+            update_agent_status(image_id, "completed", suggestions_count=suggestions_count)
             sync_parent_agent_status(image_id)
             return {"image_id": image_id, "status": "completed", "job_id": job_id}
         else:

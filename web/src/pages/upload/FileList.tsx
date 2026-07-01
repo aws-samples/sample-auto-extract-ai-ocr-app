@@ -199,11 +199,11 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
   const getParentOverallStatus = (parentId: string) => {
     const children = childPages[parentId] || [];
     if (children.length === 0) return 'pending';
-    const statuses = children.map(child => child.status);
-    if (statuses.every(status => status === 'completed')) return 'completed';
-    if (statuses.some(status => status === 'failed')) return 'failed';
-    if (statuses.some(status => status === 'processing')) return 'processing';
-    return 'pending';
+    if (children.some(child => child.status === 'failed' || child.agentStatus === 'failed')) return 'failed';
+    if (children.some(child => child.status === 'processing')) return 'processing';
+    if (children.some(child => child.status === 'pending')) return 'pending';
+    if (children.some(child => child.agentStatus === 'processing')) return 'processing';
+    return 'completed';
   };
 
   return (

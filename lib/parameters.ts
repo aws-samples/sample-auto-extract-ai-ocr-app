@@ -16,9 +16,10 @@ export interface AppParameters {
 
   // OCR
   enableOcr: boolean;
-  ocrEngine: "paddle" | "deepseek";
+  ocrEngine: "paddle" | "deepseek" | "yomitoku-mp";
   sagemakerZeroScale: boolean;
   sagemakerScaleInCooldownSeconds: number;
+  marketplaceModelPackageArn?: string;
 
   // Agent
   enableAgent: boolean;

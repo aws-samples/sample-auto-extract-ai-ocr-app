@@ -22,7 +22,7 @@ from dependencies.services import (
 )
 from dependencies.auth import (
     require_user, get_cognito_sub, check_usecase_permission,
-    RequirePermission, RequireImagePermission,
+    RequireImagePermission,
 )
 from repositories import get_image
 from repositories.job_repository import get_latest_agent_job_by_image_id, update_suggestion_status

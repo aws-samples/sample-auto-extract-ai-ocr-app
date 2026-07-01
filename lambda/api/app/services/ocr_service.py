@@ -8,16 +8,28 @@ from repositories import (
     get_images,
     get_image, update_ocr_result as db_update_ocr_result,
     update_image_status,
+    reset_processing_status,
 )
-from clients import get_inference_component_status, trigger_endpoint_wakeup
+from clients import get_inference_component_status, get_endpoint_status_direct, trigger_endpoint_wakeup
 from schemas import OcrResult, OcrResultResponse
 from config import settings
 from clients import s3_client, sagemaker_runtime_client, sfn_client
-from domains.ocr_engine import parse_ocr_response
+from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response
 from services.pdf_conversion_service import sync_parent_status
-from utils.helpers import float_to_decimal
+from utils.helpers import float_to_decimal, compress_image_for_payload
 
 logger = logging.getLogger(__name__)
+
+
+def _guess_image_content_type(image_data: bytes) -> str:
+    """画像バイナリのマジックバイトから Content-Type を判定する"""
+    if image_data[:3] == b'\xff\xd8\xff':
+        return "image/jpeg"
+    if image_data[:8] == b'\x89PNG\r\n\x1a\n':
+        return "image/png"
+    if image_data[:4] in (b'II*\x00', b'MM\x00*'):
+        return "image/tiff"
+    return "image/jpeg"
 
 
 class EndpointNotReadyError(Exception):
@@ -35,23 +47,22 @@ class OcrService:
         """OCR エンドポイントの状態を返す"""
         if not self.enable_ocr:
             return {"ready": True, "status": "ocr_disabled"}
+        if settings.OCR_ENGINE == "yomitoku-mp":
+            return get_endpoint_status_direct(settings.SAGEMAKER_ENDPOINT_NAME)
         return get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
 
     def _invoke_ocr(self, image_data: bytes) -> dict:
-        """SageMaker OCR エンドポイントを呼び出し、整形済み結果を返す
-
-        Args:
-            image_data: 画像のバイトデータ
-
-        Returns:
-            整形済み OCR 結果
-        """
+        """SageMaker OCR エンドポイントを呼び出し、整形済み結果を返す"""
         if not self.enable_ocr:
             raise ValueError("OCR is disabled in this deployment")
         if not settings.SAGEMAKER_ENDPOINT_NAME:
             raise ValueError("SageMaker endpoint not configured")
 
+        if settings.OCR_ENGINE == "yomitoku-mp":
+            return self._invoke_yomitoku_mp(image_data)
+
         try:
+            image_data = compress_image_for_payload(image_data)
             image_base64 = base64.b64encode(image_data).decode("utf-8")
             response = sagemaker_runtime_client.invoke_endpoint(
                 EndpointName=settings.SAGEMAKER_ENDPOINT_NAME,
@@ -63,6 +74,22 @@ class OcrService:
             return parse_ocr_response(response_body)
         except Exception as e:
             logger.error(f"SageMaker OCR 呼び出しエラー: {str(e)}")
+            return {"error": f"SageMaker endpoint error: {str(e)}", "text": "", "words": [], "word_count": 0}
+
+    def _invoke_yomitoku_mp(self, image_data: bytes) -> dict:
+        """Yomitoku Marketplace エンドポイントを呼び出す"""
+        try:
+            image_data = compress_image_for_payload(image_data, max_bytes=5 * 1024 * 1024)
+            content_type = _guess_image_content_type(image_data)
+            response = sagemaker_runtime_client.invoke_endpoint(
+                EndpointName=settings.SAGEMAKER_ENDPOINT_NAME,
+                ContentType=content_type,
+                Body=image_data,
+            )
+            response_body = json.loads(response["Body"].read().decode("utf-8"))
+            return parse_yomitoku_mp_response(response_body)
+        except Exception as e:
+            logger.error(f"Yomitoku MP 呼び出しエラー: {str(e)}")
             return {"error": f"SageMaker endpoint error: {str(e)}", "text": "", "words": [], "word_count": 0}
 
     async def get_ocr_result(self, image_id: str) -> OcrResultResponse:
@@ -251,10 +278,11 @@ class OcrService:
         try:
             # OCR有効時のみエンドポイント状態確認
             if self.enable_ocr:
-                status = get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+                status = self.get_endpoint_status()
 
                 if not status['ready']:
-                    trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+                    if settings.OCR_ENGINE != "yomitoku-mp":
+                        trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
                     raise EndpointNotReadyError('Endpoint warming up')
 
             job_id = str(uuid.uuid4())
@@ -303,10 +331,11 @@ class OcrService:
         try:
             # OCRをスキップしない場合かつOCR有効時のみエンドポイント状態確認
             if not skip_ocr and self.enable_ocr:
-                status = get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+                status = self.get_endpoint_status()
 
                 if not status['ready']:
-                    trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+                    if settings.OCR_ENGINE != "yomitoku-mp":
+                        trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
                     raise EndpointNotReadyError('Endpoint warming up')
 
             job_id = str(uuid.uuid4())
@@ -314,18 +343,7 @@ class OcrService:
             # ステータスをprocessingに更新
             update_image_status(image_id, 'processing', job_id)
 
-            # 再抽出のため extraction_status と agent_status をリセット
-            # （前回の completed 値が残っていると、フロントのポーリングが
-            #  新しい処理の完了を待たずに即 completed と表示してしまう）
-            from repositories.image_repository import get_images_table
-            get_images_table().update_item(
-                Key={"id": image_id},
-                UpdateExpression=(
-                    "SET extraction_status = :proc, agent_status = :proc, "
-                    "agent_suggestions_count = :zero"
-                ),
-                ExpressionAttributeValues={":proc": "processing", ":zero": 0},
-            )
+            reset_processing_status(image_id)
 
             # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(

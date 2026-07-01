@@ -1,25 +1,14 @@
 """共有設定 API"""
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Literal
 import logging
 
 from dependencies.auth import RequirePermission
+from schemas.sharing import ShareUserRequest, ShareGroupRequest
 from services.sharing_service import SharingService, LastOwnerError
 from dependencies.services import get_sharing_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/apps/{app_name}/sharing", tags=["Sharing"])
-
-
-class ShareUserRequest(BaseModel):
-    user_id: str
-    permission: Literal["viewer", "editor", "owner"] = "viewer"
-
-
-class ShareGroupRequest(BaseModel):
-    group_id: str
-    permission: Literal["viewer", "editor"] = "viewer"
 
 
 @router.get("")

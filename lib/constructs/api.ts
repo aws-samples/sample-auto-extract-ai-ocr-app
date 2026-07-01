@@ -35,6 +35,7 @@ export interface ApiProps {
   userPoolId: string;
   userPoolClientId: string;
   enableOcr: boolean;
+  ocrEngine?: string;
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
   agentRuntimeArn?: string;
@@ -121,6 +122,7 @@ export class Api extends Construct {
           actions: [
             "sagemaker:InvokeEndpoint",
             "sagemaker:DescribeInferenceComponent",
+            "sagemaker:DescribeEndpoint",
           ],
           resources: ["*"],
         })
@@ -185,6 +187,7 @@ export class Api extends Construct {
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || "",
         SAGEMAKER_INFERENCE_COMPONENT_NAME:
           props.sagemakerInferenceComponentName || "",
+        OCR_ENGINE: props.ocrEngine || "paddle",
         MODEL_ID: modelId,
         MODEL_REGION: modelRegion,
         AGENT_RUNTIME_ARN: props.agentRuntimeArn || "",

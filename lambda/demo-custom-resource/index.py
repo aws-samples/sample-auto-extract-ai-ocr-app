@@ -163,5 +163,23 @@ def insert_demo_usecase_dsql():
 
             print(f"Bound {len(tools)} tools to demo usecase")
 
+            # Grant viewer permission to the 'all' group so every signed-up
+            # user can access the demo usecase. The 'all' group is created by
+            # dsql-admin seed; this resource is wired to depend on it so the
+            # group should always exist by the time this runs. If it does not,
+            # we log a warning and skip rather than failing the deployment.
+            cur.execute("SELECT id FROM groups WHERE name = 'all'")
+            all_group = cur.fetchone()
+            if all_group:
+                cur.execute(
+                    """INSERT INTO group_usecases (group_id, usecase_id, permission)
+                    VALUES (%s, %s, 'viewer')
+                    ON CONFLICT (group_id, usecase_id) DO NOTHING""",
+                    (str(all_group["id"]), usecase_id),
+                )
+                print(f"Granted 'all' group viewer permission on demo usecase")
+            else:
+                print("WARNING: 'all' group not found; skipping group_usecases grant")
+
     finally:
         conn.close()

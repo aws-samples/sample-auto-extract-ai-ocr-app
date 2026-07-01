@@ -38,6 +38,10 @@ export interface AgentProps {
   dsqlEndpoint: string;
   dsqlRegion: string;
   dsqlClusterArn: string;
+  /** DSQL DDL custom resource — demo data must run after tables are created */
+  dsqlDdlResource?: CustomResource;
+  /** DSQL Seed custom resource — demo data must run after the 'all' group is created */
+  dsqlSeedResource?: CustomResource;
 }
 
 export class Agent extends Construct {
@@ -126,6 +130,11 @@ export class Agent extends Construct {
         DeployTimestamp: Date.now().toString(),
       },
     });
+
+    // Tool sync must run after DSQL DDL (tools table must exist)
+    if (props.dsqlDdlResource) {
+      toolSyncResource.node.addDependency(props.dsqlDdlResource);
+    }
 
     // EventBridge Rule: sync on runtime Gateway Target changes
     new Rule(this, "ToolSyncRule", {
@@ -366,6 +375,17 @@ export class Agent extends Construct {
 
       // Demo data must run after tool-sync (tools must exist in DSQL first)
       demoDataResource.node.addDependency(toolSyncResource);
+
+      // Demo data must run after DSQL DDL (tables must exist)
+      if (props.dsqlDdlResource) {
+        demoDataResource.node.addDependency(props.dsqlDdlResource);
+      }
+
+      // Demo data must run after DSQL Seed (the 'all' group must exist before
+      // we grant viewer permission to it in group_usecases)
+      if (props.dsqlSeedResource) {
+        demoDataResource.node.addDependency(props.dsqlSeedResource);
+      }
     }
 
     // =========================================================================

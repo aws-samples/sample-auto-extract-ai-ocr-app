@@ -64,6 +64,8 @@ export class OcrAppStack extends cdk.Stack {
         dsqlEndpoint: dsql.clusterEndpoint,
         dsqlRegion: this.region,
         dsqlClusterArn: dsql.clusterArn,
+        dsqlDdlResource: dsql.ddlResource,
+        dsqlSeedResource: dsql.seedResource,
       });
     }
 

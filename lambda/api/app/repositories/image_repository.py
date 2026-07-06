@@ -92,24 +92,61 @@ def create_image_record(image_id, filename, s3_key, app_name="default", status="
         raise
 
 
+# 一覧表示に必要なフィールドのみ取得する（ocr_result/extracted_info/extraction_mapping
+# などの重いフィールドは詳細画面で個別取得するため一覧では除外する）。
+# ImageInfo(schemas/image.py) が必要とする DynamoDB 属性キー（snake_case）に対応。
+# status / name は DynamoDB 予約語のため ExpressionAttributeNames でエスケープする。
+_IMAGE_LIST_PROJECTION = (
+    "id, filename, s3_key, upload_time, #status, job_id, app_name, "
+    "page_processing_mode, total_pages, page_number, parent_document_id, "
+    "verification_completed, agent_status, agent_suggestions_count, "
+    "uploaded_by, verified_by"
+)
+_IMAGE_LIST_EXPR_NAMES = {"#status": "status"}
+
+
+def _paginate(operation, **kwargs):
+    """query/scan を LastEvaluatedKey が尽きるまで繰り返し、全 Items を返す。
+
+    DynamoDB は1回のレスポンスで最大1MB（scan/query 共通）までしか返さないため、
+    継続トークン(ExclusiveStartKey)を渡して全件を取得する。
+
+    Args:
+        operation: table.query または table.scan
+        **kwargs: operation に渡すパラメータ
+
+    Returns:
+        list: 全ページ分の Items を連結したリスト
+    """
+    items = []
+    while True:
+        response = operation(**kwargs)
+        items.extend(response.get('Items', []))
+        last_key = response.get('LastEvaluatedKey')
+        if not last_key:
+            break
+        kwargs['ExclusiveStartKey'] = last_key
+    return items
+
+
 def get_images(app_name=None, uploaded_by=None):
     """
-    画像一覧を取得する
+    画像一覧を取得する（ページネーションで全件取得）
 
     Args:
         app_name (str, optional): アプリケーション名でフィルタリング
                                  指定時はGSI(AppNameIndex)でquery実行
-                                 未指定時はscanで全件取得（1MB制限あり）
+                                 未指定時はscanで全件取得
         uploaded_by (str, optional): アップロードユーザーの cognito_sub でフィルタリング
                                     指定時はGSI(UploadedByIndex)でquery実行
 
     Returns:
-        list: 画像レコードのリスト
+        list: 画像レコードのリスト（一覧表示用フィールドのみ）
 
     注意:
-        app_name/uploaded_by未指定時はDynamoDB scanを使用するため、1MBのデータサイズ制限があります。
-        大量のレコードがある場合、全てのデータを取得できない可能性があります。
-        本番環境では必ずapp_nameを指定してGSI経由でのquery使用を推奨します。
+        DynamoDB は scan/query いずれも1レスポンス最大1MBの制限があるため、
+        LastEvaluatedKey を辿って全件を取得する。
+        一覧に不要な重いフィールド(ocr_result 等)は ProjectionExpression で除外している。
     """
     table = get_images_table()
 
@@ -117,37 +154,46 @@ def get_images(app_name=None, uploaded_by=None):
         if uploaded_by and app_name:
             # UploadedByIndex で取得し、app_name でクライアント側フィルタ
             # （GSI の PK が uploaded_by のみのため、app_name は KeyCondition に含められない）
-            response = table.query(
+            items = _paginate(
+                table.query,
                 IndexName="UploadedByIndex",
                 KeyConditionExpression=Key('uploaded_by').eq(uploaded_by),
+                ProjectionExpression=_IMAGE_LIST_PROJECTION,
+                ExpressionAttributeNames=_IMAGE_LIST_EXPR_NAMES,
                 ScanIndexForward=False  # 降順（新しい順）
             )
-            items = [i for i in response.get('Items', []) if i.get('app_name') == app_name]
+            items = [i for i in items if i.get('app_name') == app_name]
             logger.info("UploadedByIndex + app_name フィルタで画像を取得")
         elif uploaded_by:
             # UploadedByIndex で自分の画像のみ取得
-            response = table.query(
+            items = _paginate(
+                table.query,
                 IndexName="UploadedByIndex",
                 KeyConditionExpression=Key('uploaded_by').eq(uploaded_by),
+                ProjectionExpression=_IMAGE_LIST_PROJECTION,
+                ExpressionAttributeNames=_IMAGE_LIST_EXPR_NAMES,
                 ScanIndexForward=False  # 降順（新しい順）
             )
-            items = response.get('Items', [])
             logger.info("UploadedByIndex 経由でユーザーの画像を取得")
         elif app_name:
             # GSI(AppNameIndex)を使用してアプリ名でフィルタリング
-            # queryは効率的で1MB制限の影響を受けにくい
-            response = table.query(
+            items = _paginate(
+                table.query,
                 IndexName="AppNameIndex",
                 KeyConditionExpression=Key('app_name').eq(app_name),
+                ProjectionExpression=_IMAGE_LIST_PROJECTION,
+                ExpressionAttributeNames=_IMAGE_LIST_EXPR_NAMES,
                 ScanIndexForward=False  # 降順（新しい順）
             )
-            items = response.get('Items', [])
             logger.info(f"GSI経由でアプリ '{app_name}' の画像を取得")
         else:
-            # 全件取得（警告: DynamoDB scanは1MB制限があり、大規模データでは不完全な結果になる）
-            response = table.scan()
-            items = response.get('Items', [])
-            logger.warning("scanで全件取得中 - 大量データがある場合は一部のレコードが取得されない可能性があります")
+            # 全件取得（scan もページネーションで全件取得する）
+            items = _paginate(
+                table.scan,
+                ProjectionExpression=_IMAGE_LIST_PROJECTION,
+                ExpressionAttributeNames=_IMAGE_LIST_EXPR_NAMES,
+            )
+            logger.info("scanで全画像を取得")
 
         # DynamoDB の Item をそのまま返す（camelCase 変換はサービス層/Pydantic で行う）
         return items
@@ -345,15 +391,17 @@ def delete_images_by_app_name(app_name: str):
     try:
         table = get_images_table()
 
-        # GSIを使用してアプリ名でクエリ
-        response = table.query(
+        # GSIを使用してアプリ名でクエリ（ページネーションで全件取得）
+        items = _paginate(
+            table.query,
             IndexName="AppNameIndex",
-            KeyConditionExpression=Key('app_name').eq(app_name)
+            KeyConditionExpression=Key('app_name').eq(app_name),
+            ProjectionExpression="id",
         )
 
         # 取得した画像を削除
         deleted_count = 0
-        for item in response.get('Items', []):
+        for item in items:
             table.delete_item(Key={'id': item['id']})
             deleted_count += 1
 
@@ -549,10 +597,10 @@ def get_children_by_parent_id(parent_id: str):
     table = get_images_table()
 
     try:
-        response = table.scan(
+        return _paginate(
+            table.scan,
             FilterExpression=Attr('parent_document_id').eq(parent_id)
         )
-        return response.get('Items', [])
     except Exception as e:
         logger.error(f"子ページ取得エラー: {str(e)}")
         return []
@@ -600,8 +648,7 @@ def get_images_by_sync_source(filename: str, sync_source_path: str, app_name: st
         if app_name:
             filter_expression = filter_expression & Attr('app_name').eq(app_name)
 
-        response = table.scan(FilterExpression=filter_expression)
-        return response.get('Items', [])
+        return _paginate(table.scan, FilterExpression=filter_expression)
 
     except Exception as e:
         logger.error(f"同期元パスでの画像検索エラー: {str(e)}")
@@ -610,19 +657,18 @@ def get_images_by_sync_source(filename: str, sync_source_path: str, app_name: st
 def get_existing_sync_sources(app_name: str) -> set[str]:
     """指定アプリの既存 sync_source_path のセットを返す（バッチ重複チェック用）
 
-    1 回の scan で全件取得し、Python 側でセット化する。
+    scan をページネーションで全件取得し、Python 側でセット化する。
     ファイルごとに scan するより効率的。
-
-    警告: DynamoDB scan は 1MB 制限があり、大量データでは不完全な結果になる可能性がある。
     """
     try:
         table = get_images_table()
         filter_expr = Attr("app_name").eq(app_name) & Attr("sync_source_path").exists()
-        response = table.scan(
+        items = _paginate(
+            table.scan,
             FilterExpression=filter_expr,
             ProjectionExpression="sync_source_path",
         )
-        return {item["sync_source_path"] for item in response.get("Items", [])}
+        return {item["sync_source_path"] for item in items}
     except Exception as e:
         logger.error(f"同期元パス一括取得エラー: {str(e)}")
         return set()

@@ -60,6 +60,13 @@ export class Ocr extends Construct {
         ? "ml.g4dn.2xlarge"
         : "ml.g4dn.4xlarge");
 
+    // InstanceType を論理ID・固定名に埋め込むためのサフィックス。
+    // InstanceType を変更すると論理IDが変わり、CloudFormation が
+    // Endpoint/EndpointConfig/InferenceComponent を「別リソース」として
+    // 新規作成→旧削除（Replacement）するため、InferenceComponent 付き
+    // エンドポイントの「InstanceType 変更不可」制約を1デプロイで回避できる。
+    const itSuffix = instanceType.replace(/[^a-zA-Z0-9]/g, "");
+
     // OCRエンジンに応じたコンテナパス（Marketplace は不要）
     const containerMap: Record<string, string> = {
       paddle: "paddle-ocr",
@@ -67,9 +74,10 @@ export class Ocr extends Construct {
     };
 
     const variantName = "AllTraffic";
+    // InstanceType をサフィックスに含め、作り直し時に新旧の名前が衝突しないようにする
     this.inferenceComponentName = isMarketplace
       ? ""
-      : `${baseName}-inference-component`;
+      : `${baseName}-inference-component-${itSuffix}`;
 
     // SageMaker用のIAMロール
     const sagemakerRole = new Role(this, "SageMakerExecutionRole", {
@@ -169,7 +177,7 @@ export class Ocr extends Construct {
       });
     }
 
-    const endpointConfig = new CfnEndpointConfig(this, "OcrEndpointConfig", {
+    const endpointConfig = new CfnEndpointConfig(this, `OcrEndpointConfig${itSuffix}`, {
       ...(isMarketplace ? {} : { executionRoleArn: sagemakerRole.roleArn }),
       productionVariants: [
         {
@@ -192,7 +200,7 @@ export class Ocr extends Construct {
       ],
     });
 
-    const endpoint = new CfnEndpoint(this, "OcrEndpoint", {
+    const endpoint = new CfnEndpoint(this, `OcrEndpoint${itSuffix}`, {
       endpointConfigName: endpointConfig.attrEndpointConfigName,
     });
 
@@ -213,7 +221,7 @@ export class Ocr extends Construct {
 
       const inferenceComponent = new CfnInferenceComponent(
         this,
-        "OcrInferenceComponent",
+        `OcrInferenceComponent${itSuffix}`,
         {
           inferenceComponentName: this.inferenceComponentName,
           endpointName: endpoint.attrEndpointName,
@@ -238,7 +246,7 @@ export class Ocr extends Construct {
       if (props.enableZeroScale) {
         const resourceId = `inference-component/${this.inferenceComponentName}`;
 
-        const scalableTarget = new ScalableTarget(this, "ScalableTarget", {
+        const scalableTarget = new ScalableTarget(this, `ScalableTarget${itSuffix}`, {
           serviceNamespace: ServiceNamespace.SAGEMAKER,
           scalableDimension: "sagemaker:inference-component:DesiredCopyCount",
           resourceId: resourceId,
@@ -248,7 +256,7 @@ export class Ocr extends Construct {
 
         scalableTarget.node.addDependency(inferenceComponent);
 
-        new TargetTrackingScalingPolicy(this, "TargetTrackingPolicy", {
+        new TargetTrackingScalingPolicy(this, `TargetTrackingPolicy${itSuffix}`, {
           scalingTarget: scalableTarget,
           targetValue: 1,
           predefinedMetric:
@@ -269,7 +277,7 @@ export class Ocr extends Construct {
           period: cdk.Duration.seconds(60),
         });
 
-        new StepScalingPolicy(this, "StepScalingPolicy", {
+        new StepScalingPolicy(this, `StepScalingPolicy${itSuffix}`, {
           scalingTarget: scalableTarget,
           adjustmentType: AdjustmentType.CHANGE_IN_CAPACITY,
           metricAggregationType: MetricAggregationType.MAXIMUM,

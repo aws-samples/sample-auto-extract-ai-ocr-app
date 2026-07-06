@@ -20,6 +20,11 @@ from utils.helpers import float_to_decimal, compress_image_for_payload
 
 logger = logging.getLogger(__name__)
 
+# Step Functions StartExecution の入力ペイロードは 256KB 上限。
+# 1 画像あたり {"image_id": "<uuid>"} ≒ 55-60 バイトのため、余裕をもって
+# 1 実行あたりの画像数を制限する（2000 件で約 120KB 相当）。
+MAX_IMAGES_PER_EXECUTION = 2000
+
 
 def _guess_image_content_type(image_data: bytes) -> str:
     """画像バイナリのマジックバイトから Content-Type を判定する"""
@@ -297,6 +302,17 @@ class OcrService:
             if not pending_images:
                 logger.warning(f"No pending images found for app: {app_name}")
                 return {"jobId": job_id}
+
+            # Step Functions の StartExecution 入力は 256KB 制限がある。
+            # 1 実行あたりの画像数を上限で切り、超過分は pending のまま残して
+            # 次回実行で処理させる（入力ペイロード超過による起動失敗を防ぐ）。
+            if len(pending_images) > MAX_IMAGES_PER_EXECUTION:
+                logger.warning(
+                    f"Pending images ({len(pending_images)}) exceed per-execution limit "
+                    f"({MAX_IMAGES_PER_EXECUTION}) for app: {app_name}. "
+                    f"Processing first {MAX_IMAGES_PER_EXECUTION}; remainder stays pending for the next run."
+                )
+                pending_images = pending_images[:MAX_IMAGES_PER_EXECUTION]
 
             # ステータスを更新
             for img in pending_images:

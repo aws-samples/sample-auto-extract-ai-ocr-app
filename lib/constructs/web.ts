@@ -15,13 +15,13 @@ export interface WebProps {
   enableOcr: boolean;
   enableAgent: boolean;
   syncBucketName: string;
-  cloudFrontGeoRestriction: string[];
+  webAclArn?: string;
 }
 export class Web extends Construct {
   constructor(scope: Construct, id: string, props: WebProps) {
     super(scope, id);
 
-    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, enableAgent, syncBucketName, cloudFrontGeoRestriction } = props;
+    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, enableAgent, syncBucketName, webAclArn } = props;
 
     const bucketProps: s3.BucketProps = {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -60,9 +60,7 @@ export class Web extends Construct {
       cloudFrontDistributionProps: {
         minimumProtocolVersion:
           aws_cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
-        geoRestriction: cloudFrontGeoRestriction.length > 0
-          ? aws_cloudfront.GeoRestriction.allowlist(...cloudFrontGeoRestriction)
-          : undefined,
+        webAclId: webAclArn,
         errorResponses: [
           {
             httpStatus: 403,

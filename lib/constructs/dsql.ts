@@ -17,6 +17,10 @@ export class Dsql extends Construct {
   public readonly clusterEndpoint: string;
   public readonly clusterArn: string;
   public readonly clusterIdentifier: string;
+  /** DDL execution resource — dependents that query DSQL tables should depend on this */
+  public readonly ddlResource: CustomResource;
+  /** Seed execution resource — dependents that need the 'all' group or seeded usecases should depend on this */
+  public readonly seedResource: CustomResource;
 
   constructor(scope: Construct, id: string, props: DsqlProps) {
     super(scope, id);
@@ -72,7 +76,7 @@ export class Dsql extends Construct {
       onEventHandler: adminFn,
     });
 
-    const ddlResource = new CustomResource(this, "DdlExecution", {
+    this.ddlResource = new CustomResource(this, "DdlExecution", {
       serviceToken: ddlProvider.serviceToken,
       properties: {
         action: "ddl",
@@ -85,14 +89,14 @@ export class Dsql extends Construct {
       onEventHandler: adminFn,
     });
 
-    const seedResource = new CustomResource(this, "SeedExecution", {
+    this.seedResource = new CustomResource(this, "SeedExecution", {
       serviceToken: seedProvider.serviceToken,
       properties: {
         action: "seed",
         version: "1",
       },
     });
-    seedResource.node.addDependency(ddlResource);
+    this.seedResource.node.addDependency(this.ddlResource);
 
     new CfnOutput(this, "ClusterEndpoint", {
       value: this.clusterEndpoint,

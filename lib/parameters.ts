@@ -30,9 +30,20 @@ export interface AppParameters {
   /** 空配列 = 制限なし */
   allowedSignUpEmailDomains: string[];
 
-  // CloudFront
-  /** 国コード配列（例: ["JP"]）。空配列 = 制限なし */
-  cloudFrontGeoRestriction: string[];
+  // WAF
+  waf: WafOptions;
+}
+
+export interface WafOptions {
+  /**
+   * WAF を有効にするか。
+   * true にすると AWS Managed Rules (Common Rule Set) が常に適用される。
+   * IP/Geo の制限は追加で指定した場合のみ有効。
+   */
+  enabled: boolean;
+  allowedIpV4AddressRanges?: string[];
+  allowedIpV6AddressRanges?: string[];
+  allowedCountryCodes?: string[];
 }
 
 // =============================================================================
@@ -49,7 +60,9 @@ const defaultParameters: AppParameters = {
   enableAgentDemo: true,
   selfSignUpEnabled: true,
   allowedSignUpEmailDomains: [],
-  cloudFrontGeoRestriction: [],
+  waf: {
+    enabled: false,
+  },
 };
 
 // =============================================================================
@@ -68,7 +81,10 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
   prod: {
     sagemakerZeroScale: false,
     selfSignUpEnabled: false,
-    cloudFrontGeoRestriction: ["JP"],
+    waf: {
+      enabled: true,
+      allowedCountryCodes:["JP"]
+    }
   },
 };
 

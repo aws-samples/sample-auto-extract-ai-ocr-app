@@ -13,6 +13,7 @@ export { usePagination, Pagination, SearchBox } from './Pagination';
 export { Tabs } from './Tabs';
 export type { TabItem } from './Tabs';
 export { Skeleton, TableSkeleton } from './Skeleton';
+export { FullPageLoader } from './FullPageLoader';
 export { EmptyState } from './EmptyState';
 export { CardTable } from './CardTable';
 export { RowActionMenu, MenuItem } from './RowActionMenu';

@@ -27,7 +27,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   const navigate = useNavigate();
   const { appName: urlAppName } = useParams<{ appName: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { refreshApps, apps } = useAppContext();
+  const { refreshApps, apps, appsLoaded, isAdmin } = useAppContext();
   
   // モード関連の状態
   const [isViewMode] = useState(mode === 'view');
@@ -108,6 +108,19 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
       }
     }
   }, [isViewMode, isEditMode, urlAppName]);
+
+  // edit モードの権限ガード: apps 取得完了後に判定し、編集権限（admin / editor / owner）が
+  // 無ければ view モードへリダイレクトする。appsLoaded を待たないとロード途中（apps=[]）に
+  // 正当な editor/owner まで誤って view へ飛ばしてしまうため、必ず取得完了を待つ。
+  useEffect(() => {
+    if (!isEditMode || !appsLoaded || !urlAppName) return;
+    const app = apps.find((a) => a.name === urlAppName);
+    const canEdit =
+      isAdmin || app?.permission === "editor" || app?.permission === "owner";
+    if (!canEdit) {
+      navigate(`/apps/${urlAppName}/view`, { replace: true });
+    }
+  }, [isEditMode, appsLoaded, urlAppName, apps, isAdmin, navigate]);
 
   // ファイル選択ダイアログを開く
   const triggerFileInput = () => {

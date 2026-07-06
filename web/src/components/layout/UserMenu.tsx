@@ -3,6 +3,7 @@ import { useAuthenticator } from '@aws-amplify/ui-react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, LogOut, User } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
+import { clearUserCache } from '../../contexts/AppContext';
 import { Avatar, Modal, Input, Button } from '../ui';
 
 function ProfileModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -103,7 +104,7 @@ export function UserMenu() {
 
           {/* ログアウト */}
           <button
-            onClick={() => signOut()}
+            onClick={() => { clearUserCache(); signOut(); }}
             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-danger hover:bg-danger-light transition-colors"
           >
             <LogOut size={14} />

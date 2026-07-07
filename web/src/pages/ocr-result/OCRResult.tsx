@@ -9,6 +9,8 @@ import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
 import { Field } from "../../types/app-schema";
 import { Suggestion, Tool } from "../../types/agent";
 import { isOcrEnabled, isAgentEnabled } from "../../config";
+import { usePresence } from "../../hooks/usePresence";
+import PresenceBadge from "../../components/shared/PresenceBadge";
 import ImagePreview from "./ImagePreview";
 import OcrResultEditor from "./OcrResultEditor";
 import ExtractionStatusDisplay from "./ExtractionStatusDisplay";
@@ -38,6 +40,8 @@ const styles = {
 function OcrResult() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  const { viewers: presenceViewers } = usePresence({ imageId: id });
 
   // OCR結果の状態
   const [loading, setLoading] = useState(true);
@@ -996,6 +1000,7 @@ function OcrResult() {
               <span className="text-xl font-semibold text-neutral-800 truncate max-w-md">
                 {filename || "画像プレビュー"}
               </span>
+              <PresenceBadge viewers={presenceViewers} />
             </div>
             <div className="flex items-center gap-4 flex-wrap">
             {isMultipage && (

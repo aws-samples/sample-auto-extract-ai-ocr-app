@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, CheckCircle } from 'lucide-react';
 import { Table, Thead, Tbody, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton, Tooltip } from '../components/ui';
 import ProcessStatusBadge from '../components/shared/ProcessStatusBadge';
+import PresenceBadge from '../components/shared/PresenceBadge';
+import { usePresence, PRESENCE_LIST_MODE } from '../hooks/usePresence';
 import { useAppContext } from '../contexts/AppContext';
 import { formatDateTimeJST } from '../utils/dateUtils';
 import api from '../services/api';
@@ -32,6 +34,7 @@ interface ImageItem {
 export default function History() {
   const navigate = useNavigate();
   const { apps } = useAppContext();
+  const { byImageId: presenceByImageId } = usePresence({ imageId: PRESENCE_LIST_MODE });
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [appFilter, setAppFilter] = useState('');
@@ -120,7 +123,10 @@ export default function History() {
                     <td className="px-4 py-3 text-sm text-muted">{img.uploaded_by_email || '-'}</td>
                     <td className="px-4 py-3 text-sm">{formatDateTimeJST(img.uploadTime || '')}</td>
                     <td className="px-4 py-3">
-                      <ProcessStatusBadge status={img.status} agentStatus={img.agentStatus} />
+                      <div className="flex items-center gap-2">
+                        <ProcessStatusBadge status={img.status} agentStatus={img.agentStatus} />
+                        <PresenceBadge viewers={presenceByImageId[img.id] ?? []} />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {img.verificationCompleted ? (

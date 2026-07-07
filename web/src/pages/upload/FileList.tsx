@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, ChevronRight, FileText, Image, Trash2, Upload, CheckCircle } from 'lucide-react';
 import { ImageFile } from '../../types/ocr';
 import ProcessStatusBadge from '../../components/shared/ProcessStatusBadge';
+import PresenceBadge, { PresenceViewer } from '../../components/shared/PresenceBadge';
 import { formatDateTimeJST } from '../../utils/dateUtils';
 import { deleteImage } from '../../services/imageApi';
 import Toast from '../../components/ui/Toast';
@@ -11,6 +12,8 @@ import { Modal, Button, EmptyState } from '../../components/ui';
 interface FileListProps {
   files: ImageFile[];
   onRefresh: () => void;
+  /** image_id ごとの現在の視聴者一覧（プレゼンス機能）。省略時はバッジ非表示 */
+  presenceByImageId?: Record<string, PresenceViewer[]>;
 }
 
 interface GroupedFiles {
@@ -21,7 +24,7 @@ interface GroupedFiles {
 
 type SortField = 'uploadTime' | 'status' | 'name';
 
-const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
+const FileList: React.FC<FileListProps> = ({ files, onRefresh, presenceByImageId }) => {
   const navigate = useNavigate();
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
   const collapsedByUser = React.useRef<Set<string>>(new Set());
@@ -281,7 +284,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                       </div>
 
                       <div className="w-16 flex-shrink-0 flex justify-center">
-                        <span className="text-neutral-300">-</span>
+                        <PresenceBadge viewers={presenceByImageId?.[file.id] ?? []} />
                       </div>
 
                       {/* hover 時削除ボタン */}
@@ -315,11 +318,12 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                               {formatDateTimeJST(childFile.uploadTime)}
                             </div>
 
-                            <div className="w-32 flex-shrink-0 flex justify-center">
+                            <div className="w-32 flex-shrink-0 flex justify-center items-center gap-1">
                               <ProcessStatusBadge
                                 status={childFile.status}
                                 agentStatus={childFile.agentStatus}
                               />
+                              <PresenceBadge viewers={presenceByImageId?.[childFile.id] ?? []} />
                             </div>
 
                             <div className="w-16 flex-shrink-0 flex justify-center">
@@ -376,11 +380,12 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh }) => {
                         {formatDateTimeJST(file.uploadTime)}
                       </div>
 
-                      <div className="w-32 flex-shrink-0 flex justify-center">
+                      <div className="w-32 flex-shrink-0 flex justify-center items-center gap-1">
                         <ProcessStatusBadge
                           status={file.status}
                           agentStatus={file.agentStatus}
                         />
+                        <PresenceBadge viewers={presenceByImageId?.[file.id] ?? []} />
                       </div>
 
                       <div className="w-16 flex-shrink-0 flex justify-center">

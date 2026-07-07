@@ -7,6 +7,7 @@ export class Database extends Construct {
   public readonly jobsTable: Table;
   public readonly schemasTable: Table;
   public readonly userPreferencesTable: Table;
+  public readonly connectionsTable: Table;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -64,6 +65,23 @@ export class Database extends Construct {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
+    // WebSocket 接続管理テーブル（プレゼンス機能用）
+    // PK: resource_id（例: "image#<image_id>"）, SK: connection_id
+    // TTL(removed_at) + Heartbeat による定期更新で disconnect 検知の穴を補う
+    this.connectionsTable = new Table(this, "ConnectionsTable", {
+      partitionKey: { name: "resource_id", type: AttributeType.STRING },
+      sortKey: { name: "connection_id", type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
+      timeToLiveAttribute: "removed_at",
+    });
+
+    // GSI: connection_id からの逆引き（$disconnect 時に resource_id が分からないため必須）
+    this.connectionsTable.addGlobalSecondaryIndex({
+      indexName: "ConnectionIdIndex",
+      partitionKey: { name: "connection_id", type: AttributeType.STRING },
+    });
+
     // テーブル名を出力
     new CfnOutput(this, "ImagesTableName", {
       value: this.imagesTable.tableName,
@@ -78,6 +96,11 @@ export class Database extends Construct {
     new CfnOutput(this, "SchemasTableName", {
       value: this.schemasTable.tableName,
       description: "DynamoDB Schemas Table Name",
+    });
+
+    new CfnOutput(this, "ConnectionsTableName", {
+      value: this.connectionsTable.tableName,
+      description: "DynamoDB WebSocket Connections Table Name",
     });
   }
 }

@@ -30,6 +30,5 @@ web/dist
 .kiro/*
 !.kiro/steering/
 .kiro/steering/*
-!.kiro/steering/product.md
 !.kiro/steering/structure.md
-!.kiro/steering/tech.md
+!.kiro/steering/coding-rules.md

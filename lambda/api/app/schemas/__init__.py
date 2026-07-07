@@ -3,7 +3,12 @@ Pydantic schemas for API request/response validation
 """
 from .ocr import OcrWord, OcrResult, OcrResultResponse, OcrStartRequest
 from .upload import PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest
-from .schema import SchemaGenerateRequest, SchemaSaveRequest
+from .schema import (
+    SchemaGenerateRequest,
+    SchemaSaveRequest,
+    SchemaGenerateStartResponse,
+    SchemaGenerateStatusResponse,
+)
 from .job import JobStartResponse
 from .image import ImageInfo
 from .app import CustomPromptRequest
@@ -23,6 +28,8 @@ __all__ = [
     # Schema
     "SchemaGenerateRequest",
     "SchemaSaveRequest",
+    "SchemaGenerateStartResponse",
+    "SchemaGenerateStatusResponse",
     # Job
     "JobStartResponse",
     # Image

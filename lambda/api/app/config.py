@@ -34,6 +34,9 @@ class Settings:
     # Agent設定
     AGENT_RUNTIME_ARN: str = os.getenv("AGENT_RUNTIME_ARN", "")
     AGENT_KICK_FUNCTION_NAME: str = os.getenv("AGENT_KICK_FUNCTION_NAME", "")
+
+    # Schema Generation Worker Lambda
+    SCHEMA_GENERATE_FUNCTION_NAME: str = os.getenv("SCHEMA_GENERATE_FUNCTION_NAME", "")
     
     # Step Functions設定
     STATE_MACHINE_ARN: str = os.getenv("STATE_MACHINE_ARN", "")

@@ -5,7 +5,7 @@ export const APP_CONFIG = {
   
   // Agentモードの設定
   enableAgent: import.meta.env.VITE_ENABLE_AGENT === 'true',
-  
+
   // その他の設定
   userPoolClientId: import.meta.env.VITE_APP_USER_POOL_CLIENT_ID,
   userPoolId: import.meta.env.VITE_APP_USER_POOL_ID,

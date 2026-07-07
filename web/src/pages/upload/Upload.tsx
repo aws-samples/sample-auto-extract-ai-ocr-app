@@ -4,6 +4,7 @@ import api from "../../services/api";
 import { ImageFile } from "../../types/ocr";
 import { useAppContext } from "../../contexts/AppContext";
 import { usePolling } from "../../hooks/usePolling";
+import { usePresence, PRESENCE_LIST_MODE } from "../../hooks/usePresence";
 import FileList from "./FileList";
 import OcrActionBar from "./OcrActionBar";
 import S3SyncModal from "./S3SyncModal";
@@ -312,6 +313,11 @@ function Upload() {
   // 定期的なポーリング（2秒ごと）
   usePolling(fetchFiles, { interval: 2000, enabled: pollingEnabled });
 
+  // プレゼンス機能（一覧モード）: 各行の「見ている人」バッジ表示用
+  const { byImageId: presenceByImageId } = usePresence({
+    imageId: PRESENCE_LIST_MODE,
+  });
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-4xl mx-auto bg-bg rounded-lg shadow-md">
@@ -541,7 +547,7 @@ function Upload() {
         />
 
         {/* ファイル一覧 */}
-        <FileList files={files} onRefresh={refreshFiles} />
+        <FileList files={files} onRefresh={refreshFiles} presenceByImageId={presenceByImageId} />
       </div>
 
       {/* S3同期モーダル */}

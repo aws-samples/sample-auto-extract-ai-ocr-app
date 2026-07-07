@@ -201,6 +201,30 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
     return file.type.startsWith("image/");
   };
 
+  // スキーマ生成ジョブの結果をポーリング (最大 3 分)
+  // Bedrock 呼び出しが 40-50 秒かかり API Gateway 29 秒制限を超えるため、
+  // バックエンドは job_id を即返却し、フロントがここで完了までポーリングする。
+  const pollSchemaGenerationResult = async (
+    jobId: string,
+    maxAttempts = 60,
+    intervalMs = 3000
+  ): Promise<SchemaData> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await api.get(`/apps/schema/generate/${jobId}`);
+      const { status, result, error: jobError } = res.data;
+
+      if (status === "completed") {
+        return result as SchemaData;
+      }
+      if (status === "failed") {
+        throw new Error(jobError || "スキーマ生成に失敗しました");
+      }
+      // processing → wait
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    throw new Error("スキーマ生成がタイムアウトしました (3 分)");
+  };
+
   // スキーマ生成
   const generateSchema = async () => {
     if (!uploadedFile) return;
@@ -226,16 +250,24 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         }
       });
       
-      // 3. スキーマ生成APIを呼び出し
-      const schemaResponse = await api.post(`/apps/${appName}/schema/generate`, {
-        s3_key: s3_key,
-        filename: uploadedFile.name,
-        instructions: extractionInstructions || ""
-      });
+      // 3. スキーマ生成ジョブを起動 (即返却)
+      // appName が空でも URL パス上のみで実際には使わないので "_new" を仮置き
+      const startResponse = await api.post(
+        `/apps/${appName || "_new"}/schema/generate`,
+        {
+          s3_key: s3_key,
+          filename: uploadedFile.name,
+          instructions: extractionInstructions || "",
+        }
+      );
 
-      const schema = schemaResponse.data;
+      const { job_id } = startResponse.data;
+
+      // 4. ジョブ完了までポーリング (最大 3 分)
+      const schema = await pollSchemaGenerationResult(job_id);
+
       setGeneratedSchema(schema);
-      
+
       // fieldsのみのJSONを設定
       if (schema.fields) {
         setFieldsJson(JSON.stringify(schema.fields, null, 2));
@@ -778,7 +810,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                   onClick={generateSchema}
                   disabled={!uploadedFile || isGenerating}
                 >
-                  {isGenerating ? "生成中..." : "スキーマを生成"}
+                  {isGenerating ? "生成中... (最大3分)" : "スキーマを生成"}
                 </Button>
               </div>
 

@@ -206,6 +206,50 @@ export class Api extends Construct {
     this.handler = lambdaFunction;
     this.documentBucket = documentBucket;
 
+    // SchemaGenerate Worker Lambda
+    // スキーマ自動生成の Bedrock 呼び出しが 40-50 秒かかり、API Gateway の 29 秒制限を
+    // 超えるため非同期化した Worker Lambda。API Lambda が async invoke で起動する。
+    const schemaGenerate = new DockerImageFunction(this, "SchemaGenerate", {
+      code: DockerImageCode.fromImageAsset("lambda/api", {
+        file: "Dockerfile.schemagenerate",
+        platform: Platform.LINUX_AMD64,
+      }),
+      timeout: Duration.minutes(5),
+      memorySize: 2048,
+      environment: {
+        BUCKET_NAME: documentBucket.bucketName,
+        JOBS_TABLE_NAME: jobsTable.tableName,
+        MODEL_ID: modelId,
+        MODEL_REGION: modelRegion,
+      },
+    });
+
+    // Worker が JobsTable を更新
+    jobsTable.grantReadWriteData(schemaGenerate);
+
+    // S3 からサンプルファイルを取得
+    documentBucket.grantRead(schemaGenerate);
+
+    // Bedrock 呼び出し
+    schemaGenerate.addToRolePolicy(
+      new PolicyStatement({
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    // API Lambda から SchemaGenerate を async invoke するための権限
+    schemaGenerate.grantInvoke(lambdaFunction);
+
+    // API Lambda の環境変数に function name を注入
+    lambdaFunction.addEnvironment(
+      "SCHEMA_GENERATE_FUNCTION_NAME",
+      schemaGenerate.functionName
+    );
+
     // AgentRuntime呼び出し権限
     if (props.agentRuntimeArn) {
       lambdaFunction.addToRolePolicy(

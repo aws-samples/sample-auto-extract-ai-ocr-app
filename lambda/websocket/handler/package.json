@@ -1,0 +1,16 @@
+{
+  "name": "websocket-handler",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.700.0",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@aws-sdk/dsql-signer": "^3.700.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/pg": "^8.11.10"
+  }
+}

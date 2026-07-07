@@ -11,6 +11,7 @@ from schemas import (
     PresignedUrlRequest, CustomPromptRequest, SchemaSaveRequest,
     OcrStartRequest, JobStartResponse,
     S3ImportRequest, UsecaseToolsUpdate,
+    SchemaGenerateStartResponse, SchemaGenerateStatusResponse,
 )
 from services.schema_service import SchemaService
 from services.s3_sync_service import S3SyncService
@@ -145,15 +146,42 @@ async def generate_app_schema_presigned_url(request: PresignedUrlRequest, user=D
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.post("/apps/{app_name}/schema/generate")
+@router.post("/apps/{app_name}/schema/generate", response_model=SchemaGenerateStartResponse)
 async def generate_app_schema(app_name: str, request: SchemaGenerateRequest, user=Depends(RequireRole("author")), service: SchemaService = Depends(get_schema_service)):
-    """アプリのスキーマを自動生成する（author 以上）"""
+    """アプリのスキーマを自動生成する（非同期・author 以上）。
+
+    Bedrock 呼び出しに 40-50 秒かかり API Gateway 29 秒制限を超えるため、
+    ジョブを作成して Worker Lambda を非同期起動、job_id を即返却する。
+    フロントは GET /apps/schema/generate/{job_id} で結果をポーリングする。
+
+    app_name は URL 上のみで、実際のスキーマ生成では使わない (生成後にユーザーが指定)。
+    """
     try:
-        return await service.generate_schema(request)
+        return await service.start_schema_generation(request)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating app schema: {str(e)}")
+        logger.error(f"Error starting schema generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@router.get("/apps/schema/generate/{job_id}", response_model=SchemaGenerateStatusResponse)
+async def get_app_schema_generation_status(job_id: str, user=Depends(RequireRole("author")), service: SchemaService = Depends(get_schema_service)):
+    """スキーマ生成ジョブの状態を取得する（author 以上）。
+
+    フロントからのポーリング用。
+    - processing: 処理中
+    - completed: 完了 (result に {"fields": [...]} が入る)
+    - failed: 失敗 (error にメッセージ)
+    """
+    try:
+        return await service.get_schema_generation_result(job_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting schema generation status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 

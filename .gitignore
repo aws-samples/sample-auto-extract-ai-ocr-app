@@ -26,10 +26,12 @@ __pycache__/
 # Web build
 web/dist
 
+# TypeScript incremental build info
+*.tsbuildinfo
+
 # Kiro
 .kiro/*
 !.kiro/steering/
 .kiro/steering/*
-!.kiro/steering/product.md
 !.kiro/steering/structure.md
-!.kiro/steering/tech.md
+!.kiro/steering/coding-rules.md

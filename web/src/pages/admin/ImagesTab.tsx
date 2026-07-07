@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Image, CheckCircle } from 'lucide-react';
 import { Table, Thead, Tbody, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton, Tooltip } from '../../components/ui';
 import StatusBadge from '../../components/shared/StatusBadge';
+import PresenceBadge from '../../components/shared/PresenceBadge';
+import { usePresence, PRESENCE_LIST_MODE } from '../../hooks/usePresence';
 import { formatDateTimeJST } from '../../utils/dateUtils';
 import * as adminApi from '../../services/adminApi';
 import { useAppContext } from '../../contexts/AppContext';
@@ -23,6 +25,7 @@ const STATUS_OPTIONS = [
 export default function ImagesTab() {
   const navigate = useNavigate();
   const { apps } = useAppContext();
+  const { byImageId: presenceByImageId } = usePresence({ imageId: PRESENCE_LIST_MODE });
   const [images, setImages] = useState<AdminImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -109,7 +112,12 @@ export default function ImagesTab() {
                     <td className="px-4 py-3 text-sm">{disp ? <>{disp}<span className="text-neutral-400 ml-1">（{img.appName}）</span></> : img.appName || '-'}</td>
                     <td className="px-4 py-3 text-sm text-muted">{img.uploaded_by_email || img.uploaded_by || '-'}</td>
                     <td className="px-4 py-3 text-sm">{formatDateTimeJST(img.uploadTime || '')}</td>
-                    <td className="px-4 py-3"><StatusBadge status={img.status} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={img.status} />
+                        <PresenceBadge viewers={presenceByImageId[img.id] ?? []} />
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-center">
                       {img.verificationCompleted ? (
                         <Tooltip content={img.verified_by_email || '確認済み'}>

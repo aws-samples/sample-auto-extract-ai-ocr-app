@@ -1,4 +1,6 @@
 from clients import s3_client
+import boto3
+import json
 import logging
 import os
 import re
@@ -17,6 +19,10 @@ from repositories import (
 )
 from repositories.image_repository import create_s3_sync_folder
 from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name, get_permitted_apps_with_permission
+from repositories.job_repository import (
+    create_schema_generation_job,
+    get_job,
+)
 from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
 from domains.schema_fields import extract_field_names
 from clients.bedrock import call_bedrock
@@ -271,6 +277,73 @@ class SchemaService:
         except Exception as e:
             logger.error(f"Error generating schema: {str(e)}")
             raise
+
+    async def start_schema_generation(self, request: SchemaGenerateRequest) -> Dict[str, str]:
+        """スキーマ生成を非同期で開始する。
+
+        - JobsTable にジョブを作成 (status=processing)
+        - SchemaGenerate Worker Lambda を async invoke
+        - job_id を即返却 (API Gateway の 29 秒制限回避のため)
+
+        Args:
+            request: スキーマ生成リクエスト (s3_key, filename, instructions)
+
+        Returns:
+            {"job_id": str, "status": "processing"}
+        """
+        try:
+            if not settings.SCHEMA_GENERATE_FUNCTION_NAME:
+                raise ValueError("SCHEMA_GENERATE_FUNCTION_NAME is not configured")
+
+            # 1. ジョブレコード作成
+            job_id = create_schema_generation_job(
+                s3_key=request.s3_key,
+                filename=request.filename,
+                instructions=request.instructions or "",
+            )
+            logger.info(f"Created schema generation job: {job_id}")
+
+            # 2. Worker Lambda を async invoke
+            lambda_client = boto3.client("lambda")
+            lambda_client.invoke(
+                FunctionName=settings.SCHEMA_GENERATE_FUNCTION_NAME,
+                InvocationType="Event",  # async
+                Payload=json.dumps({
+                    "job_id": job_id,
+                    "s3_key": request.s3_key,
+                    "filename": request.filename,
+                    "instructions": request.instructions or "",
+                }),
+            )
+            logger.info(f"Invoked SchemaGenerate Lambda for job {job_id}")
+
+            return {"job_id": job_id, "status": "processing"}
+        except Exception as e:
+            logger.error(f"Error starting schema generation: {str(e)}")
+            raise
+
+    async def get_schema_generation_result(self, job_id: str) -> Dict[str, Any]:
+        """スキーマ生成ジョブの状態と結果を取得する。
+
+        Args:
+            job_id: JobsTable の PK
+
+        Returns:
+            {"status": "processing" | "completed" | "failed",
+             "result": {...} | None, "error": str | None}
+        """
+        job = get_job(job_id)
+        if not job:
+            raise ValueError(f"Job not found: {job_id}")
+
+        if job.get("job_type") != "schema_generation":
+            raise ValueError(f"Job {job_id} is not a schema_generation job")
+
+        return {
+            "status": job.get("status", "processing"),
+            "result": job.get("result"),
+            "error": job.get("error"),
+        }
 
     async def update_schema(self, app_name: str, request: SchemaSaveRequest) -> Dict[str, str]:
         """既存のスキーマを更新する"""

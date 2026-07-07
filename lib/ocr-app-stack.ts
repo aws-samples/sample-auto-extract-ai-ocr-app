@@ -10,6 +10,7 @@ import { Dsql } from "./constructs/dsql";
 import { Ocr } from "./constructs/ocr";
 import { Agent } from "./constructs/agent";
 import { StepFunctions } from "./constructs/step-functions";
+import { WebSocket } from "./constructs/websocket";
 import { AppParameters } from "./parameters";
 
 export interface OcrAppStackProps extends cdk.StackProps {
@@ -124,6 +125,16 @@ export class OcrAppStack extends cdk.Stack {
       stepFunctions.agentKickFunction.grantInvoke(api.handler);
     }
 
+    const websocket = new WebSocket(this, "Presence", {
+      userPool: auth.userPool,
+      userPoolClient: auth.client,
+      connectionsTable: database.connectionsTable,
+      imagesTable: database.imagesTable,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
+    });
+
     new Web(this, "WebConstruct", {
       buildFolder: "/dist",
       userPoolId: auth.userPool.userPoolId,
@@ -133,6 +144,7 @@ export class OcrAppStack extends cdk.Stack {
       enableAgent: p.enableAgent,
       syncBucketName: api.syncBucket.bucketName,
       webAclArn: props.webAclArn,
+      websocketUrl: websocket.apiEndpoint,
     });
 
     new cdk.CfnOutput(this, "StateMachineArn", {

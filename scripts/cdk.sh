@@ -23,7 +23,7 @@ set -euo pipefail
 
 readonly VALID_COMMANDS=("deploy" "destroy" "synth" "diff")
 readonly VALID_ENVS=("base" "dev" "stg" "prod")
-readonly COMMON_REGIONS=("ap-northeast-1" "us-east-1" "us-west-2" "ap-northeast-3" "eu-west-1")
+readonly COMMON_REGIONS=("ap-northeast-1" "us-east-1")
 
 # ── 色定義 ─────────────────────────────────────────────────
 if [[ -t 1 ]]; then

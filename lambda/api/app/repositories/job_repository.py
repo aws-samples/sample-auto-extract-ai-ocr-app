@@ -175,3 +175,88 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
     except Exception as e:
         logger.error(f"Error updating agent job: {str(e)}")
         raise
+
+
+# === Schema Generation Jobs ===
+# 非同期スキーマ生成 (Bedrock 呼び出しが 40-50 秒かかり API Gateway 29 秒制限を超えるため)
+# のジョブ管理。既存 JobsTable の PK=id をそのまま流用し、job_type="schema_generation" で識別する。
+# image_id は使わない (ImageIdIndex GSI にはヒットしない)。
+
+def create_schema_generation_job(s3_key: str, filename: str, instructions: str = "") -> str:
+    """Create schema generation job
+
+    Args:
+        s3_key: S3 key of the uploaded sample file
+        filename: Original filename (used for extension detection)
+        instructions: Optional user instructions
+
+    Returns:
+        str: Job ID
+    """
+    job_id = str(uuid.uuid4())
+    table = get_jobs_table()
+    current_time = datetime.now().isoformat()
+
+    try:
+        item = {
+            "id": job_id,
+            "job_type": "schema_generation",
+            "status": "processing",
+            "created_at": current_time,
+            "updated_at": current_time,
+            "input": {
+                "s3_key": s3_key,
+                "filename": filename,
+                "instructions": instructions or "",
+            },
+        }
+        table.put_item(Item=item)
+        return job_id
+    except Exception as e:
+        logger.error(f"Error creating schema generation job: {str(e)}")
+        raise
+
+
+def update_schema_generation_job(job_id: str, status: str, result: dict = None, error: str = None):
+    """Update schema generation job
+
+    Args:
+        job_id: Job ID
+        status: Job status (processing, completed, failed)
+        result: Generated schema dict (e.g. {"fields": [...]})
+        error: Error message if failed
+    """
+    table = get_jobs_table()
+    current_time = datetime.now().isoformat()
+
+    try:
+        update_expr = "SET #status = :status, updated_at = :updated_at"
+        expr_attr_names = {"#status": "status"}
+        expr_attr_values = {
+            ":status": status,
+            ":updated_at": current_time,
+        }
+
+        if status == "completed":
+            update_expr += ", completed_at = :completed_at"
+            expr_attr_values[":completed_at"] = current_time
+
+            if result is not None:
+                update_expr += ", #result = :result"
+                expr_attr_names["#result"] = "result"
+                expr_attr_values[":result"] = result
+
+        if error:
+            update_expr += ", #error = :error"
+            expr_attr_names["#error"] = "error"
+            expr_attr_values[":error"] = error
+
+        table.update_item(
+            Key={"id": job_id},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_attr_names,
+            ExpressionAttributeValues=expr_attr_values,
+        )
+    except Exception as e:
+        logger.error(f"Error updating schema generation job: {str(e)}")
+        raise

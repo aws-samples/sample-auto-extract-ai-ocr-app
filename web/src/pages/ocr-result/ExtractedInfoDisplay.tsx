@@ -269,31 +269,17 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
         <div key={field.name} className="mb-6">
           <h3 className="text-lg font-medium mb-2">{field.display_name}</h3>
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed divide-y divide-gray-200">
-              <colgroup>
-                {itemFields.map(itemField => {
-                  const name = itemField.name.toLowerCase();
-                  let width: string;
-                  if (name === 'no' || name === 'number' || name === 'index') {
-                    width = '5%';
-                  } else if (name === 'quantity' || name === '数量' || name.includes('qty')) {
-                    width = '8%';
-                  } else if (name === 'unit' || name === '単位') {
-                    width = '7%';
-                  } else if (name.includes('price') || name.includes('単価') || name.includes('amount') || name.includes('金額')) {
-                    width = '13%';
-                  } else if (name.includes('description') || name.includes('項目') || name.includes('item') || name.includes('name')) {
-                    width = '34%';
-                  } else {
-                    width = `${Math.floor(60 / itemFields.length)}%`;
-                  }
-                  return <col key={itemField.name} style={{ width }} />;
-                })}
-              </colgroup>
+            {/*
+              table-fixed + w-full + colgroup(%) は列数が多い表で
+              各列が極狭になり文字が縦に潰れるため使わない。
+              min-w-full + table-auto にして内容に応じた自然な列幅とし、
+              列数が多い場合は親の overflow-x-auto で横スクロールさせる。
+            */}
+            <table className="min-w-full table-auto divide-y divide-gray-200">
               <thead className="bg-neutral-50">
                 <tr>
                   {itemFields.map(itemField => (
-                    <th key={itemField.name} className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                    <th key={itemField.name} className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider whitespace-nowrap">
                       {itemField.display_name}
                     </th>
                   ))}
@@ -329,7 +315,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                                 />
                               ) : (
                                 <div
-                                  className={`text-sm text-neutral-900 px-2 py-1 rounded break-words cursor-pointer ${cellSuggestion ? 'text-warning-text font-medium hover:bg-warning-light/50' : 'hover:bg-info-light'}`}
+                                  // 空セル（行追加直後など）でも最低1行分の高さを確保し、
+                                  // 極薄の行になって気づけない問題を防ぐ（min-h のみ、幅・枠は変えない）
+                                  className={`text-sm text-neutral-900 px-2 py-1 rounded max-w-xs break-words cursor-pointer min-h-[1.5rem] ${cellSuggestion ? 'text-warning-text font-medium hover:bg-warning-light/50' : 'hover:bg-info-light'}`}
                                   onClick={() => {
                                     onHighlightCell(field.name, itemIndex, itemField.name);
                                     if (editMode) {

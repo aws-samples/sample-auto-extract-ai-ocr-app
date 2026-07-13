@@ -81,7 +81,7 @@ async function executeSeed(client: pg.Client): Promise<string[]> {
       if (!sub || !email) continue;
       await client.query(
         `INSERT INTO users (cognito_sub, email, role)
-         VALUES ($1, $2, 'reader')
+         VALUES ($1, $2, 'author')
          ON CONFLICT (cognito_sub) DO NOTHING`,
         [sub, email]
       );

@@ -146,6 +146,23 @@ async def generate_app_schema_presigned_url(request: PresignedUrlRequest, user=D
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
+@router.get("/apps/{app_name}/sample-image-url")
+async def get_app_sample_image_url(app_name: str, user=Depends(RequirePermission("viewer")), service: SchemaService = Depends(get_schema_service)):
+    """スキーマに紐づくサンプル画像の署名付き GET URL を取得する（viewer 以上）。
+
+    サンプル画像が未紐付けの場合は {"url": null} を返す。
+    """
+    try:
+        return await service.get_sample_image_url(app_name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sample image url: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
 @router.post("/apps/{app_name}/schema/generate", response_model=SchemaGenerateStartResponse)
 async def generate_app_schema(app_name: str, request: SchemaGenerateRequest, user=Depends(RequireRole("author")), service: SchemaService = Depends(get_schema_service)):
     """アプリのスキーマを自動生成する（非同期・author 以上）。

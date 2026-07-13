@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import SchemaPreview from "./SchemaPreview";
+import SchemaFieldsEditor from "./SchemaFieldsEditor";
 import { Field } from "../../types/app-schema";
 import api from "../../services/api";
 import { useAppContext } from "../../contexts/AppContext";
@@ -44,7 +45,17 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   const [generatedSchema, setGeneratedSchema] = useState<SchemaData | null>(
     null
   );
-  const [fieldsJson, setFieldsJson] = useState<string>("");
+  // スキーマ生成に使ったサンプル画像の S3 キー (今セッションでアップロードした場合のみセット)
+  const [uploadedS3Key, setUploadedS3Key] = useState<string | null>(null);
+  // 保存済みサンプル画像 (view / edit モードで取得)
+  const [savedSampleImage, setSavedSampleImage] = useState<{
+    url: string;
+    filename?: string;
+    contentType?: string;
+    s3Key?: string;
+  } | null>(null);
+  // スキーマ定義の編集モード (デフォルトは表示のみ)
+  const [isFieldsEditing, setIsFieldsEditing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,12 +84,12 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
           setAppDisplayName(appData.display_name);
           setAppDescription(appData.description || "");
           setGeneratedSchema(appData);
-          
-          // fieldsのみのJSONを設定
-          if (appData.fields) {
-            setFieldsJson(JSON.stringify(appData.fields, null, 2));
+
+          // 保存済みの生成指示プロンプトを復元 (プロンプトだけ変えて再生成できるように)
+          if (appData.schema_instructions) {
+            setExtractionInstructions(appData.schema_instructions);
           }
-          
+
           // 入力方法の設定を復元
           if (appData.input_methods) {
             setFileUploadEnabled(appData.input_methods.file_upload);
@@ -104,6 +115,18 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
         api.get(`/apps/${urlAppName}/available-tools`).then((res) => {
           setAvailableTools(res.data.tools || []);
+        }).catch(() => {});
+
+        // 保存済みサンプル画像の presigned URL を取得 (未紐付けなら url=null)
+        api.get(`/apps/${urlAppName}/sample-image-url`).then((res) => {
+          if (res.data.url) {
+            setSavedSampleImage({
+              url: res.data.url,
+              filename: res.data.filename,
+              contentType: res.data.content_type,
+              s3Key: res.data.s3_key,
+            });
+          }
         }).catch(() => {});
       }
     }
@@ -177,6 +200,9 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
     setUploadedFile(file);
     setError(null);
+    // 別ファイルに差し替えたので、以前のアップロード済み s3_key は無効化
+    // (次回生成時に新しいファイルがアップロードされる)
+    setUploadedS3Key(null);
 
     // プレビュー用URL生成
     const fileUrl = URL.createObjectURL(file);
@@ -186,6 +212,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   // ファイル削除
   const removeFile = () => {
     setUploadedFile(null);
+    setUploadedS3Key(null);
     if (filePreviewUrl) {
       URL.revokeObjectURL(filePreviewUrl);
       setFilePreviewUrl(null);
@@ -226,37 +253,57 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   };
 
   // スキーマ生成
+  // 新規アップロードファイルがあればアップロードして生成、
+  // なければ保存済みサンプル画像の s3_key を使って再生成する (プロンプトを変えたリトライ用)
   const generateSchema = async () => {
-    if (!uploadedFile) return;
+    if (!uploadedFile && !savedSampleImage?.s3Key) return;
 
     setIsGenerating(true);
     setError(null);
 
     try {
-      // 1. まず署名付きURLを取得
-      const presignedUrlResponse = await api.post("/apps/schema/upload-url", {
-        filename: uploadedFile.name,
-        content_type: uploadedFile.type
-      });
-      
-      const { presigned_url, s3_key } = presignedUrlResponse.data;
-      
-      // 2. 署名付きURLを使ってS3に直接アップロード
-      await fetch(presigned_url, {
-        method: 'PUT',
-        body: uploadedFile,
-        headers: {
-          'Content-Type': uploadedFile.type
-        }
-      });
-      
+      let s3Key: string;
+      let filename: string;
+
+      if (uploadedFile && uploadedS3Key) {
+        // 同じファイルで再生成 (プロンプトだけ変えたリトライ): アップロード済み s3_key を使い回す
+        s3Key = uploadedS3Key;
+        filename = uploadedFile.name;
+      } else if (uploadedFile) {
+        // 1. まず署名付きURLを取得
+        const presignedUrlResponse = await api.post("/apps/schema/upload-url", {
+          filename: uploadedFile.name,
+          content_type: uploadedFile.type
+        });
+
+        const { presigned_url, s3_key } = presignedUrlResponse.data;
+
+        // 2. 署名付きURLを使ってS3に直接アップロード
+        await fetch(presigned_url, {
+          method: 'PUT',
+          body: uploadedFile,
+          headers: {
+            'Content-Type': uploadedFile.type
+          }
+        });
+
+        // 保存時にスキーマへ紐づけるため s3_key を保持 (再生成時の使い回しにも使う)
+        setUploadedS3Key(s3_key);
+        s3Key = s3_key;
+        filename = uploadedFile.name;
+      } else {
+        // 保存済みサンプル画像で再生成 (アップロードはスキップ)
+        s3Key = savedSampleImage!.s3Key!;
+        filename = savedSampleImage!.filename || "sample";
+      }
+
       // 3. スキーマ生成ジョブを起動 (即返却)
       // appName が空でも URL パス上のみで実際には使わないので "_new" を仮置き
       const startResponse = await api.post(
         `/apps/${appName || "_new"}/schema/generate`,
         {
-          s3_key: s3_key,
-          filename: uploadedFile.name,
+          s3_key: s3Key,
+          filename,
           instructions: extractionInstructions || "",
         }
       );
@@ -267,11 +314,6 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
       const schema = await pollSchemaGenerationResult(job_id);
 
       setGeneratedSchema(schema);
-
-      // fieldsのみのJSONを設定
-      if (schema.fields) {
-        setFieldsJson(JSON.stringify(schema.fields, null, 2));
-      }
 
       // 生成されたスキーマ名を設定
       if (schema.name && !appName) {
@@ -288,9 +330,9 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
     }
   };
 
-  // スキーマ再生成
+  // スキーマ再生成 (新規アップロード or 保存済みサンプル画像のどちらかがあれば可)
   const regenerateSchema = async () => {
-    if (!uploadedFile) return;
+    if (!uploadedFile && !savedSampleImage?.s3Key) return;
     await generateSchema();
   };
 
@@ -314,15 +356,8 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
     setSuccessMessage(null);
 
     try {
-      let schemaToSave = generatedSchema;
-      
-      if (!schemaToSave) {
-        try {
-          schemaToSave = { fields: JSON.parse(fieldsJson) } as SchemaData;
-        } catch (err) {
-          throw new Error("JSONの形式が正しくありません");
-        }
-      }
+      // 未生成の場合は空フィールドで保存 (エディタで手動追加された場合は generatedSchema に反映済み)
+      const schemaToSave = generatedSchema || ({ fields: [] } as unknown as SchemaData);
 
       // スキーマにアプリ情報を設定
       const inputMethods: any = {
@@ -335,14 +370,23 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         inputMethods.s3_uri = s3Uri;
       }
 
-      const finalSchema = {
+      const finalSchema: any = {
         ...schemaToSave,
         name: appName,
         display_name: appDisplayName,
         description: appDescription,
         input_methods: inputMethods,
         agent_enabled: agentEnabled,
+        // 生成指示プロンプトも保存し、編集画面で復元できるようにする
+        schema_instructions: extractionInstructions || "",
       };
+
+      // 今セッションで画像をアップロードした場合のみ紐付けを送信
+      // (未送信なら BE 側で既存の紐付けを保持する)
+      if (uploadedS3Key) {
+        finalSchema.sample_image_s3_key = uploadedS3Key;
+        finalSchema.sample_image_filename = uploadedFile?.name || "";
+      }
 
       console.log("送信するスキーマデータ:", finalSchema);
 
@@ -382,24 +426,15 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
     }
   };
 
-  // JSONエディタの変更ハンドラ
-  const handleFieldsJsonChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>
-  ) => {
-    setFieldsJson(e.target.value);
-    try {
-      const parsedFields = JSON.parse(e.target.value);
-      if (generatedSchema) {
-        const updatedSchema = {
-          ...generatedSchema,
-          fields: parsedFields
-        };
-        setGeneratedSchema(updatedSchema);
-      }
-    } catch (err) {
-      // JSONのパースエラーは無視（編集中の可能性があるため）
-    }
+  // フィールドエディタの変更ハンドラ
+  const handleFieldsChange = (fields: Field[]) => {
+    setGeneratedSchema((prev) =>
+      prev ? { ...prev, fields } : ({ fields } as SchemaData)
+    );
   };
+
+  // プレビューペインを表示するか (閲覧モードではサンプル画像があるときのみ)
+  const showPreviewPane = !isViewMode || !!savedSampleImage;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -687,6 +722,111 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                 </div>
               </div>
             </div>
+
+            {/* サンプル画像アップロード (作成・編集モード) */}
+            {!isViewMode && (
+              <div className="rounded-xl border border-default shadow-sm p-6 bg-bg mb-6">
+                <h2 className="text-lg font-semibold mb-4">サンプル画像アップロード</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-muted mb-1">
+                        スキーマ生成の指示（オプション）
+                      </label>
+                      <textarea
+                        value={extractionInstructions}
+                        onChange={(e) => setExtractionInstructions(e.target.value)}
+                        className="w-full px-3 py-2 border border-default rounded-lg text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
+                        rows={3}
+                        placeholder="例: この請求書から、請求日、請求番号、品目、金額などの情報を抽出できるスキーマを生成してください。"
+                      ></textarea>
+                    </div>
+                    <div>
+                      {/* ファイル入力要素 */}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={handleFileSelect}
+                      />
+                      <div
+                        className="border-2 border-dashed border-neutral-300 rounded-lg p-4 text-center cursor-pointer hover:bg-neutral-50 flex flex-col items-center justify-center"
+                        onClick={triggerFileInput}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={handleFileDrop}
+                      >
+                        {!uploadedFile ? (
+                          <div>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="mx-auto h-10 w-10 text-neutral-400"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                              />
+                            </svg>
+                            <p className="mt-2 text-sm text-neutral-600">
+                              クリックしてファイルを選択、またはドラッグ＆ドロップ
+                            </p>
+                            <p className="mt-1 text-xs text-neutral-500">
+                              PDF・画像ファイル (最大10MB)
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-sm font-medium text-neutral-900">
+                              {uploadedFile.name}
+                            </p>
+                            <p className="text-xs text-neutral-500">
+                              {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFile();
+                              }}
+                              className="mt-2 text-sm text-danger hover:text-danger-text"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-4">
+                    <Button
+                      variant="primary"
+                      onClick={generateSchema}
+                      disabled={(!uploadedFile && !savedSampleImage?.s3Key) || isGenerating}
+                    >
+                      {isGenerating ? "生成中... (最大3分)" : "スキーマを生成"}
+                    </Button>
+                    {!uploadedFile && savedSampleImage?.s3Key && (
+                      <span className="text-xs text-muted">
+                        保存済みサンプル画像で再生成します（指示を変えてリトライ可能）
+                      </span>
+                    )}
+                    {!generatedSchema && (
+                      <button
+                        onClick={() => {
+                          setGeneratedSchema({ fields: [] } as unknown as SchemaData);
+                          setIsFieldsEditing(true);
+                        }}
+                        className="text-sm text-primary hover:text-primary-hover"
+                      >
+                        または手動でフィールドを定義する
+                      </button>
+                    )}
+                  </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -696,181 +836,17 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
           </Alert>
         )}
 
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* 左側: PDFアップロード領域 - 確認モードでは非表示 */}
-          {!isViewMode && (
-            <div className="w-full lg:w-1/2 rounded-xl border border-default shadow-sm p-6 bg-bg">
-              <h2 className="text-lg font-semibold mb-4">
-                サンプル画像アップロード
-              </h2>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  スキーマ生成の指示（オプション）
-                </label>
-                <textarea
-                  value={extractionInstructions}
-                  onChange={(e) => setExtractionInstructions(e.target.value)}
-                  className="w-full px-3 py-2 border border-default rounded-lg text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
-                  rows={3}
-                  placeholder="例: この請求書から、請求日、請求番号、品目、金額などの情報を抽出できるスキーマを生成してください。"
-                  disabled={isViewMode}
-                ></textarea>
-              </div>
-
-              {/* ファイル入力要素を追加 */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleFileSelect}
-                disabled={isViewMode}
-              />
-
-              <div
-                className="border-2 border-dashed border-neutral-300 rounded-lg p-8 text-center cursor-pointer hover:bg-neutral-50"
-                onClick={triggerFileInput}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleFileDrop}
-              >
-                {!uploadedFile ? (
-                  <div>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mx-auto h-12 w-12 text-neutral-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                      />
-                    </svg>
-                    <p className="mt-2 text-sm text-neutral-600">
-                      クリックしてファイルを選択
-                      <br />
-                      または
-                      <br />
-                      ファイルをドラッグ＆ドロップ
-                    </p>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      PDF・画像ファイル (最大10MB)
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    {isImageFile(uploadedFile) ? (
-                      <img
-                        src={filePreviewUrl || undefined}
-                        alt="プレビュー"
-                        className="mx-auto h-32 object-contain"
-                      />
-                    ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="mx-auto h-12 w-12 text-neutral-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                    )}
-                    <p className="mt-2 text-sm font-medium text-neutral-900">
-                      {uploadedFile.name}
-                    </p>
-                    <p className="text-xs text-neutral-500">
-                      {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeFile();
-                      }}
-                      className="mt-2 text-sm text-danger hover:text-danger-text"
-                    >
-                      削除
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 flex justify-between">
-                <Button
-                  variant="primary"
-                  onClick={generateSchema}
-                  disabled={!uploadedFile || isGenerating}
-                >
-                  {isGenerating ? "生成中... (最大3分)" : "スキーマを生成"}
-                </Button>
-              </div>
-
-              {uploadedFile && filePreviewUrl && isImageFile(uploadedFile) && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-medium mb-2">プレビュー</h3>
-                  <div className="border rounded-md overflow-hidden">
-                    <img
-                      src={filePreviewUrl || undefined}
-                      className="w-full h-auto"
-                      alt="アップロードされた画像"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {uploadedFile && filePreviewUrl && isPdfFile(uploadedFile) && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-medium mb-2">プレビュー</h3>
-                  <div className="border rounded-md p-4 bg-neutral-100 text-center">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mx-auto h-12 w-12 text-danger"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                    <p className="mt-2 text-sm text-neutral-600">
-                      {uploadedFile.name}
-                    </p>
-                    <a
-                      href={filePreviewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 inline-block text-primary hover:text-primary-hover"
-                    >
-                      PDFを開く
-                    </a>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 右側: スキーマ表示・編集領域 */}
-          <div className={`w-full ${!isViewMode ? 'lg:w-1/2' : ''} rounded-xl border border-default shadow-sm p-6 bg-bg`}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">スキーマ定義</h2>
-              {generatedSchema && !isViewMode && (
+        {/* プレビュー + スキーマ定義 (画像アップロード直後 / スキーマ生成後 / 既存スキーマ読込後に表示) */}
+        {(generatedSchema || uploadedFile) && (
+        <div className="rounded-xl border border-default shadow-sm p-6 bg-bg">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">スキーマ定義</h2>
+            {generatedSchema && !isViewMode && (
+              <div className="flex items-center gap-3">
                 <button
                   onClick={regenerateSchema}
-                  className="text-primary hover:text-primary-hover flex items-center"
-                  disabled={!uploadedFile || isGenerating}
+                  className="text-primary hover:text-primary-hover flex items-center disabled:opacity-50"
+                  disabled={(!uploadedFile && !savedSampleImage?.s3Key) || isGenerating}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -888,47 +864,108 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                   </svg>
                   再生成
                 </button>
-              )}
-            </div>
-
-            {generatedSchema ? (
-              <div>
-                {/* JSONエディタ - fieldsのみ表示 */}
-                {!isViewMode && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-muted mb-1">
-                      フィールド定義 (JSON)
-                    </label>
-                    <textarea
-                      value={fieldsJson}
-                      onChange={handleFieldsJsonChange}
-                      className="w-full px-3 py-2 border border-default rounded-lg font-mono text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
-                      rows={15}
-                    ></textarea>
-                  </div>
-                )}
-
-                {/* スキーマプレビュー */}
-                <div>
-                  <h3 className="text-lg font-medium mb-2">プレビュー</h3>
-                  <SchemaPreview schema={generatedSchema} />
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12 text-neutral-500">
-                {isViewMode ? (
-                  <p>スキーマ情報を読み込み中...</p>
-                ) : (
-                  <p>
-                    サンプル画像をアップロードして「スキーマを生成」ボタンをクリックしてください。
-                    <br />
-                    または手動でJSONを入力することもできます。
-                  </p>
-                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsFieldsEditing(!isFieldsEditing)}
+                >
+                  {isFieldsEditing ? "編集を終了" : "編集"}
+                </Button>
               </div>
             )}
           </div>
+
+          <div className={`grid grid-cols-1 ${showPreviewPane ? "lg:grid-cols-2" : ""} gap-6`}>
+            {/* 左: サンプル画像プレビュー (A4 比率固定で常に全体が見える) */}
+            {showPreviewPane && (
+              <div className="w-full">
+                <h3 className="text-sm font-medium text-muted mb-2">
+                  サンプル画像プレビュー
+                  {(uploadedFile?.name || savedSampleImage?.filename) && (
+                    <span className="ml-2 font-normal">
+                      ({uploadedFile?.name || savedSampleImage?.filename})
+                    </span>
+                  )}
+                </h3>
+                <div
+                  className="w-full border rounded-md bg-neutral-50 overflow-hidden"
+                  style={{ aspectRatio: "210 / 297" }}
+                >
+                  {uploadedFile && filePreviewUrl ? (
+                    isImageFile(uploadedFile) ? (
+                      <img
+                        src={filePreviewUrl}
+                        className="w-full h-full object-contain"
+                        alt="アップロードされた画像"
+                      />
+                    ) : (
+                      <iframe
+                        src={filePreviewUrl}
+                        className="w-full h-full"
+                        title="アップロードされたPDFのプレビュー"
+                      />
+                    )
+                  ) : savedSampleImage ? (
+                    savedSampleImage.contentType?.startsWith("image/") ? (
+                      <img
+                        src={savedSampleImage.url}
+                        className="w-full h-full object-contain"
+                        alt="保存済みサンプル画像"
+                      />
+                    ) : (
+                      <iframe
+                        src={savedSampleImage.url}
+                        className="w-full h-full"
+                        title="保存済みサンプルPDFのプレビュー"
+                      />
+                    )
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-center text-neutral-400 text-sm">
+                      <p>
+                        サンプル画像をアップロードすると
+                        <br />
+                        ここにプレビューが表示されます
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 右: スキーマ定義 (プレビューと同じ高さで個別スクロール) */}
+            {/* lg では左の A4 ボックスがグリッド行の高さを決め、右は absolute でその高さに収まり内部スクロールする */}
+            <div className={`w-full ${showPreviewPane ? "lg:relative" : ""}`}>
+              <div className={showPreviewPane ? "lg:absolute lg:inset-0 lg:overflow-y-auto lg:pr-1" : ""}>
+              {generatedSchema ? (
+                <div>
+                  {/* デフォルトは表示のみ。編集ボタンでエディタに切替 (閲覧モードは常に表示のみ) */}
+                  {!isViewMode && isFieldsEditing ? (
+                    <SchemaFieldsEditor
+                      fields={generatedSchema.fields || []}
+                      onChange={handleFieldsChange}
+                    />
+                  ) : (
+                    <SchemaPreview schema={generatedSchema} />
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-neutral-400 text-sm">
+                  {isGenerating ? (
+                    <p>スキーマを生成中... (最大3分)</p>
+                  ) : (
+                    <p>
+                      「スキーマを生成」を実行すると
+                      <br />
+                      ここにスキーマ定義が表示されます
+                    </p>
+                  )}
+                </div>
+              )}
+              </div>
+            </div>
+          </div>
         </div>
+        )}
     </div>
   );
 };

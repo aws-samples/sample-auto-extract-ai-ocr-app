@@ -52,6 +52,9 @@ class SchemaService:
             "fields": request.fields,
             "input_methods": request.input_methods,
             "agent_enabled": request.agent_enabled,
+            "sample_image_s3_key": request.sample_image_s3_key,
+            "sample_image_filename": request.sample_image_filename,
+            "schema_instructions": request.schema_instructions,
         }
 
     async def get_apps_list(self, user_id: str = None, role: str = None) -> Dict[str, Any]:
@@ -198,6 +201,51 @@ class SchemaService:
             return {"status": "success", "message": "スキーマが正常に保存されました"}
         except Exception as e:
             logger.error(f"Error saving schema: {str(e)}")
+            raise
+
+    async def get_sample_image_url(self, app_name: str) -> Dict[str, Any]:
+        """スキーマに紐づくサンプル画像の presigned GET URL を返す
+
+        サンプル画像が紐づいていない場合は url=None を返す (404 にはしない。
+        紐付けは任意項目のため、フロントは url の有無で表示を切り替える)。
+        """
+        try:
+            app_schema = get_app_schema(app_name)
+            if not app_schema:
+                raise ValueError(f"App '{app_name}' not found")
+
+            s3_key = app_schema.get("sample_image_s3_key")
+            if not s3_key:
+                return {"url": None, "filename": None}
+
+            # ContentType を取得 (PDF / 画像でフロントの表示を分けるため)
+            try:
+                head = s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
+                content_type = head.get("ContentType", "application/octet-stream")
+            except Exception:
+                # オブジェクトが削除済み等の場合は未紐付け扱い
+                logger.warning(f"Sample image not found in S3: {s3_key}")
+                return {"url": None, "filename": None}
+
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': s3_key,
+                    'ResponseContentType': content_type,
+                },
+                ExpiresIn=3600,  # 1時間
+                HttpMethod='GET'
+            )
+            return {
+                "url": presigned_url,
+                "filename": app_schema.get("sample_image_filename"),
+                "content_type": content_type,
+                # 保存済み画像を使った再生成 (スキーマ生成 API へ渡す) 用
+                "s3_key": s3_key,
+            }
+        except Exception as e:
+            logger.error(f"Error getting sample image url: {str(e)}")
             raise
 
     async def generate_schema_presigned_url(self, request: PresignedUrlRequest) -> PresignedUrlResponse:

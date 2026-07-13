@@ -18,6 +18,7 @@
     "init-admin": "npx ts-node scripts/init-admin.ts"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/jest": "^29.5.14",
     "@types/node": "22.7.9",
     "@types/pg": "^8.18.0",
@@ -29,12 +30,14 @@
   },
   "dependencies": {
     "@aws-cdk/aws-bedrock-agentcore-alpha": "^2.250.0-alpha.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1009.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1009.0",
     "@aws-sdk/client-dynamodb": "^3.1009.0",
     "@aws-sdk/dsql-signer": "^3.1009.0",
     "@aws-sdk/lib-dynamodb": "^3.1009.0",
     "@aws-solutions-constructs/aws-cloudfront-s3": "^2.77.0",
     "aws-cdk-lib": "^2.191.0",
+    "aws-jwt-verify": "^4.0.1",
     "constructs": "^10.0.0",
     "deploy-time-build": "^0.3.24",
     "pg": "^8.20.0"

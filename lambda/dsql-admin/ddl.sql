@@ -11,7 +11,7 @@ CREATE TABLE users (
     email          VARCHAR(255) NOT NULL UNIQUE,
     display_name   VARCHAR(255),
     department     VARCHAR(255),
-    role           VARCHAR(20) NOT NULL DEFAULT 'reader',
+    role           VARCHAR(20) NOT NULL DEFAULT 'author',
     is_active      BOOLEAN NOT NULL DEFAULT true,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()

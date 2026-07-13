@@ -256,6 +256,23 @@ async function postToConnections(
   );
 }
 
+/**
+ * 同じ user_id を持つ複数 connection（同一ユーザーが別ブラウザ/別タブで同じページを開いた場合）を
+ * 1件に集約する。バッジ表示上「同じ人」として1つに見せたいため、viewers としては user_id で uniq する。
+ */
+function dedupeByUserId(
+  items: Record<string, any>[]
+): { userId: string; displayName: string | null }[] {
+  const seen = new Map<string, { userId: string; displayName: string | null }>();
+  for (const item of items) {
+    const userId = item.user_id as string;
+    if (!seen.has(userId)) {
+      seen.set(userId, { userId, displayName: item.display_name ?? null });
+    }
+  }
+  return Array.from(seen.values());
+}
+
 /** resource_id を見ている全 connection に、現在の視聴者一覧をブロードキャストする */
 async function broadcastPresence(
   event: Parameters<APIGatewayProxyHandler>[0],
@@ -268,10 +285,8 @@ async function broadcastPresence(
       ExpressionAttributeValues: { ":rid": resourceId },
     })
   );
-  const viewers = (res.Items ?? []).map((item) => ({
-    userId: item.user_id,
-    displayName: item.display_name ?? null,
-  }));
+  // viewers は user_id で uniq（同じユーザーが別接続で開いていても1件のバッジになるように）
+  const viewers = dedupeByUserId(res.Items ?? []);
 
   const managementApi = new ApiGatewayManagementApiClient({
     endpoint: getManagementApiEndpoint(event),
@@ -281,6 +296,7 @@ async function broadcastPresence(
     "utf-8"
   );
 
+  // 送信対象は個々の connection_id（uniq しない）。DB 上の全接続に配信する必要があるため。
   await postToConnections(managementApi, res.Items ?? [], payload);
 }
 
@@ -288,9 +304,12 @@ async function broadcastPresence(
  * 全体購読者（一覧ページ）向けに、現在「image#」が付く resource_id ごとの視聴者数マップを
  * 配信する。ConnectionsTable 全体を Scan するのではなく、GSI や別テーブルを使わず
  * シンプルにテーブル全体を Scan する実装（接続数が数十〜数百件規模の前提のため許容）。
+ *
+ * 各 image_id の viewers は user_id で uniq する（同じユーザーの複数接続を1件にまとめる）。
  */
 async function buildAllSummary(): Promise<Record<string, { userId: string; displayName: string | null }[]>> {
-  const summary: Record<string, { userId: string; displayName: string | null }[]> = {};
+  // まず image_id ごとに全 connection を集めてから、最後に user_id で uniq する
+  const rawByImageId: Record<string, Record<string, any>[]> = {};
   let lastEvaluatedKey: Record<string, any> | undefined;
 
   do {
@@ -304,12 +323,16 @@ async function buildAllSummary(): Promise<Record<string, { userId: string; displ
       const rid = item.resource_id as string;
       if (!rid.startsWith("image#")) continue;
       const imageId = rid.slice("image#".length);
-      if (!summary[imageId]) summary[imageId] = [];
-      summary[imageId].push({ userId: item.user_id, displayName: item.display_name ?? null });
+      if (!rawByImageId[imageId]) rawByImageId[imageId] = [];
+      rawByImageId[imageId].push(item);
     }
     lastEvaluatedKey = res.LastEvaluatedKey;
   } while (lastEvaluatedKey);
 
+  const summary: Record<string, { userId: string; displayName: string | null }[]> = {};
+  for (const [imageId, items] of Object.entries(rawByImageId)) {
+    summary[imageId] = dedupeByUserId(items);
+  }
   return summary;
 }
 

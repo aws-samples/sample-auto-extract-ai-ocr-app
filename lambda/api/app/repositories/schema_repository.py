@@ -45,6 +45,9 @@ def load_app_schemas():
                     'input_methods': item.get('input_methods', {'file_upload': True, 's3_sync': False}),
                     'custom_prompt': item.get('custom_prompt', ''),
                     'agent_enabled': item.get('agent_enabled', False),
+                    'sample_image_s3_key': item.get('sample_image_s3_key'),
+                    'sample_image_filename': item.get('sample_image_filename'),
+                    'schema_instructions': item.get('schema_instructions', ''),
                 }
                 apps.append(app_data)
             
@@ -149,6 +152,15 @@ def create_app_schema(app_name, app_data):
         if 'custom_prompt' in app_data and app_data['custom_prompt']:
             item['custom_prompt'] = app_data['custom_prompt']
 
+        # サンプル画像 (スキーマ生成に使った画像) の紐付け
+        if app_data.get('sample_image_s3_key'):
+            item['sample_image_s3_key'] = app_data['sample_image_s3_key']
+            item['sample_image_filename'] = app_data.get('sample_image_filename', '')
+
+        # スキーマ生成に使った指示プロンプト
+        if app_data.get('schema_instructions') is not None:
+            item['schema_instructions'] = app_data['schema_instructions']
+
         schemas_table.put_item(
             Item=item,
             ConditionExpression='attribute_not_exists(schema_type) AND attribute_not_exists(#n)',
@@ -209,6 +221,21 @@ def update_app_schema(app_name, app_data):
             item['custom_prompt'] = app_data['custom_prompt']
         elif existing_item.get('custom_prompt'):
             item['custom_prompt'] = existing_item['custom_prompt']
+
+        # sample_image: リクエストに含まれていれば差し替え、なければ既存値を保持
+        # (画像を変更しない編集で紐付けが消えないようにするため)
+        if app_data.get('sample_image_s3_key'):
+            item['sample_image_s3_key'] = app_data['sample_image_s3_key']
+            item['sample_image_filename'] = app_data.get('sample_image_filename', '')
+        elif existing_item.get('sample_image_s3_key'):
+            item['sample_image_s3_key'] = existing_item['sample_image_s3_key']
+            item['sample_image_filename'] = existing_item.get('sample_image_filename', '')
+
+        # schema_instructions: None でなければ差し替え (空文字はクリア扱い)、None なら既存値保持
+        if app_data.get('schema_instructions') is not None:
+            item['schema_instructions'] = app_data['schema_instructions']
+        elif existing_item.get('schema_instructions'):
+            item['schema_instructions'] = existing_item['schema_instructions']
         
         schemas_table.put_item(Item=item)
         

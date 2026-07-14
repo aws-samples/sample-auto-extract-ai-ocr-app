@@ -22,6 +22,8 @@ export interface AppSchema {
   fields: Field[];
   input_methods?: InputMethods;
   permission?: string;
+  sample_image_s3_key?: string;
+  sample_image_filename?: string;
 }
 
 export interface S3SyncFile {

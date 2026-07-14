@@ -33,15 +33,16 @@ RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
 RUN pip install --no-cache-dir --upgrade pip
 
 # Install PaddlePaddle GPU version
-RUN pip install --no-cache-dir paddlepaddle-gpu==3.0.0 \
+# PP-OCRv6（paddleocr 3.7.0）は paddlepaddle 3.2.1 以上が必要
+RUN pip install --no-cache-dir paddlepaddle-gpu==3.2.1 \
     -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 
 # Install Python packages
 COPY requirements.txt /opt/ml/code/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install PaddleOCR
-RUN pip install --no-cache-dir paddleocr>=3.0.0
+# Install PaddleOCR（バージョン固定。>= だと再ビルド時に最新へ揺れ、paddlepaddle と非互換になる）
+RUN pip install --no-cache-dir paddleocr==3.7.0
 
 # Copy inference code
 COPY inference.py /opt/ml/code/

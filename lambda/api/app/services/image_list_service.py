@@ -9,6 +9,7 @@ from utils import decimal_to_float
 from repositories.usecase_repository import get_permitted_app_names
 from repositories import user_repository
 from schemas.image import ImageInfo
+from domains.image_status import to_api_status
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class ImageListService:
                 result.append(info.model_dump(by_alias=True))
             except Exception as e:
                 logger.error(f"Image serialization error for {img.get('id', '?')}: {e}; raw_keys={sorted(img.keys())}")
-                result.append({"id": img.get("id", ""), "name": img.get("filename", ""), "status": img.get("status", "")})
+                result.append({"id": img.get("id", ""), "name": img.get("filename", ""), "status": to_api_status(img.get("status", ""))})
         return result
 
     @staticmethod

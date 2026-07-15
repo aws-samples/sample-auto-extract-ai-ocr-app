@@ -13,6 +13,7 @@ from background import BackgroundTaskExtension
 from utils import decimal_to_float
 from utils.bedrock import parse_converse_response, extract_json_from_response
 from domains.schema_fields import extract_field_names
+from domains.image_status import to_api_status
 from clients import s3_client
 from clients.bedrock import call_bedrock, call_bedrock_with_retry
 from domains.extraction_engine import (
@@ -87,6 +88,8 @@ class InformationExtractor(ABC):
                 logger.error(f"app_name not found for image {self.image_id}")
                 raise ValueError(f"app_name not found for image {self.image_id}")
 
+            update_image_status(self.image_id, "extracting")
+
             app_extraction_fields = get_extraction_fields_for_app(app_name)
             field_names = extract_field_names(app_extraction_fields.get("fields", []))
             custom_prompt = get_custom_prompt_for_app(app_name)
@@ -121,8 +124,7 @@ class InformationExtractor(ABC):
             update_extracted_info(
                 self.image_id,
                 result["extracted_info"],
-                result.get("mapping", {}),
-                'completed'
+                result.get("mapping", {})
             )
             update_image_status(self.image_id, "completed")
 
@@ -281,13 +283,13 @@ class ExtractionService:
             app_extraction_fields = get_extraction_fields_for_app(app_name)[
                 "fields"]
 
-            extraction_status = image_data.get("extraction_status")
-            if extraction_status != "completed":
-                logger.info(f"抽出処理が完了していません (status: {extraction_status})")
+            status = image_data.get("status")
+            if status != "completed":
+                logger.info(f"抽出処理が完了していません (status: {status})")
                 return {
                     "extracted_info": {},
                     "mapping": {},
-                    "status": extraction_status or "not_started",
+                    "status": to_api_status(status),
                     "app_name": app_name,
                     "app_display_name": app_display_name,
                     "fields": app_extraction_fields,
@@ -309,7 +311,7 @@ class ExtractionService:
             result = {
                 "extracted_info": extracted_info,
                 "mapping": extraction_mapping,
-                "status": extraction_status,
+                "status": to_api_status(status),
                 "app_name": app_name,
                 "app_display_name": app_display_name,
                 "fields": app_extraction_fields,

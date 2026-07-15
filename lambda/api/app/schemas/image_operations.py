@@ -1,10 +1,11 @@
 """Schemas for image operation requests (process, verification, agent)"""
-from typing import Optional, Literal
+from typing import Literal
 from pydantic import BaseModel
 
 
 class ProcessRequest(BaseModel):
-    start_from: Optional[str] = None
+    # OCR をスキップして抽出から実行する（既存 OCR 結果を再利用）
+    skip_ocr: bool = False
 
 
 class VerificationRequest(BaseModel):

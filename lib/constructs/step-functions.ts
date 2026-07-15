@@ -139,6 +139,7 @@ export class StepFunctions extends Construct {
       itemsPath: '$.images',
       parameters: {
         'image_id.$': '$$.Map.Item.Value.image_id',
+        'skip_ocr.$': '$$.Map.Item.Value.skip_ocr',
         'job_id.$': '$.job_id',
       },
     });

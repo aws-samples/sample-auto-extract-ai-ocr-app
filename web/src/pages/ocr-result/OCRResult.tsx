@@ -490,7 +490,7 @@ function OcrResult() {
 
       // 抽出処理を開始（パイプラインで実行）
       await api.post(`/images/${id}/process`, {
-        start_from: "extraction",
+        skip_ocr: true,
       });
 
       // 抽出画面に切り替え
@@ -927,7 +927,7 @@ function OcrResult() {
       showToast("情報抽出を開始しました。", "info");
 
       // 情報抽出のみを実行（OCRスキップ）
-      await api.post(`/images/${id}/process`, { start_from: "extraction" });
+      await api.post(`/images/${id}/process`, { skip_ocr: true });
       
       // 抽出画面に切り替え
       setActiveView("extraction");

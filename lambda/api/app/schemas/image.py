@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+from domains.image_status import to_api_status
 
 
 class ImageInfo(BaseModel):
@@ -27,4 +29,10 @@ class ImageInfo(BaseModel):
     verified_by_email: Optional[str] = None
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("status")
+    @classmethod
+    def _fold_status(cls, v: Optional[str]) -> Optional[str]:
+        # 内部の ocr/extracting はフロント向けに processing へ畳む
+        return to_api_status(v)
 

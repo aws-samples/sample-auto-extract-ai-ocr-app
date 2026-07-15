@@ -234,24 +234,22 @@ def update_image_status(image_id, status, job_id=None):
         raise
 
 
-def update_ocr_result(image_id: str, ocr_result: dict, extraction_status: str = "processing") -> None:
+def update_ocr_result(image_id: str, ocr_result: dict) -> None:
     """
     OCR結果を更新する
 
     Args:
         image_id (str): 画像ID
         ocr_result (dict): OCR結果
-        extraction_status (str): 抽出ステータス
     """
     table = get_images_table()
 
     try:
         table.update_item(
             Key={"id": image_id},
-            UpdateExpression="SET ocr_result = :ocr_result, extraction_status = :extraction_status",
+            UpdateExpression="SET ocr_result = :ocr_result",
             ExpressionAttributeValues={
-                ":ocr_result": ocr_result,
-                ":extraction_status": extraction_status
+                ":ocr_result": ocr_result
             }
         )
         logger.info(f"OCR結果を更新しました: {image_id}")
@@ -261,7 +259,7 @@ def update_ocr_result(image_id: str, ocr_result: dict, extraction_status: str = 
         raise
 
 
-def update_extracted_info(image_id, extracted_info, extraction_mapping, status="completed"):
+def update_extracted_info(image_id, extracted_info, extraction_mapping):
     """
     抽出情報を更新する（Map型で保存）
 
@@ -269,18 +267,16 @@ def update_extracted_info(image_id, extracted_info, extraction_mapping, status="
         image_id (str): 画像ID
         extracted_info (dict): 抽出情報
         extraction_mapping (dict): 抽出マッピング
-        status (str): 抽出ステータス
     """
     table = get_images_table()
 
     try:
         table.update_item(
             Key={"id": image_id},
-            UpdateExpression="SET extracted_info = :extracted_info, extraction_mapping = :extraction_mapping, extraction_status = :status",
+            UpdateExpression="SET extracted_info = :extracted_info, extraction_mapping = :extraction_mapping",
             ExpressionAttributeValues={
                 ":extracted_info": extracted_info,
-                ":extraction_mapping": extraction_mapping,
-                ":status": status
+                ":extraction_mapping": extraction_mapping
             }
         )
         logger.info(f"抽出情報を更新しました: {image_id}")
@@ -479,23 +475,6 @@ def update_agent_status(image_id: str, status: str, suggestions_count: int = Non
             )
     except Exception as e:
         logger.error(f"agent_status 更新エラー: {str(e)}")
-        raise
-
-
-def reset_processing_status(image_id: str) -> None:
-    """再処理のため extraction_status / agent_status / agent_suggestions_count をリセットする"""
-    table = get_images_table()
-    try:
-        table.update_item(
-            Key={"id": image_id},
-            UpdateExpression=(
-                "SET extraction_status = :proc, agent_status = :proc, "
-                "agent_suggestions_count = :zero"
-            ),
-            ExpressionAttributeValues={":proc": "processing", ":zero": 0},
-        )
-    except Exception as e:
-        logger.error(f"処理ステータスリセットエラー: {str(e)}")
         raise
 
 

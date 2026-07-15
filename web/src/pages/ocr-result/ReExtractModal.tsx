@@ -11,9 +11,10 @@ interface Props {
   loading?: boolean;
   onViewOcr?: () => void;
   ocrEnabled?: boolean;
+  schemaChanged?: boolean;
 }
 
-export default function ReExtractModal({ isOpen, onClose, onExecute, appName, loading, onViewOcr, ocrEnabled }: Props) {
+export default function ReExtractModal({ isOpen, onClose, onExecute, appName, loading, onViewOcr, ocrEnabled, schemaChanged }: Props) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const [originalPrompt, setOriginalPrompt] = useState('');
@@ -76,6 +77,12 @@ export default function ReExtractModal({ isOpen, onClose, onExecute, appName, lo
       <p className="text-sm text-muted mb-4">
         情報抽出を最初からやり直します。現在の抽出結果は上書きされます。
       </p>
+
+      {schemaChanged && (
+        <Alert type="warning" className="mb-4">
+          抽出時からスキーマが更新されています。再抽出すると新しいスキーマで上書きされます。
+        </Alert>
+      )}
 
       {/* カスタムプロンプト展開 */}
       <button

@@ -132,7 +132,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   );
 
   const renderStringField = (field: Field) => {
-    const value = editMode ? editedInfo[field.name] : extractedInfo[field.name];
+    const rawValue = editMode ? editedInfo[field.name] : extractedInfo[field.name];
+    // スキーマ変更で旧値が object/array の場合、React child に描画できず落ちるため文字列に丸める
+    const value = (rawValue !== null && typeof rawValue === 'object') ? JSON.stringify(rawValue) : rawValue;
     const suggestion = getSuggestionForField(field.name);
     return (
       <div key={field.name} className="mb-4">
@@ -176,7 +178,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   const renderMapField = (field: Field, parentPath?: string) => {
     if (!field.fields) return null;
     const basePath = parentPath ? `${parentPath}.${field.name}` : field.name;
-    const mapValue = getValueAtPath(basePath) || {};
+    const rawMapValue = getValueAtPath(basePath);
+    // スキーマ変更で旧値が map と合わない（例: 文字列）場合のフォールバック
+    const mapValue = (rawMapValue && typeof rawMapValue === 'object' && !Array.isArray(rawMapValue)) ? rawMapValue : {};
 
     return (
       <div key={field.name} className="mb-6">
@@ -228,7 +232,8 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   const renderNestedListField = (field: Field, parentPath: string) => {
     if (!field.items) return null;
     const basePath = `${parentPath}.${field.name}`;
-    const listData = getValueAtPath(basePath) || [];
+    const rawListData = getValueAtPath(basePath);
+    const listData: any[] = Array.isArray(rawListData) ? rawListData : [];
 
     return (
       <div key={field.name} className="mb-4">
@@ -259,7 +264,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
 
   const renderListField = (field: Field) => {
     if (!field.items) return null;
-    const listData = editMode ? editedInfo[field.name] || [] : extractedInfo[field.name] || [];
+    const rawListData = editMode ? editedInfo[field.name] : extractedInfo[field.name];
+    // スキーマ変更で旧値の型が list と合わない（例: 文字列）場合に .map で落ちるのを防ぐ
+    const listData: any[] = Array.isArray(rawListData) ? rawListData : [];
 
     if (field.items.type === 'map' && field.items.fields) {
       const itemFields = field.items.fields;
@@ -286,7 +293,9 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                 </tr>
               </thead>
               <tbody className="bg-bg divide-y divide-gray-200">
-                {listData.map((item: any, itemIndex: number) => {
+                {listData.map((rawItem: any, itemIndex: number) => {
+                  // 旧データの行が null/非オブジェクトでもセル参照で落ちないようにする
+                  const item = (rawItem !== null && typeof rawItem === 'object') ? rawItem : {};
                   const rowSuggestions = getSuggestionsForListRow(field.name, itemIndex);
                   const rowKey = `${field.name}[${itemIndex}]`;
                   const isExpanded = expandedSuggestionRow === rowKey;

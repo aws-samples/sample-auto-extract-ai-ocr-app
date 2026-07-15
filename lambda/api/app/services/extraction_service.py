@@ -123,7 +123,8 @@ class InformationExtractor(ABC):
             update_extracted_info(
                 self.image_id,
                 result["extracted_info"],
-                result.get("mapping", {})
+                result.get("mapping", {}),
+                extracted_fields=app_extraction_fields.get("fields", [])
             )
             update_image_status(self.image_id, "completed")
 
@@ -279,8 +280,8 @@ class ExtractionService:
                 raise ValueError(f"app_name not found for image {image_id}")
 
             app_display_name = get_app_display_name(app_name)
-            app_extraction_fields = get_extraction_fields_for_app(app_name)[
-                "fields"]
+            # snapshot 側と型を揃えて比較・返却するため現スキーマも Decimal→float 正規化する
+            current_fields = decimal_to_float(get_extraction_fields_for_app(app_name)["fields"])
 
             status = image_data.get("status")
             if status != "completed":
@@ -291,10 +292,22 @@ class ExtractionService:
                     "status": status,
                     "app_name": app_name,
                     "app_display_name": app_display_name,
-                    "fields": app_extraction_fields,
+                    "fields": current_fields,
+                    "schema_changed": False,
                     "verification_completed": image_data.get("verification_completed", False),
                     "verification_completed_at": image_data.get("verification_completed_at")
                 }
+
+            # 抽出時点のスキーマ（スナップショット）があればそれで表示する。
+            # 無い既存画像は現スキーマにフォールバック（差分判定は不能なので schema_changed=False）。
+            snapshot_fields = image_data.get("extracted_fields")
+            if snapshot_fields is not None:
+                snapshot_fields = decimal_to_float(snapshot_fields)
+                display_fields = snapshot_fields
+                schema_changed = snapshot_fields != current_fields
+            else:
+                display_fields = current_fields
+                schema_changed = False
 
             extracted_info = image_data.get("extracted_info", {})
             extraction_mapping = image_data.get("extraction_mapping", {})
@@ -313,7 +326,8 @@ class ExtractionService:
                 "status": status,
                 "app_name": app_name,
                 "app_display_name": app_display_name,
-                "fields": app_extraction_fields,
+                "fields": display_fields,
+                "schema_changed": schema_changed,
                 "verification_completed": image_data.get("verification_completed", False),
                 "verification_completed_at": image_data.get("verification_completed_at")
             }

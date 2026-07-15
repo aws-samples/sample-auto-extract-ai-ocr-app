@@ -259,7 +259,7 @@ def update_ocr_result(image_id: str, ocr_result: dict) -> None:
         raise
 
 
-def update_extracted_info(image_id, extracted_info, extraction_mapping):
+def update_extracted_info(image_id, extracted_info, extraction_mapping, extracted_fields=None):
     """
     抽出情報を更新する（Map型で保存）
 
@@ -267,17 +267,25 @@ def update_extracted_info(image_id, extracted_info, extraction_mapping):
         image_id (str): 画像ID
         extracted_info (dict): 抽出情報
         extraction_mapping (dict): 抽出マッピング
+        extracted_fields (list, optional): 抽出時点のスキーマ（fields）のスナップショット。
+            抽出実行時のみ渡す。手動編集の保存では渡さず、既存スナップショットを保持する。
     """
     table = get_images_table()
+
+    update_expression = "SET extracted_info = :extracted_info, extraction_mapping = :extraction_mapping"
+    expression_attribute_values = {
+        ":extracted_info": extracted_info,
+        ":extraction_mapping": extraction_mapping,
+    }
+    if extracted_fields is not None:
+        update_expression += ", extracted_fields = :extracted_fields"
+        expression_attribute_values[":extracted_fields"] = extracted_fields
 
     try:
         table.update_item(
             Key={"id": image_id},
-            UpdateExpression="SET extracted_info = :extracted_info, extraction_mapping = :extraction_mapping",
-            ExpressionAttributeValues={
-                ":extracted_info": extracted_info,
-                ":extraction_mapping": extraction_mapping
-            }
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values
         )
         logger.info(f"抽出情報を更新しました: {image_id}")
     except Exception as e:

@@ -90,6 +90,7 @@ function OcrResult() {
   const extractedInfoSnapshotRef = useRef<Record<string, any>>({});
   const [agentFoundIssues, setAgentFoundIssues] = useState(false);
   const [showReExtractModal, setShowReExtractModal] = useState(false);
+  const [schemaChanged, setSchemaChanged] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
   const statusCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -364,7 +365,10 @@ function OcrResult() {
 
       // ステータスを明示的に設定
       setExtractionStatus(response.data.status || "pending");
-      
+
+      // 抽出時スキーマと現スキーマの差分（再抽出 warning 用）
+      setSchemaChanged(response.data.schema_changed || false);
+
       // app_nameを設定
       if (response.data.app_name) {
         setAppName(response.data.app_name);
@@ -968,6 +972,7 @@ function OcrResult() {
         appName={appName}
         loading={extractionStatus === 'processing'}
         ocrEnabled={isOcrEnabled()}
+        schemaChanged={schemaChanged}
         onViewOcr={() => changeView("ocr")}
       />
 

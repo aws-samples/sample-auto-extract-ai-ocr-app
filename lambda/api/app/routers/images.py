@@ -26,7 +26,6 @@ from dependencies.auth import (
 )
 from repositories import get_image
 from repositories.job_repository import get_latest_agent_job_by_image_id, update_suggestion_status
-from domains.image_status import to_api_status
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/images", tags=["Images"])
@@ -161,7 +160,7 @@ async def get_image_status(
         if not image_data:
             raise HTTPException(status_code=404, detail="Image not found")
         return {
-            "extraction_status": to_api_status(image_data.get("status")) or "not_started",
+            "extraction_status": image_data.get("status") or "not_started",
             "agent_status": image_data.get("agent_status") or "idle",
             "agent_pending_suggestions_count": image_data.get("agent_suggestions_count", 0),
         }

@@ -391,14 +391,12 @@ function OcrResult() {
         }
       } else if (response.data.status === "failed") {
         setExtractionStatus("failed");
-      } else if (response.data.status === "processing") {
-        setExtractionStatus("processing");
+      } else {
+        // 完了・失敗以外（ocr / extracting / processing など）は処理中。
+        // 生の status は L366 で設定済みなので、ポーリングだけ開始する。
         if (!statusCheckTimerRef.current) {
           startPolling();
         }
-      } else {
-        // 完了以外のステータスが返された場合は処理中とみなす
-        setExtractionStatus("processing");
       }
     } catch (error) {
       console.error("抽出情報の取得に失敗しました:", error);
@@ -738,7 +736,8 @@ function OcrResult() {
           statusCheckTimerRef.current = null;
         }
       } else {
-        setExtractionStatus("processing");
+        // ocr / extracting / processing はそのまま保持（ステッパーがフェーズを表示する）
+        setExtractionStatus(status || "processing");
       }
     } catch (error) {
       console.error("抽出ステータスの確認に失敗しました:", error);
@@ -1043,11 +1042,11 @@ function OcrResult() {
               steps={[
                 {
                   label: 'OCR',
-                  status: ocrWords.length > 0 || !isOcrEnabled() ? 'completed' : extractionStatus === 'processing' ? 'processing' : 'idle',
+                  status: ocrWords.length > 0 || !isOcrEnabled() ? 'completed' : extractionStatus === 'ocr' || extractionStatus === 'processing' ? 'processing' : 'idle',
                 },
                 {
                   label: '抽出',
-                  status: extractionStatus === 'completed' ? 'completed' : extractionStatus === 'processing' ? 'processing' : extractionStatus === 'failed' ? 'failed' : 'idle',
+                  status: extractionStatus === 'completed' ? 'completed' : extractionStatus === 'extracting' || extractionStatus === 'processing' ? 'processing' : extractionStatus === 'failed' ? 'failed' : 'idle',
                 },
                 {
                   label: 'AI検証',

@@ -13,7 +13,6 @@ from background import BackgroundTaskExtension
 from utils import decimal_to_float
 from utils.bedrock import parse_converse_response, extract_json_from_response
 from domains.schema_fields import extract_field_names
-from domains.image_status import to_api_status
 from clients import s3_client
 from clients.bedrock import call_bedrock, call_bedrock_with_retry
 from domains.extraction_engine import (
@@ -289,7 +288,7 @@ class ExtractionService:
                 return {
                     "extracted_info": {},
                     "mapping": {},
-                    "status": to_api_status(status),
+                    "status": status,
                     "app_name": app_name,
                     "app_display_name": app_display_name,
                     "fields": app_extraction_fields,
@@ -311,7 +310,7 @@ class ExtractionService:
             result = {
                 "extracted_info": extracted_info,
                 "mapping": extraction_mapping,
-                "status": to_api_status(status),
+                "status": status,
                 "app_name": app_name,
                 "app_display_name": app_display_name,
                 "fields": app_extraction_fields,

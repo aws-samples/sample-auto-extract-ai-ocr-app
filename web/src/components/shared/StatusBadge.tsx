@@ -13,6 +13,8 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
         return 'bg-info-light text-info-text';
       case 'pending':
         return 'bg-warning-light text-warning-text';
+      case 'ocr':
+      case 'extracting':
       case 'processing':
         return 'bg-info-light text-info-text';
       case 'completed':
@@ -31,6 +33,10 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
         return '前処理中';
       case 'pending':
         return '未処理';
+      case 'ocr':
+        return 'OCR中';
+      case 'extracting':
+        return '抽出中';
       case 'processing':
         return '処理中';
       case 'completed':
@@ -45,7 +51,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
   return (
     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusStyle()}`}>
       {getStatusLabel()}
-      {(status === 'uploading' || status === 'converting' || status === 'processing') && (
+      {(status === 'uploading' || status === 'converting' || status === 'ocr' || status === 'extracting' || status === 'processing') && (
         <Loader2 size={16} className="animate-spin ml-1" />
       )}
     </span>

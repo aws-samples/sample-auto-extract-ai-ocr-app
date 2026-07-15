@@ -17,15 +17,19 @@ const ExtractionStatusDisplay: React.FC<ExtractionStatusDisplayProps> = ({
   // ステータスに応じたメッセージとアクション
   const renderContent = () => {
     switch (status) {
+      case 'ocr':
+      case 'extracting':
       case 'processing':
         return (
           <div className="text-center py-10">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-info mx-auto mb-4"></div>
-            <p className="text-lg font-medium mb-2">情報抽出処理中...</p>
+            <p className="text-lg font-medium mb-2">
+              {status === 'ocr' ? 'OCR処理中...' : status === 'extracting' ? '情報抽出中...' : '情報抽出処理中...'}
+            </p>
             <p className="text-sm text-neutral-500">
-              {pollingAttemptCount > 30 
-                ? '処理に時間がかかっています。しばらくお待ちください。' 
-                : '文書から情報を抽出しています。'}
+              {pollingAttemptCount > 30
+                ? '処理に時間がかかっています。しばらくお待ちください。'
+                : status === 'ocr' ? '文書を OCR で読み取っています。' : '文書から情報を抽出しています。'}
             </p>
           </div>
         );

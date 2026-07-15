@@ -1,20 +1,7 @@
 """画像ステータス判定のドメインロジック"""
 
-# OCR/抽出フェーズを区別する内部 status。フロントには公開しない。
-_INTERNAL_PHASES = {"ocr", "extracting"}
-# 親ドキュメントを processing とみなす子ステータス（内部フェーズ + processing）。
-_PARENT_PROCESSING_STATUSES = _INTERNAL_PHASES | {"processing"}
-
-
-def to_api_status(status: str | None) -> str | None:
-    """内部 status を API レスポンス用の status に畳む
-
-    内部では OCR/抽出フェーズを ocr/extracting で区別するが、フロントは
-    processing/completed/failed で動くため、境界でここを通す。
-    """
-    if status in _INTERNAL_PHASES:
-        return "processing"
-    return status
+# 処理中を表す status（OCR中・抽出中・汎用 processing）。親集約でまとめて扱う。
+_PARENT_PROCESSING_STATUSES = {"ocr", "extracting", "processing"}
 
 
 def determine_parent_status(children: list[dict]) -> str:

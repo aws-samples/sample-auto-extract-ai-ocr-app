@@ -203,7 +203,7 @@ const FileList: React.FC<FileListProps> = ({ files, onRefresh, presenceByImageId
     const children = childPages[parentId] || [];
     if (children.length === 0) return 'pending';
     if (children.some(child => child.status === 'failed' || child.agentStatus === 'failed')) return 'failed';
-    if (children.some(child => child.status === 'processing')) return 'processing';
+    if (children.some(child => ['ocr', 'extracting', 'processing'].includes(child.status))) return 'processing';
     if (children.some(child => child.status === 'pending')) return 'pending';
     if (children.some(child => child.agentStatus === 'processing')) return 'processing';
     return 'completed';

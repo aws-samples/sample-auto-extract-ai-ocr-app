@@ -15,7 +15,6 @@ from schemas import OcrResult, OcrResultResponse
 from config import settings
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response
-from domains.image_status import to_api_status
 from services.pdf_conversion_service import sync_parent_status
 from utils.helpers import float_to_decimal, compress_image_for_payload
 
@@ -118,7 +117,7 @@ class OcrService:
             filename=image_data.get("filename"),
             s3_key=s3_key,
             uploadTime=image_data.get("upload_time"),
-            status=to_api_status(image_data.get("status")),
+            status=image_data.get("status"),
             ocrResult=OcrResult(**ocr_result) if ocr_result else OcrResult(words=[]),
             imageUrl=image_url,
             app_name=image_data.get("app_name")

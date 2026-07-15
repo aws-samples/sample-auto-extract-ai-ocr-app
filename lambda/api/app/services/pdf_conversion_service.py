@@ -86,7 +86,7 @@ def convert_pdf_to_image(image_id: str, s3_key: str):
         logger.error(f"PDF変換エラー: {str(e)}")
         update_image_status(image_id, "failed")
         try:
-            update_ocr_result(image_id, {"error": str(e), "timestamp": datetime.now().isoformat()}, "failed")
+            update_ocr_result(image_id, {"error": str(e), "timestamp": datetime.now().isoformat()})
         except Exception as db_error:
             logger.error(f"エラー情報の保存に失敗しました: {str(db_error)}")
 

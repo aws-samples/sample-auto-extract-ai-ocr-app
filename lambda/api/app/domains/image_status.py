@@ -1,5 +1,8 @@
 """画像ステータス判定のドメインロジック"""
 
+# 処理中を表す status（OCR中・抽出中・汎用 processing）。親集約でまとめて扱う。
+_PARENT_PROCESSING_STATUSES = {"ocr", "extracting", "processing"}
+
 
 def determine_parent_status(children: list[dict]) -> str:
     """子ページのステータスから親ドキュメントのステータスを判定する
@@ -19,7 +22,7 @@ def determine_parent_status(children: list[dict]) -> str:
         return "completed"
     elif any(status == "failed" for status in statuses):
         return "failed"
-    elif any(status == "processing" for status in statuses):
+    elif any(status in _PARENT_PROCESSING_STATUSES for status in statuses):
         return "processing"
     else:
         return "converting"

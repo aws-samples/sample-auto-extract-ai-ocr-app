@@ -3,7 +3,7 @@ export interface ImageFile {
   name: string;
   s3_key: string;
   uploadTime: string;
-  status: 'uploading' | 'converting' | 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'uploading' | 'converting' | 'pending' | 'ocr' | 'extracting' | 'processing' | 'completed' | 'failed';
   jobId?: string;
   appName?: string;
   pageProcessingMode?: 'combined' | 'individual';

@@ -16,6 +16,12 @@ const ProcessStatusBadge: React.FC<ProcessStatusBadgeProps> = ({
     if (status === 'pending') {
       return { label: '処理待ち', color: 'bg-neutral-400' };
     }
+    if (status === 'ocr') {
+      return { label: 'OCR中', color: 'bg-info', pulse: true };
+    }
+    if (status === 'extracting') {
+      return { label: '抽出中', color: 'bg-info', pulse: true };
+    }
     if (status === 'processing') {
       return { label: '処理中', color: 'bg-info', pulse: true };
     }

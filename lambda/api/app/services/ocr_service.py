@@ -8,7 +8,7 @@ from repositories import (
     get_images,
     get_image, update_ocr_result as db_update_ocr_result,
     update_image_status,
-    reset_processing_status,
+    update_agent_status,
 )
 from clients import get_inference_component_status, get_endpoint_status_direct, trigger_endpoint_wakeup
 from schemas import OcrResult, OcrResultResponse
@@ -135,7 +135,7 @@ class OcrService:
             if not image_data:
                 raise ValueError(f"Image not found: {image_id}")
 
-            update_image_status(image_id, "processing")
+            update_image_status(image_id, "ocr")
             sync_parent_status(image_id)
 
             page_processing_mode = image_data.get("page_processing_mode", "combined")
@@ -227,7 +227,7 @@ class OcrService:
             raise RuntimeError(f"OCR処理でエラーが発生: {ocr_result['error']}")
 
         logger.info(f"Successfully processed {len(ocr_result.get('words', []))} words for image {image_id}")
-        db_update_ocr_result(image_id, ocr_result, "processing")
+        db_update_ocr_result(image_id, ocr_result)
 
     @staticmethod
     def _save_multipage_ocr_result(image_id: str, ocr_results: list) -> None:
@@ -266,7 +266,7 @@ class OcrService:
                 "total_pages": len(ocr_results)
             })
 
-            db_update_ocr_result(image_id, combined_result, "completed")
+            db_update_ocr_result(image_id, combined_result)
             sync_parent_status(image_id)
             logger.info(f"複数ページOCR結果保存完了: {image_id}, 総単語数: {len(all_words)}, ID範囲: 0-{global_word_id-1}")
 
@@ -325,7 +325,7 @@ class OcrService:
                     name=f"ocr-job-{job_id}",
                     input=json.dumps({
                         'job_id': job_id,
-                        'images': [{'image_id': img['id']} for img in pending_images]
+                        'images': [{'image_id': img['id'], 'skip_ocr': False} for img in pending_images]
                     })
                 )
             except Exception as sfn_error:
@@ -356,10 +356,10 @@ class OcrService:
 
             job_id = str(uuid.uuid4())
 
-            # ステータスをprocessingに更新
-            update_image_status(image_id, 'processing', job_id)
+            # 再処理の起点。抽出フェーズへの遷移は extract() 冒頭が担う。
+            update_image_status(image_id, 'ocr', job_id)
 
-            reset_processing_status(image_id)
+            update_agent_status(image_id, "processing", suggestions_count=0)
 
             # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(

@@ -131,10 +131,9 @@ async def process_image(
     user=Depends(RequireImagePermission("viewer")),
     service: OcrService = Depends(get_ocr_service),
 ):
-    """パイプライン実行（OCR→抽出→Agent）。body.start_from="extraction" で抽出以降のみ"""
-    skip_ocr = body.start_from == "extraction"
+    """パイプライン実行（OCR→抽出→Agent）。body.skip_ocr=true で OCR をスキップし抽出以降のみ"""
     try:
-        result = await service.start_step_functions_for_image(image_id, skip_ocr)
+        result = await service.start_step_functions_for_image(image_id, body.skip_ocr)
         return result
     except EndpointNotReadyError as e:
         raise HTTPException(
@@ -161,7 +160,7 @@ async def get_image_status(
         if not image_data:
             raise HTTPException(status_code=404, detail="Image not found")
         return {
-            "extraction_status": image_data.get("extraction_status") or "not_started",
+            "extraction_status": image_data.get("status") or "not_started",
             "agent_status": image_data.get("agent_status") or "idle",
             "agent_pending_suggestions_count": image_data.get("agent_suggestions_count", 0),
         }

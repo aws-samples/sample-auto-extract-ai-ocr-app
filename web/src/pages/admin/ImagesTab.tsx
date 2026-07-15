@@ -48,7 +48,9 @@ export default function ImagesTab() {
   const filtered = useMemo(() => {
     return images.filter((img) => {
       if (appFilter && img.appName !== appFilter) return false;
-      if (statusFilter && img.status !== statusFilter) return false;
+      // ocr / extracting は「処理中」フィルタに束ねる
+      const normalizedStatus = ['ocr', 'extracting'].includes(img.status) ? 'processing' : img.status;
+      if (statusFilter && normalizedStatus !== statusFilter) return false;
       if (verificationFilter === 'verified' && !img.verificationCompleted) return false;
       if (verificationFilter === 'unverified' && img.verificationCompleted) return false;
       if (!search) return true;

@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 from domains.image_status import AgentStatus
-from repositories.job_repository import JobStatus
+from repositories.job_repository import JobStatus, SuggestionStatus
 from typing import Dict, Any
 
 import boto3
@@ -134,7 +134,7 @@ class AgentService:
         suggestions = job.get("suggestions", [])
         pending = []
         for i, s in enumerate(suggestions):
-            if s.get("status", "pending") == "pending":
+            if s.get("status", SuggestionStatus.PENDING) == SuggestionStatus.PENDING:
                 pending.append({**s, "index": i})
 
         return {

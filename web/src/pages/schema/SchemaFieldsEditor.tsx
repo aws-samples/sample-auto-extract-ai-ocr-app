@@ -11,6 +11,7 @@ import { Field } from "../../types/app-schema";
  */
 
 const FIELD_TYPES = ["string", "number", "map", "list"] as const;
+type FieldType = typeof FIELD_TYPES[number];
 
 const getTypeClass = (type: string) => {
   switch (type) {
@@ -36,7 +37,7 @@ const createNewField = (existing: Field[]): Field => {
 };
 
 /** type 変更時にフィールド構造を整合させる */
-const applyTypeChange = (field: Field, newType: string): Field => {
+const applyTypeChange = (field: Field, newType: FieldType): Field => {
   const base: Field = { name: field.name, display_name: field.display_name, type: newType };
   if (newType === "map") {
     base.fields = field.fields || [];
@@ -70,8 +71,8 @@ const FieldRow: React.FC<FieldRowProps> = ({ field, level, onChange, onRemove })
   };
 
   // list items 用ハンドラ
-  const changeItemsType = (newType: string) => {
-    const items: Field["items"] = { type: newType };
+  const changeItemsType = (newType: FieldType) => {
+    const items: NonNullable<Field["items"]> = { type: newType };
     if (newType === "map") {
       items.fields = field.items?.fields || [];
     }
@@ -116,7 +117,7 @@ const FieldRow: React.FC<FieldRowProps> = ({ field, level, onChange, onRemove })
         />
         <select
           value={field.type}
-          onChange={(e) => onChange(applyTypeChange(field, e.target.value))}
+          onChange={(e) => onChange(applyTypeChange(field, e.target.value as FieldType))}
           className={`border border-default rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary ${getTypeClass(field.type)}`}
           aria-label="型"
         >
@@ -165,7 +166,7 @@ const FieldRow: React.FC<FieldRowProps> = ({ field, level, onChange, onRemove })
             <span className="text-sm font-medium">リスト項目</span>
             <select
               value={field.items.type}
-              onChange={(e) => changeItemsType(e.target.value)}
+              onChange={(e) => changeItemsType(e.target.value as FieldType)}
               className={`border border-default rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary ${getTypeClass(field.items.type)}`}
               aria-label="リスト項目の型"
             >

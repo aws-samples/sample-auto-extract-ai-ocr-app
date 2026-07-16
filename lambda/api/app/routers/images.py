@@ -25,7 +25,7 @@ from dependencies.auth import (
     RequireImagePermission,
 )
 from repositories import get_image
-from repositories.job_repository import get_latest_agent_job_by_image_id, update_suggestion_status
+from repositories.job_repository import get_latest_agent_job_by_image_id, update_suggestion_status, SuggestionStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/images", tags=["Images"])
@@ -294,7 +294,7 @@ async def get_agent_job_by_image(
         suggestions = job.get("suggestions", [])
         pending = []
         for i, s in enumerate(suggestions):
-            if s.get("status", "pending") == "pending":
+            if s.get("status", SuggestionStatus.PENDING) == SuggestionStatus.PENDING:
                 pending.append({**s, "index": i})
         return {
             "job_id": job.get("id"),

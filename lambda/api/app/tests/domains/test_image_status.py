@@ -14,7 +14,7 @@ from domains.image_status import (
 
 class TestStatusValidators:
     def test_valid_image_status_passes(self):
-        for s in ImageStatus.ALL:
+        for s in ImageStatus:
             validate_image_status(s)  # 例外が出ないこと
 
     def test_invalid_image_status_raises(self):
@@ -23,12 +23,12 @@ class TestStatusValidators:
 
     def test_not_started_is_not_a_valid_image_status(self):
         # "not_started" は read 時のデフォルト表示値であり write 値ではない
-        assert "not_started" not in ImageStatus.ALL
+        assert "not_started" not in set(ImageStatus)
         with pytest.raises(ValueError):
             validate_image_status("not_started")
 
     def test_valid_agent_status_passes(self):
-        for s in AgentStatus.ALL:
+        for s in AgentStatus:
             validate_agent_status(s)
 
     def test_invalid_agent_status_raises(self):
@@ -36,7 +36,7 @@ class TestStatusValidators:
             validate_agent_status("bogus")
 
     def test_valid_page_processing_mode_passes(self):
-        for m in PageProcessingMode.ALL:
+        for m in PageProcessingMode:
             validate_page_processing_mode(m)
 
     def test_invalid_page_processing_mode_raises(self):

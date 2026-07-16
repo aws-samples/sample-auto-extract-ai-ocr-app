@@ -1,5 +1,6 @@
 from clients import dynamodb_resource
 import logging
+from enum import StrEnum
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from datetime import datetime
@@ -9,19 +10,35 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-class JobStatus:
+class JobStatus(StrEnum):
     """ジョブ（agent 検証 / スキーマ生成）のステータス値。"""
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
-    ALL = {PROCESSING, COMPLETED, FAILED, SKIPPED}
 
 
 def validate_job_status(status: str) -> None:
     """無効なジョブステータス値なら ValueError。"""
-    if status not in JobStatus.ALL:
-        raise ValueError(f"Invalid job status: {status!r}")
+    JobStatus(status)
+
+
+class JobType(StrEnum):
+    """ジョブ種別。"""
+    AGENT_CORRECTION = "agent_correction"
+    SCHEMA_GENERATION = "schema_generation"
+
+
+class SuggestionStatus(StrEnum):
+    """エージェント提案の状態。"""
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+def validate_suggestion_status(status: str) -> None:
+    """無効な提案ステータス値なら ValueError。"""
+    SuggestionStatus(status)
 
 
 def get_jobs_table():
@@ -61,7 +78,7 @@ def get_latest_agent_job_by_image_id(image_id: str) -> dict | None:
         response = table.query(
             IndexName="ImageIdIndex",
             KeyConditionExpression=Key("image_id").eq(image_id),
-            FilterExpression=Attr("job_type").eq("agent_correction"),
+            FilterExpression=Attr("job_type").eq(JobType.AGENT_CORRECTION),
             ScanIndexForward=False,
             Limit=10,
         )
@@ -89,7 +106,7 @@ def create_agent_job(image_id: str):
         item = {
             "id": job_id,
             "image_id": image_id,
-            "job_type": "agent_correction",
+            "job_type": JobType.AGENT_CORRECTION,
             "status": JobStatus.PROCESSING,
             "created_at": current_time,
             "updated_at": current_time
@@ -112,6 +129,7 @@ def update_suggestion_status(image_id: str, suggestion_index: int, status: str) 
     Returns:
         int: Number of remaining pending suggestions
     """
+    validate_suggestion_status(status)
     job = get_latest_agent_job_by_image_id(image_id)
     if not job:
         raise ValueError("No agent job found for this image")
@@ -135,7 +153,7 @@ def update_suggestion_status(image_id: str, suggestion_index: int, status: str) 
 
     # Count pending suggestions (after our update applied locally)
     suggestions[suggestion_index]["status"] = status
-    pending_count = sum(1 for s in suggestions if s.get("status", "pending") == "pending")
+    pending_count = sum(1 for s in suggestions if s.get("status", SuggestionStatus.PENDING) == SuggestionStatus.PENDING)
 
     # Update image record with new pending count
     images_table = get_images_table()
@@ -169,7 +187,7 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
             ":updated_at": current_time
         }
 
-        if status == "completed":
+        if status == JobStatus.COMPLETED:
             update_expr += ", completed_at = :completed_at"
             expr_attr_values[":completed_at"] = current_time
 
@@ -216,7 +234,7 @@ def create_schema_generation_job(s3_key: str, filename: str, instructions: str =
     try:
         item = {
             "id": job_id,
-            "job_type": "schema_generation",
+            "job_type": JobType.SCHEMA_GENERATION,
             "status": JobStatus.PROCESSING,
             "created_at": current_time,
             "updated_at": current_time,
@@ -254,7 +272,7 @@ def update_schema_generation_job(job_id: str, status: str, result: dict = None, 
             ":updated_at": current_time,
         }
 
-        if status == "completed":
+        if status == JobStatus.COMPLETED:
             update_expr += ", completed_at = :completed_at"
             expr_attr_values[":completed_at"] = current_time
 

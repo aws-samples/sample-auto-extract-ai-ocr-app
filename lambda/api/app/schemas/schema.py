@@ -1,5 +1,25 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
+
+
+FieldType = Literal["string", "number", "map", "list"]
+
+
+class FieldItems(BaseModel):
+    """list 型フィールドの要素定義"""
+    type: FieldType
+    fields: Optional[List["SchemaField"]] = None  # 要素が map の場合の子フィールド
+    model_config = {"extra": "forbid"}
+
+
+class SchemaField(BaseModel):
+    """抽出スキーマのフィールド定義（再帰構造）"""
+    name: str
+    display_name: str
+    type: FieldType
+    fields: Optional[List["SchemaField"]] = None  # map 型の子フィールド
+    items: Optional[FieldItems] = None            # list 型の要素定義
+    model_config = {"extra": "forbid"}
 
 
 class SchemaGenerateRequest(BaseModel):
@@ -14,7 +34,7 @@ class SchemaSaveRequest(BaseModel):
     name: str
     display_name: str
     description: Optional[str] = None
-    fields: List[Dict[str, Any]]
+    fields: List[SchemaField]
     input_methods: Dict[str, Any]
     agent_enabled: bool = False
     # スキーマ生成に使ったサンプル画像の S3 キー (schema-uploads/ 配下)。

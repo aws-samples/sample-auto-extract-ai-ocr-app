@@ -1,10 +1,10 @@
 export interface Field {
   name: string;
   display_name: string;
-  type: string;
+  type: 'string' | 'number' | 'map' | 'list';
   fields?: Field[];    // map型のフィールド用
   items?: {           // list型のフィールド用
-    type: string;
+    type: 'string' | 'number' | 'map' | 'list';
     fields?: Field[];
   };
 }

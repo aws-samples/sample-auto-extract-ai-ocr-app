@@ -1,7 +1,9 @@
 """画像ステータス判定のドメインロジック"""
 
+from enum import StrEnum
 
-class ImageStatus:
+
+class ImageStatus(StrEnum):
     """画像の処理ステータス値。DynamoDB に生文字列で保存される。"""
     UPLOADING = "uploading"
     PENDING = "pending"
@@ -11,24 +13,21 @@ class ImageStatus:
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
-    ALL = {UPLOADING, PENDING, CONVERTING, OCR, EXTRACTING, PROCESSING, COMPLETED, FAILED}
 
 
-class AgentStatus:
+class AgentStatus(StrEnum):
     """エージェント検証のステータス値。"""
     IDLE = "idle"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
-    ALL = {IDLE, PROCESSING, COMPLETED, FAILED, SKIPPED}
 
 
-class PageProcessingMode:
+class PageProcessingMode(StrEnum):
     """複数ページ PDF の処理モード。"""
     COMBINED = "combined"
     INDIVIDUAL = "individual"
-    ALL = {COMBINED, INDIVIDUAL}
 
 
 # 処理中を表す status（OCR中・抽出中・汎用 processing）。親集約でまとめて扱う。
@@ -37,20 +36,17 @@ _PARENT_PROCESSING_STATUSES = {ImageStatus.OCR, ImageStatus.EXTRACTING, ImageSta
 
 def validate_image_status(status: str) -> None:
     """無効な画像ステータス値なら ValueError（write 前の検証用）。"""
-    if status not in ImageStatus.ALL:
-        raise ValueError(f"Invalid image status: {status!r}")
+    ImageStatus(status)
 
 
 def validate_agent_status(status: str) -> None:
     """無効な agent_status 値なら ValueError。"""
-    if status not in AgentStatus.ALL:
-        raise ValueError(f"Invalid agent status: {status!r}")
+    AgentStatus(status)
 
 
 def validate_page_processing_mode(mode: str) -> None:
     """無効な page_processing_mode 値なら ValueError。"""
-    if mode not in PageProcessingMode.ALL:
-        raise ValueError(f"Invalid page_processing_mode: {mode!r}")
+    PageProcessingMode(mode)
 
 
 def determine_parent_status(children: list[dict]) -> str:

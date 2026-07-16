@@ -20,6 +20,7 @@ from repositories import (
 from repositories.image_repository import create_s3_sync_folder
 from repositories.usecase_repository import register_usecase_owner, delete_usecase_by_app_name, get_permitted_apps_with_permission
 from repositories.job_repository import (
+    JobType,
     create_schema_generation_job,
     get_job,
 )
@@ -49,7 +50,8 @@ class SchemaService:
             "name": request.name,
             "display_name": request.display_name,
             "description": request.description or f"{request.display_name}からの情報抽出",
-            "fields": request.fields,
+            # SchemaField(pydantic) → dict（既存の保存形と同じ。None キーは落とす）
+            "fields": [f.model_dump(exclude_none=True) for f in request.fields],
             "input_methods": request.input_methods,
             "agent_enabled": request.agent_enabled,
             "sample_image_s3_key": request.sample_image_s3_key,
@@ -384,7 +386,7 @@ class SchemaService:
         if not job:
             raise ValueError(f"Job not found: {job_id}")
 
-        if job.get("job_type") != "schema_generation":
+        if job.get("job_type") != JobType.SCHEMA_GENERATION:
             raise ValueError(f"Job {job_id} is not a schema_generation job")
 
         return {

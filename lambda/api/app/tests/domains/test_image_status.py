@@ -19,7 +19,7 @@ class TestStatusValidators:
 
     def test_invalid_image_status_raises(self):
         with pytest.raises(ValueError):
-            validate_image_status("noge")
+            validate_image_status("hoge")
 
     def test_not_started_is_not_a_valid_image_status(self):
         # "not_started" は read 時のデフォルト表示値であり write 値ではない

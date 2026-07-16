@@ -36,14 +36,19 @@ def build_schema_generation_request(image_data, instructions=None):
 
         # フィールド定義の説明
         fields_explanation = """
-        フィールド型は主に以下の3種類があります：
-        
-        1. string型: 単一の文字列値を格納するフィールド（日付、番号、名前など）
-        2. map型: 複数の関連フィールドをグループ化するための階層構造（会社情報、住所情報など）
-        3. list型: 表形式のデータなど、同じ構造を持つ複数の項目を格納するためのフィールド（明細行、商品リストなど）
-        
+        フィールド型は以下の4種類があります：
+
+        1. string型: 単一の文字列値を格納するフィールド（日付、名前など）
+        2. number型: 数字のみで構成される値（数量・件数など、単位を別に持つ純粋な数）
+        3. map型: 複数の関連フィールドをグループ化するための階層構造（会社情報、住所情報など）
+        4. list型: 表形式のデータなど、同じ構造を持つ複数の項目を格納するためのフィールド（明細行、商品リストなど）
+
         基本的には、単一の値は string 型、関連する複数の値をグループ化する場合は map 型、
         表形式のデータ（明細行など）は list 型を使用してください。
+
+        number 型は「数量」「個数」など数字だけで意味が完結する値にのみ使ってください。
+        金額（479,520円）・割合（8%）・電話番号・郵便番号・ID や伝票番号（先頭ゼロや区切り・
+        構造を持ちうる値）は、桁以外の情報が失われないよう number ではなく string を使ってください。
         """
 
         # フィールド定義の例
@@ -55,7 +60,7 @@ def build_schema_generation_request(image_data, instructions=None):
             {
               "name": "フィールド名（英数字、アンダースコア）",
               "display_name": "フィールド表示名（日本語可）",
-              "type": "string | map | list"  // フィールドの型
+              "type": "string | number | map | list"  // フィールドの型
             },
             // map型の場合は子フィールドを定義
             {
@@ -91,7 +96,7 @@ def build_schema_generation_request(image_data, instructions=None):
                   {
                     "name": "quantity",
                     "display_name": "数量",
-                    "type": "string"
+                    "type": "number"
                   }
                 ]
               }
@@ -154,7 +159,7 @@ def build_schema_generation_request(image_data, instructions=None):
                   {
                     "name": "quantity",
                     "display_name": "数量",
-                    "type": "string"
+                    "type": "number"
                   },
                   {
                     "name": "unit_price",
@@ -254,7 +259,7 @@ def build_schema_generation_request(image_data, instructions=None):
                   {
                     "name": "quantity",
                     "display_name": "数量",
-                    "type": "string"
+                    "type": "number"
                   },
                   {
                     "name": "weight",

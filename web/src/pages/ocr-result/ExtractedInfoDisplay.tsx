@@ -3,6 +3,37 @@ import { Trash2 } from 'lucide-react';
 import { Field } from '../../types/app-schema';
 import { Suggestion } from '../../types/agent';
 import { Button } from '../../components/ui';
+import { sanitizeNumericInput, finalizeNumericInput } from '../../utils/numericInput';
+
+// number 型の編集 input に付与する共通 props。値は文字列のまま、数字以外の入力を弾く。
+// onValue は sanitize 済みの文字列を受け取って state を更新するコールバック。
+//
+// controlled input で不正文字を除去すると、React が value を巻き戻す際にカーソルが
+// 末尾へ飛ぶ。除去された文字数ぶんカーソル位置を補正して、文字列途中の編集でも
+// キャレットが飛ばないようにする。
+const numericInputProps = (isNumber: boolean, onValue: (v: string) => void) =>
+  isNumber
+    ? {
+        inputMode: 'numeric' as const,
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+          const el = e.target;
+          const before = el.value;
+          const caret = el.selectionStart ?? before.length;
+          const sanitized = sanitizeNumericInput(before);
+          // カーソルより前で除去された文字数を数え、その分だけ位置を戻す
+          const removedBeforeCaret =
+            before.slice(0, caret).length - sanitizeNumericInput(before.slice(0, caret)).length;
+          onValue(sanitized);
+          const next = Math.max(0, caret - removedBeforeCaret);
+          requestAnimationFrame(() => {
+            try { el.setSelectionRange(next, next); } catch { /* 一部 input type では不可 */ }
+          });
+        },
+        onBlur: (e: React.FocusEvent<HTMLInputElement>) => onValue(finalizeNumericInput(e.target.value)),
+      }
+    : {
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => onValue(e.target.value),
+      };
 
 interface ExtractedInfoDisplayProps {
   extractedInfo: Record<string, any>;
@@ -147,7 +178,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
           <input
             type="text"
             value={value || ''}
-            onChange={(e) => updateFieldValue(field.name, e.target.value)}
+            {...numericInputProps(field.type === 'number', (v) => updateFieldValue(field.name, v))}
             onFocus={() => onHighlightField(field.name, true)}
             className="w-full p-2 border border-neutral-300 rounded"
           />
@@ -208,7 +239,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                   <input
                     type="text"
                     value={mapValue[subField.name] || ''}
-                    onChange={(e) => setValueAtPath(fieldPath, e.target.value)}
+                    {...numericInputProps(subField.type === 'number', (v) => setValueAtPath(fieldPath, v))}
                     onFocus={() => onHighlightField(fieldPath, true)}
                     className="w-full p-2 border border-neutral-300 rounded"
                   />
@@ -245,11 +276,11 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                 <input
                   type="text"
                   value={item || ''}
-                  onChange={(e) => {
+                  {...numericInputProps(field.items?.type === 'number', (v) => {
                     const updated = [...listData];
-                    updated[i] = e.target.value;
+                    updated[i] = v;
                     setValueAtPath(basePath, updated);
-                  }}
+                  })}
                   className="w-full p-1 border border-neutral-300 rounded text-sm"
                 />
               ) : (
@@ -315,10 +346,31 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                                 <input
                                   ref={editInputRef}
                                   type="text"
+                                  inputMode={itemField.type === 'number' ? 'numeric' : undefined}
                                   value={item[itemField.name] || ''}
-                                  onChange={(e) => updateListItemProperty(field.name, itemIndex, itemField.name, e.target.value)}
+                                  onChange={(e) => {
+                                    if (itemField.type !== 'number') {
+                                      updateListItemProperty(field.name, itemIndex, itemField.name, e.target.value);
+                                      return;
+                                    }
+                                    const el = e.target;
+                                    const raw = el.value;
+                                    const caret = el.selectionStart ?? raw.length;
+                                    const removedBeforeCaret =
+                                      raw.slice(0, caret).length - sanitizeNumericInput(raw.slice(0, caret)).length;
+                                    updateListItemProperty(field.name, itemIndex, itemField.name, sanitizeNumericInput(raw));
+                                    const next = Math.max(0, caret - removedBeforeCaret);
+                                    requestAnimationFrame(() => {
+                                      try { el.setSelectionRange(next, next); } catch { /* noop */ }
+                                    });
+                                  }}
                                   onFocus={() => onHighlightCell(field.name, itemIndex, itemField.name)}
-                                  onBlur={() => setEditingCell(null)}
+                                  onBlur={(e) => {
+                                    if (itemField.type === 'number') {
+                                      updateListItemProperty(field.name, itemIndex, itemField.name, finalizeNumericInput(e.target.value));
+                                    }
+                                    setEditingCell(null);
+                                  }}
                                   onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setEditingCell(null); }}
                                   className={`w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-info ${cellSuggestion ? 'border-warning-border bg-warning-light/50' : 'border-neutral-300'}`}
                                 />
@@ -408,11 +460,16 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
           {listData.map((item: any, i: number) => (
             <li key={i} className="mb-2">
               {editMode ? (
-                <input type="text" value={item || ''} onChange={(e) => {
-                  const updated = [...listData];
-                  updated[i] = e.target.value;
-                  updateFieldValue(field.name, updated);
-                }} className="w-full p-1 border border-neutral-300 rounded" />
+                <input
+                  type="text"
+                  value={item || ''}
+                  {...numericInputProps(field.items?.type === 'number', (v) => {
+                    const updated = [...listData];
+                    updated[i] = v;
+                    updateFieldValue(field.name, updated);
+                  })}
+                  className="w-full p-1 border border-neutral-300 rounded"
+                />
               ) : (
                 <div className="p-1">{item || ''}</div>
               )}

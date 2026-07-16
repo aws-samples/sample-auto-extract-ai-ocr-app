@@ -11,8 +11,13 @@ from schemas.schema import SchemaField
 
 class TestSchemaField:
     def test_valid_types_pass(self):
-        for t in ("string", "number", "map", "list"):
-            SchemaField(name="f", display_name="F", type=t)
+        # string / number は葉、map は子必須、list は items 必須（意味的整合ルール）
+        SchemaField(name="f", display_name="F", type="string")
+        SchemaField(name="f", display_name="F", type="number")
+        SchemaField(name="m", display_name="M", type="map",
+                    fields=[{"name": "c", "display_name": "C", "type": "string"}])
+        SchemaField(name="l", display_name="L", type="list",
+                    items={"type": "string"})
 
     def test_nested_map_and_list(self):
         f = SchemaField(

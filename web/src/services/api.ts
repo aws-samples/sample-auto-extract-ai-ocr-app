@@ -78,4 +78,29 @@ api.interceptors.response.use(
   }
 );
 
+// pydantic v2 の 422 detail 1件を表示用の1行に整形する。
+// - ValueError は msg が "Value error, <本文>" になるため接頭辞を除去
+// - 必須キー欠落（type: "missing"）は英語 "Field required" になるため日本語化
+function formatDetailEntry(d: any): string {
+  if (typeof d === 'string') return d;
+  if (d?.type === 'missing') return '必須項目が入力されていません';
+  const msg: string = d?.msg || '';
+  return msg.replace(/^Value error,\s*/, '');
+}
+
+/**
+ * API エラーから表示用メッセージを取り出す。
+ * FastAPI の 422 は detail が配列（[{loc, msg, type}, ...]）で返るため、
+ * そのままだと "[object Object]" になる。string / 配列 の両方を読める形に整形する。
+ */
+export function extractApiErrorMessage(err: any, fallback = '不明なエラーが発生しました'): string {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const lines = detail.map(formatDetailEntry).filter(Boolean);
+    if (lines.length > 0) return lines.join('\n');
+  }
+  return err?.message || fallback;
+}
+
 export default api;

@@ -20,4 +20,4 @@ class S3ImportRequest(BaseModel):
     bucket: str
     key: str
     filename: str
-    page_processing_mode: str = "combined"
+    page_processing_mode: Literal["combined", "individual"] = "combined"

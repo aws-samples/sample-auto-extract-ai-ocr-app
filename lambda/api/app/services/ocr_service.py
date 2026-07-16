@@ -15,6 +15,7 @@ from schemas import OcrResult, OcrResultResponse
 from config import settings
 from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response
+from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from services.pdf_conversion_service import sync_parent_status
 from utils.helpers import float_to_decimal, compress_image_for_payload
 
@@ -135,13 +136,13 @@ class OcrService:
             if not image_data:
                 raise ValueError(f"Image not found: {image_id}")
 
-            update_image_status(image_id, "ocr")
+            update_image_status(image_id, ImageStatus.OCR)
             sync_parent_status(image_id)
 
-            page_processing_mode = image_data.get("page_processing_mode", "combined")
+            page_processing_mode = image_data.get("page_processing_mode", PageProcessingMode.COMBINED)
             converted_s3_keys = image_data.get("converted_s3_key")
             is_multiimage_combined = (
-                page_processing_mode == "combined"
+                page_processing_mode == PageProcessingMode.COMBINED
                 and isinstance(converted_s3_keys, list)
                 and len(converted_s3_keys) > 1
             )
@@ -160,7 +161,7 @@ class OcrService:
 
         except Exception as e:
             logger.error(f"Error processing OCR for image {image_id}: {str(e)}")
-            update_image_status(image_id, "failed")
+            update_image_status(image_id, ImageStatus.FAILED)
             sync_parent_status(image_id)
             raise
 
@@ -295,7 +296,7 @@ class OcrService:
 
             # pending画像を取得
             images = get_images(app_name)
-            pending_images = [img for img in images if img.get('status') == 'pending']
+            pending_images = [img for img in images if img.get('status') == ImageStatus.PENDING]
 
             logger.info(f"Found {len(pending_images)} pending images for app: {app_name}")
 
@@ -316,7 +317,7 @@ class OcrService:
 
             # ステータスを更新
             for img in pending_images:
-                update_image_status(img['id'], 'processing', job_id)
+                update_image_status(img['id'], ImageStatus.PROCESSING, job_id)
 
             # Step Functions起動
             try:
@@ -331,7 +332,7 @@ class OcrService:
             except Exception as sfn_error:
                 logger.error(f"Step Functions start failed, reverting image statuses: {sfn_error}")
                 for img in pending_images:
-                    update_image_status(img['id'], 'pending')
+                    update_image_status(img['id'], ImageStatus.PENDING)
                 raise
 
             logger.info(f"Started Step Functions execution: {execution_response['executionArn']}")
@@ -357,9 +358,9 @@ class OcrService:
             job_id = str(uuid.uuid4())
 
             # 再処理の起点。抽出フェーズへの遷移は extract() 冒頭が担う。
-            update_image_status(image_id, 'ocr', job_id)
+            update_image_status(image_id, ImageStatus.OCR, job_id)
 
-            update_agent_status(image_id, "processing", suggestions_count=0)
+            update_agent_status(image_id, AgentStatus.PROCESSING, suggestions_count=0)
 
             # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(

@@ -11,6 +11,7 @@ from schemas import (
     PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest
 )
 from config import settings
+from domains.image_status import ImageStatus
 from utils import resize_image
 from repositories import get_app_schemas, get_app_input_methods
 from background import BackgroundTaskExtension
@@ -70,7 +71,7 @@ class UploadService:
                 filename=request.filename,
                 s3_key=s3_key,
                 app_name=request.app_name,
-                status="uploading",
+                status=ImageStatus.UPLOADING,
                 page_processing_mode=request.page_processing_mode,
                 uploaded_by=uploaded_by
             )
@@ -116,7 +117,7 @@ class UploadService:
                 return await self._handle_pdf_conversion(image_id, request)
             else:
                 # 画像ファイルの場合はそのまま処理待ちに
-                update_image_status(image_id, "pending")
+                update_image_status(image_id, ImageStatus.PENDING)
                 return {
                     "status": "success",
                     "message": "Upload completed successfully",
@@ -158,7 +159,7 @@ class UploadService:
                     update_converted_image(
                         image_id,
                         converted_s3_key,
-                        "pending",
+                        ImageStatus.PENDING,
                         orig_size,
                         new_size
                     )
@@ -168,7 +169,7 @@ class UploadService:
                     update_converted_image(
                         image_id,
                         request.s3_key,
-                        "pending",
+                        ImageStatus.PENDING,
                         orig_size,
                         orig_size
                     )
@@ -182,7 +183,7 @@ class UploadService:
         """PDF変換処理"""
         try:
             # ステータスを変換中に更新
-            update_image_status(image_id, "converting")
+            update_image_status(image_id, ImageStatus.CONVERTING)
 
             # バックグラウンドタスクとして変換処理を実行
             if not self.background_task:

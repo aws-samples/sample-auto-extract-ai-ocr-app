@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from repositories.job_repository import update_schema_generation_job
+from repositories.job_repository import update_schema_generation_job, JobStatus
 from schemas import SchemaGenerateRequest
 from services.schema_service import SchemaService
 
@@ -44,7 +44,7 @@ def schema_generate_handler(event, context):
         error_msg = "s3_key or filename is missing in event"
         logger.error(f"schema_generate_handler: {error_msg}")
         try:
-            update_schema_generation_job(job_id, "failed", error=error_msg)
+            update_schema_generation_job(job_id, JobStatus.FAILED, error=error_msg)
         except Exception as e:
             logger.warning(f"Failed to update job {job_id}: {e}")
         return {"job_id": job_id, "status": "failed"}
@@ -60,13 +60,13 @@ def schema_generate_handler(event, context):
         # 既存の generate_schema (async) を同期的に実行
         schema = asyncio.run(service.generate_schema(request))
 
-        update_schema_generation_job(job_id, "completed", result=schema)
+        update_schema_generation_job(job_id, JobStatus.COMPLETED, result=schema)
         logger.info(f"Schema generation job {job_id} completed")
         return {"job_id": job_id, "status": "completed"}
     except Exception as e:
         logger.error(f"Schema generation job {job_id} failed: {e}")
         try:
-            update_schema_generation_job(job_id, "failed", error=str(e))
+            update_schema_generation_job(job_id, JobStatus.FAILED, error=str(e))
         except Exception as update_err:
             logger.error(f"Failed to update failed job {job_id}: {update_err}")
         return {"job_id": job_id, "status": "failed", "error": str(e)}

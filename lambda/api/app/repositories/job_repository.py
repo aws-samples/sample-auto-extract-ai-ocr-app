@@ -9,6 +9,21 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
+class JobStatus:
+    """ジョブ（agent 検証 / スキーマ生成）のステータス値。"""
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    ALL = {PROCESSING, COMPLETED, FAILED, SKIPPED}
+
+
+def validate_job_status(status: str) -> None:
+    """無効なジョブステータス値なら ValueError。"""
+    if status not in JobStatus.ALL:
+        raise ValueError(f"Invalid job status: {status!r}")
+
+
 def get_jobs_table():
     """ジョブテーブルのリソースを取得する"""
     table_name = settings.JOBS_TABLE_NAME
@@ -75,7 +90,7 @@ def create_agent_job(image_id: str):
             "id": job_id,
             "image_id": image_id,
             "job_type": "agent_correction",
-            "status": "processing",
+            "status": JobStatus.PROCESSING,
             "created_at": current_time,
             "updated_at": current_time
         }
@@ -142,6 +157,7 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
         suggestions: Correction suggestions
         error: Error message if failed
     """
+    validate_job_status(status)
     table = get_jobs_table()
     current_time = datetime.now().isoformat()
 
@@ -201,7 +217,7 @@ def create_schema_generation_job(s3_key: str, filename: str, instructions: str =
         item = {
             "id": job_id,
             "job_type": "schema_generation",
-            "status": "processing",
+            "status": JobStatus.PROCESSING,
             "created_at": current_time,
             "updated_at": current_time,
             "input": {
@@ -226,6 +242,7 @@ def update_schema_generation_job(job_id: str, status: str, result: dict = None, 
         result: Generated schema dict (e.g. {"fields": [...]})
         error: Error message if failed
     """
+    validate_job_status(status)
     table = get_jobs_table()
     current_time = datetime.now().isoformat()
 

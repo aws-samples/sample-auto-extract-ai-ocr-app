@@ -5,6 +5,10 @@ from botocore.exceptions import ClientError
 from datetime import datetime
 import uuid
 from config import settings
+from domains.image_status import (
+    ImageStatus, PageProcessingMode,
+    validate_image_status, validate_agent_status, validate_page_processing_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +28,8 @@ def get_images_table():
     return dynamodb_resource.Table(table_name)
 
 
-def create_image_record(image_id, filename, s3_key, app_name="default", status="pending", converted_s3_key=None,
-                        page_processing_mode="combined", total_pages=None, page_number=None, parent_document_id=None,
+def create_image_record(image_id, filename, s3_key, app_name="default", status=ImageStatus.PENDING, converted_s3_key=None,
+                        page_processing_mode=PageProcessingMode.COMBINED, total_pages=None, page_number=None, parent_document_id=None,
                         sync_source_path=None, uploaded_by=None):
     """
     画像レコードを作成する
@@ -47,6 +51,9 @@ def create_image_record(image_id, filename, s3_key, app_name="default", status="
     Returns:
         str: 作成された画像のID
     """
+    validate_image_status(status)
+    validate_page_processing_mode(page_processing_mode)
+
     if not image_id:
         image_id = str(uuid.uuid4())
 
@@ -211,6 +218,7 @@ def update_image_status(image_id, status, job_id=None):
         status (str): 新しいステータス
         job_id (str, optional): ジョブID
     """
+    validate_image_status(status)
     table = get_images_table()
 
     update_expression = "SET #status = :status"
@@ -339,6 +347,7 @@ def update_converted_image(image_id, converted_s3_key, status=None, original_siz
         }
 
         if status:
+            validate_image_status(status)
             update_expression += ", #status = :status"
             expression_values[":status"] = status
 
@@ -357,6 +366,7 @@ def update_converted_image(image_id, converted_s3_key, status=None, original_siz
             }
 
         if page_processing_mode:
+            validate_page_processing_mode(page_processing_mode)
             update_expression += ", page_processing_mode = :page_processing_mode"
             expression_values[":page_processing_mode"] = page_processing_mode
 
@@ -467,6 +477,7 @@ def update_verification_status(image_id: str, verification_completed: bool, veri
 
 def update_agent_status(image_id: str, status: str, suggestions_count: int = None) -> None:
     """agent_status を更新する"""
+    validate_agent_status(status)
     table = get_images_table()
     try:
         if suggestions_count is not None:
@@ -515,9 +526,9 @@ def create_individual_page_record(page_id: str, parent_image_id: str, filename: 
             "s3_key": converted_s3_key,
             "converted_s3_key": converted_s3_key,
             "upload_time": current_time,
-            "status": "pending",
+            "status": ImageStatus.PENDING,
             "app_name": app_name,
-            "page_processing_mode": "individual",
+            "page_processing_mode": PageProcessingMode.INDIVIDUAL,
             "page_number": page_number,
             "total_pages": total_pages,
             "parent_document_id": parent_image_id,
@@ -546,6 +557,7 @@ def update_parent_document_status(parent_id: str, status: str, total_pages: int 
         status (str): 新しいステータス
         total_pages (int, optional): 総ページ数
     """
+    validate_image_status(status)
     table = get_images_table()
 
     try:

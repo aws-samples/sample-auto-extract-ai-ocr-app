@@ -21,6 +21,13 @@ from .schema_fields import (
 )
 from .image_status import (
     determine_parent_status,
+    determine_parent_agent_status,
+    ImageStatus,
+    AgentStatus,
+    PageProcessingMode,
+    validate_image_status,
+    validate_agent_status,
+    validate_page_processing_mode,
 )
 from .prompts import (
     create_single_with_ocr_prompt,
@@ -51,6 +58,13 @@ __all__ = [
     "extract_field_names",
     # Image status
     "determine_parent_status",
+    "determine_parent_agent_status",
+    "ImageStatus",
+    "AgentStatus",
+    "PageProcessingMode",
+    "validate_image_status",
+    "validate_agent_status",
+    "validate_page_processing_mode",
     # Prompts
     "create_single_with_ocr_prompt",
     "create_single_without_ocr_prompt",

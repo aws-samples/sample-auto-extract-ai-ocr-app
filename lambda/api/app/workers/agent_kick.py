@@ -15,6 +15,8 @@ from repositories.job_repository import create_agent_job, update_agent_job, get_
 from repositories.schema_repository import get_app_schema
 from services.agent_service import AgentService
 from services.pdf_conversion_service import sync_parent_agent_status
+from domains.image_status import AgentStatus
+from repositories.job_repository import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ def _finalize_skipped_job(event: dict):
     if not job_id:
         return
     try:
-        update_agent_job(job_id, "skipped")
+        update_agent_job(job_id, JobStatus.SKIPPED)
     except Exception as e:
         logger.warning(f"Failed to finalize skipped job {job_id}: {e}")
 
@@ -58,7 +60,7 @@ def agent_kick_handler(event, context):
 
     app_name = image_data.get("app_name", "")
     if not app_name:
-        _update_agent_status(image_id, "skipped")
+        _update_agent_status(image_id, AgentStatus.SKIPPED)
         _finalize_skipped_job(event)
         sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "no app_name"}
@@ -67,7 +69,7 @@ def agent_kick_handler(event, context):
     schema = get_app_schema(app_name)
     if not schema or not schema.get("agent_enabled", False):
         logger.info(f"Agent not enabled for app: {app_name}")
-        _update_agent_status(image_id, "skipped")
+        _update_agent_status(image_id, AgentStatus.SKIPPED)
         _finalize_skipped_job(event)
         sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "agent_enabled=false"}
@@ -76,29 +78,29 @@ def agent_kick_handler(event, context):
     try:
         if not job_id:
             job_id = create_agent_job(image_id)
-        _update_agent_status(image_id, "processing")
+        _update_agent_status(image_id, AgentStatus.PROCESSING)
         sync_parent_agent_status(image_id)
         agent_service = AgentService()
         asyncio.run(agent_service._process_agent_correction_async(job_id, image_id))
         # Re-read job to check actual status (may be failed internally)
         job = get_job(job_id)
         job_status = job.get("status", "failed") if job else "failed"
-        if job_status == "completed":
+        if job_status == JobStatus.COMPLETED:
             suggestions_count = len(job.get("suggestions", [])) if job else 0
-            update_agent_status(image_id, "completed", suggestions_count=suggestions_count)
+            update_agent_status(image_id, AgentStatus.COMPLETED, suggestions_count=suggestions_count)
             sync_parent_agent_status(image_id)
             return {"image_id": image_id, "status": "completed", "job_id": job_id}
         else:
-            _update_agent_status(image_id, "failed")
+            _update_agent_status(image_id, AgentStatus.FAILED)
             sync_parent_agent_status(image_id)
             return {"image_id": image_id, "status": "failed", "job_id": job_id}
     except Exception as e:
         logger.error(f"Agent invocation failed: {e}")
-        _update_agent_status(image_id, "failed")
+        _update_agent_status(image_id, AgentStatus.FAILED)
         sync_parent_agent_status(image_id)
         if job_id:
             try:
-                update_agent_job(job_id, "failed", error=str(e))
+                update_agent_job(job_id, JobStatus.FAILED, error=str(e))
             except Exception:
                 pass
         return {"image_id": image_id, "status": "failed", "error": str(e)}

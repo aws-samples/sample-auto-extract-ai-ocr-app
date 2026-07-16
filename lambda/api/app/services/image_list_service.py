@@ -9,6 +9,7 @@ from utils import decimal_to_float
 from repositories.usecase_repository import get_permitted_app_names
 from repositories import user_repository
 from schemas.image import ImageInfo
+from domains.image_status import PageProcessingMode
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,7 @@ class ImageListService:
             total_pages = image.get("total_pages", 0)
 
             is_parent = (not parent_document_id and
-                        page_processing_mode == "individual" and
+                        page_processing_mode == PageProcessingMode.INDIVIDUAL and
                         total_pages > 1)
 
             if is_parent:

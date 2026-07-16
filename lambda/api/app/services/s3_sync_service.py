@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError
 
 from config import settings
+from domains.image_status import ImageStatus, PageProcessingMode
 from repositories.schema_repository import get_app_schema
 from repositories.image_repository import create_image_record, get_images_by_sync_source, get_existing_sync_sources
 from schemas import UploadCompleteRequest
@@ -77,7 +78,7 @@ class S3SyncService:
             source_bucket = file_data.get("bucket")
             source_key = file_data.get("key")
             filename = file_data.get("filename")
-            page_processing_mode = file_data.get("page_processing_mode", "combined")
+            page_processing_mode = file_data.get("page_processing_mode", PageProcessingMode.COMBINED)
 
             if not all([source_bucket, source_key, filename]):
                 raise ValueError("bucket, key, filename are required")
@@ -105,7 +106,7 @@ class S3SyncService:
                 filename=filename,
                 s3_key=destination_key,
                 app_name=app_name,
-                status="uploading",
+                status=ImageStatus.UPLOADING,
                 page_processing_mode=page_processing_mode,
                 sync_source_path=source_key,
                 uploaded_by=uploaded_by

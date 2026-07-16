@@ -13,6 +13,7 @@ from background import BackgroundTaskExtension
 from utils import decimal_to_float
 from utils.bedrock import parse_converse_response, extract_json_from_response
 from domains.schema_fields import extract_field_names
+from domains.image_status import ImageStatus, PageProcessingMode
 from clients import s3_client
 from clients.bedrock import call_bedrock, call_bedrock_with_retry
 from domains.extraction_engine import (
@@ -79,7 +80,7 @@ class InformationExtractor(ABC):
             image_data = get_image(self.image_id)
             if not image_data:
                 logger.error(f"画像 {self.image_id} が見つかりません")
-                update_image_status(self.image_id, "failed")
+                update_image_status(self.image_id, ImageStatus.FAILED)
                 raise ValueError(f"画像 {self.image_id} が見つかりません")
 
             app_name = image_data.get("app_name")
@@ -87,7 +88,7 @@ class InformationExtractor(ABC):
                 logger.error(f"app_name not found for image {self.image_id}")
                 raise ValueError(f"app_name not found for image {self.image_id}")
 
-            update_image_status(self.image_id, "extracting")
+            update_image_status(self.image_id, ImageStatus.EXTRACTING)
 
             app_extraction_fields = get_extraction_fields_for_app(app_name)
             field_names = extract_field_names(app_extraction_fields.get("fields", []))
@@ -126,13 +127,13 @@ class InformationExtractor(ABC):
                 result.get("mapping", {}),
                 extracted_fields=app_extraction_fields.get("fields", [])
             )
-            update_image_status(self.image_id, "completed")
+            update_image_status(self.image_id, ImageStatus.COMPLETED)
 
             logger.info(f"情報抽出完了: {self.image_id}")
 
         except Exception as e:
             logger.error(f"情報抽出エラー ({self.__class__.__name__}): {str(e)}")
-            update_image_status(self.image_id, "failed")
+            update_image_status(self.image_id, ImageStatus.FAILED)
             raise
 
     @abstractmethod
@@ -378,11 +379,11 @@ class ExtractionService:
     def _get_extractor(self, image_id: str, image_data: dict):
         """処理モードに応じた抽出器を返す"""
         page_processing_mode = image_data.get(
-            "page_processing_mode", "combined")
+            "page_processing_mode", PageProcessingMode.COMBINED)
         converted_s3_keys = image_data.get("converted_s3_key")
 
         is_multiimage_combined = (
-            page_processing_mode == "combined" and
+            page_processing_mode == PageProcessingMode.COMBINED and
             isinstance(converted_s3_keys, list) and
             len(converted_s3_keys) > 1
         )

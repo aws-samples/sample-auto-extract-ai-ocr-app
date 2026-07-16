@@ -21,7 +21,7 @@ from repositories import (
     create_individual_page_record, get_app_input_methods,
     get_children_by_parent_id, update_agent_status,
 )
-from domains.image_status import determine_parent_status, determine_parent_agent_status
+from domains.image_status import determine_parent_status, determine_parent_agent_status, ImageStatus, AgentStatus, PageProcessingMode
 from utils.helpers import resize_image
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def convert_pdf_to_image(image_id: str, s3_key: str):
         if not app_name:
             raise ValueError(f"app_name not found for image {image_id}")
 
-        processing_mode = image_data.get("page_processing_mode", "combined")
+        processing_mode = image_data.get("page_processing_mode", PageProcessingMode.COMBINED)
         input_methods = get_app_input_methods(app_name)
 
         # S3 URIからバケット名を取得
@@ -68,9 +68,9 @@ def convert_pdf_to_image(image_id: str, s3_key: str):
             if not upload_bucket:
                 raise ValueError("BUCKET_NAME environment variable is not set")
 
-            if processing_mode == "combined":
+            if processing_mode == PageProcessingMode.COMBINED:
                 _process_combined_pages(pdf_document, image_id, s3_key, upload_bucket)
-            elif processing_mode == "individual" and pdf_document.page_count == 1:
+            elif processing_mode == PageProcessingMode.INDIVIDUAL and pdf_document.page_count == 1:
                 _process_combined_pages(pdf_document, image_id, s3_key, upload_bucket)
             else:
                 _process_individual_pages(pdf_document, image_id, s3_key, upload_bucket)
@@ -84,7 +84,7 @@ def convert_pdf_to_image(image_id: str, s3_key: str):
 
     except Exception as e:
         logger.error(f"PDF変換エラー: {str(e)}")
-        update_image_status(image_id, "failed")
+        update_image_status(image_id, ImageStatus.FAILED)
         try:
             update_ocr_result(image_id, {"error": str(e), "timestamp": datetime.now().isoformat()})
         except Exception as db_error:
@@ -138,7 +138,7 @@ def _process_combined_pages(pdf_document, image_id: str, s3_key: str, upload_buc
         page_s3_keys.append(page_s3_key)
         logger.info(f"ページ {page_num + 1}/{total_pages} 保存完了: {page_s3_key}")
 
-    update_converted_image(image_id, page_s3_keys, "pending", None, None, page_processing_mode="combined", total_pages=total_pages)
+    update_converted_image(image_id, page_s3_keys, ImageStatus.PENDING, None, None, page_processing_mode=PageProcessingMode.COMBINED, total_pages=total_pages)
     logger.info(f"複数画像処理完了: {image_id}, {total_pages}ページ")
 
 
@@ -149,7 +149,7 @@ def _process_single_page_combined(pdf_document, image_id: str, s3_key: str, uplo
     filename_base = os.path.splitext(os.path.basename(s3_key))[0]
     converted_s3_key = f"converted/{datetime.now().isoformat()}_{filename_base}_single.jpeg"
     s3_client.put_object(Bucket=upload_bucket, Key=converted_s3_key, Body=img_data, ContentType="image/jpeg")
-    update_converted_image(image_id, [converted_s3_key], "pending", orig_size, new_size, page_processing_mode="combined", total_pages=1)
+    update_converted_image(image_id, [converted_s3_key], ImageStatus.PENDING, orig_size, new_size, page_processing_mode=PageProcessingMode.COMBINED, total_pages=1)
     logger.info(f"単一ページ処理完了: {image_id}")
 
 
@@ -157,7 +157,7 @@ def _process_individual_pages(pdf_document, parent_image_id: str, s3_key: str, u
     """複数ページPDFを個別ページとして処理する"""
     total_pages = pdf_document.page_count
     logger.info(f"個別処理を開始: {total_pages}ページ")
-    update_parent_document_status(parent_image_id, "converting", total_pages=total_pages)
+    update_parent_document_status(parent_image_id, ImageStatus.CONVERTING, total_pages=total_pages)
 
     created_page_ids = []
     for page_num in range(total_pages):
@@ -170,9 +170,9 @@ def _process_individual_pages(pdf_document, parent_image_id: str, s3_key: str, u
             continue
 
     if created_page_ids:
-        update_parent_document_status(parent_image_id, "pending")
+        update_parent_document_status(parent_image_id, ImageStatus.PENDING)
     else:
-        update_parent_document_status(parent_image_id, "failed")
+        update_parent_document_status(parent_image_id, ImageStatus.FAILED)
         logger.error("個別処理失敗: ページが作成されませんでした")
 
 
@@ -234,7 +234,7 @@ def sync_parent_agent_status(image_id: str) -> None:
         new_agent_status = determine_parent_agent_status(children)
 
         parent_data = get_image(parent_id)
-        current_agent_status = parent_data.get("agent_status") or "idle" if parent_data else "idle"
+        current_agent_status = parent_data.get("agent_status") or AgentStatus.IDLE if parent_data else AgentStatus.IDLE
         if current_agent_status != new_agent_status:
             update_agent_status(parent_id, new_agent_status)
             logger.info(f"親ドキュメント agent_status 更新: {parent_id} -> {new_agent_status}")

@@ -3,6 +3,8 @@
 import base64
 import json
 import logging
+from domains.image_status import AgentStatus
+from repositories.job_repository import JobStatus
 from typing import Dict, Any
 
 import boto3
@@ -36,7 +38,7 @@ class AgentService:
             job_id = create_agent_job(image_id)
             logger.info(f"Created agent job: {job_id} for image: {image_id}")
 
-            update_agent_status(image_id, "processing", suggestions_count=0)
+            update_agent_status(image_id, AgentStatus.PROCESSING, suggestions_count=0)
 
             # Invoke AgentKick Lambda asynchronously
             lambda_client = boto3.client("lambda")
@@ -71,7 +73,7 @@ class AgentService:
             extracted_info = image_data.get("extracted_info", {})
             if not extracted_info:
                 logger.warning(f"No extracted info found for image: {image_id}")
-                update_agent_job(job_id, "completed", suggestions=[])
+                update_agent_job(job_id, JobStatus.COMPLETED, suggestions=[])
                 return
 
             # Resolve allowed tool names from usecase (app_name → usecase_id → tools)
@@ -83,7 +85,7 @@ class AgentService:
             # Skip agent execution if no tools are configured
             if not allowed_tool_names:
                 logger.info(f"No tools configured for usecase '{app_name}'. Skipping agent.")
-                update_agent_job(job_id, "skipped")
+                update_agent_job(job_id, JobStatus.SKIPPED)
                 return
 
             # Fetch images from S3
@@ -109,12 +111,12 @@ class AgentService:
             suggestions = self._parse_agent_response(response_text)
 
             # Update job as completed
-            update_agent_job(job_id, "completed", suggestions=suggestions)
+            update_agent_job(job_id, JobStatus.COMPLETED, suggestions=suggestions)
             logger.info(f"Agent correction completed for job: {job_id}")
 
         except Exception as e:
             logger.error(f"Error in agent correction job {job_id}: {e}")
-            update_agent_job(job_id, "failed", error=str(e))
+            update_agent_job(job_id, JobStatus.FAILED, error=str(e))
     
     async def get_agent_job_status(self, job_id: str) -> Dict[str, Any]:
         """Get agent correction job status

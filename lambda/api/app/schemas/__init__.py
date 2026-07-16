@@ -8,6 +8,7 @@ from .schema import (
     SchemaSaveRequest,
     SchemaGenerateStartResponse,
     SchemaGenerateStatusResponse,
+    NAME_PATTERN,
 )
 from .job import JobStartResponse
 from .image import ImageInfo
@@ -30,6 +31,7 @@ __all__ = [
     "SchemaSaveRequest",
     "SchemaGenerateStartResponse",
     "SchemaGenerateStatusResponse",
+    "NAME_PATTERN",
     # Job
     "JobStartResponse",
     # Image

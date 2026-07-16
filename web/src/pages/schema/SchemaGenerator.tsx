@@ -4,7 +4,8 @@ import { Info } from "lucide-react";
 import SchemaPreview from "./SchemaPreview";
 import SchemaFieldsEditor from "./SchemaFieldsEditor";
 import { Field } from "../../types/app-schema";
-import api from "../../services/api";
+import api, { extractApiErrorMessage } from "../../services/api";
+import { validateSchemaFields, isValidAppName } from "../../utils/schemaValidation";
 import { useAppContext } from "../../contexts/AppContext";
 import { Alert, Button, Skeleton } from "../../components/ui";
 
@@ -156,6 +157,11 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   const validateAppName = (name: string): boolean => {
     if (!name) {
       setAppNameError("アプリ名は必須です");
+      return false;
+    }
+    // 形式チェック（バックの NAME_PATTERN と同期。従来はバック 400 でしか弾けなかった）
+    if (!isValidAppName(name)) {
+      setAppNameError("アプリ名は英数字とアンダースコアのみ使用できます");
       return false;
     }
     // 新規作成モードのみ重複チェック
@@ -324,7 +330,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
       }
     } catch (err: any) {
       console.error("スキーマ生成エラー:", err);
-      setError(`スキーマ生成に失敗しました: ${err.response?.data?.detail || err.message}`);
+      setError(`スキーマ生成に失敗しました:\n${extractApiErrorMessage(err)}`);
     } finally {
       setIsGenerating(false);
     }
@@ -347,6 +353,14 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
     // アプリ名の検証
     if (!validateAppName(appName)) {
       setError(appNameError || "アプリ名が無効です");
+      setSuccessMessage(null);
+      return;
+    }
+
+    // フィールドの意味的検証（バックの pydantic ルールをミラー。保存前に問題を洗い出す）
+    const fieldErrors = validateSchemaFields(generatedSchema?.fields || []);
+    if (fieldErrors.length > 0) {
+      setError(`スキーマに問題があります:\n${fieldErrors.join("\n")}`);
       setSuccessMessage(null);
       return;
     }
@@ -418,8 +432,8 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
       }, 3000);
     } catch (err: any) {
       console.error("スキーマ保存エラー:", err);
-      const errorMessage = err.response?.data?.detail || err.message || "不明なエラーが発生しました";
-      setError(`スキーマの保存に失敗しました: ${errorMessage}`);
+      const errorMessage = extractApiErrorMessage(err);
+      setError(`スキーマの保存に失敗しました:\n${errorMessage}`);
       setSuccessMessage(null); // 成功メッセージをクリア
     } finally {
       setIsSaving(false);
@@ -832,7 +846,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
         {error && (
           <Alert type="error" className="mb-4">
-            <span className="block sm:inline">{error}</span>
+            <span className="block sm:inline whitespace-pre-line">{error}</span>
           </Alert>
         )}
 

@@ -3,13 +3,13 @@ import boto3
 import json
 import logging
 import os
-import re
 import uuid
 from datetime import datetime
 from typing import Dict, Any
 
 from schemas import (
-    SchemaGenerateRequest, PresignedUrlRequest, CustomPromptRequest, PresignedUrlResponse, SchemaSaveRequest
+    SchemaGenerateRequest, PresignedUrlRequest, CustomPromptRequest, PresignedUrlResponse, SchemaSaveRequest,
+    NAME_PATTERN,
 )
 from config import settings
 from repositories import (
@@ -171,7 +171,7 @@ class SchemaService:
                 raise ValueError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
-            if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
+            if not NAME_PATTERN.match(request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
 
             # 入力方法のバリデーション
@@ -403,7 +403,7 @@ class SchemaService:
                 raise ValueError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
-            if not re.match(r'^[a-zA-Z0-9_]+$', request.name):
+            if not NAME_PATTERN.match(request.name):
                 raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
 
             # 入力方法のバリデーション

@@ -1,7 +1,7 @@
 import re
 
-from pydantic import BaseModel, field_validator, model_validator
-from typing import Optional, List, Dict, Any, Literal
+from pydantic import BaseModel, StringConstraints, field_validator, model_validator
+from typing import Annotated, Optional, List, Dict, Any, Literal
 
 
 FieldType = Literal["string", "number", "map", "list"]
@@ -9,6 +9,9 @@ FieldType = Literal["string", "number", "map", "list"]
 # フィールド名 / アプリ名に許可する文字。英数字とアンダースコアのみ。
 # keep in sync: services/schema_service.py（アプリ名検証）, web/src/utils/schemaValidation.ts（NAME_PATTERN）
 NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
+
+FieldName = Annotated[str, StringConstraints(pattern=NAME_PATTERN.pattern)]
+DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 def _validate_sibling_field_names(fields: List["SchemaField"]) -> None:
@@ -42,28 +45,12 @@ class FieldItems(BaseModel):
 
 class SchemaField(BaseModel):
     """抽出スキーマのフィールド定義（再帰構造）"""
-    name: str
-    display_name: str
+    name: FieldName
+    display_name: DisplayName
     type: FieldType
     fields: Optional[List["SchemaField"]] = None  # map 型の子フィールド
     items: Optional[FieldItems] = None            # list 型の要素定義
     model_config = {"extra": "forbid"}
-
-    @field_validator("name")
-    @classmethod
-    def _check_name(cls, v: str) -> str:
-        if not v:
-            raise ValueError("フィールド名は必須です")
-        if not NAME_PATTERN.match(v):
-            raise ValueError(f"フィールド名は英数字とアンダースコアのみ使用できます: {v!r}")
-        return v
-
-    @field_validator("display_name")
-    @classmethod
-    def _check_display_name(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("表示名は必須です")
-        return v
 
     @model_validator(mode="after")
     def _check_structure(self) -> "SchemaField":

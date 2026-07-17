@@ -103,14 +103,12 @@ function formatDetailEntry(d: any): string {
 
 /**
  * API エラーから表示用の日本語メッセージを整形する（interceptor 専用の非公開 helper）。
- * バックエンドは errors.py で detail を string に統一済みなので通常はその主経路を通る。
- * 配列（422）/ 構造化オブジェクト分岐は、ハンドラを通らない API Gateway/ALB 由来の
- * エラー（502/504 等）への防御として残す。常に非空文字列を返す。
+ * detail は通常 string だが、配列 / オブジェクト形も読めるようにして常に非空文字列を返す。
  */
 function formatApiError(err: any, fallback = '不明なエラーが発生しました'): string {
   const detail = err?.response?.data?.detail;
   if (typeof detail === 'string') return detail;
-  // 以下は防御（バックエンドが正規化済みなら通常到達しない）
+  // API Gateway/ALB など、通常の detail:string に沿わない形式への防御
   if (Array.isArray(detail)) {
     const lines = detail.map(formatDetailEntry).filter(Boolean);
     if (lines.length > 0) return lines.join('\n');

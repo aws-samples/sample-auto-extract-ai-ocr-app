@@ -1,36 +1,30 @@
-"""API エラーレスポンスを `{"detail": "<表示メッセージ>", "code": "<機械判定コード|null>"}` の1形に統一する。
-
-既存の `raise HTTPException(...)` は変更せず、ここでレスポンスを包む。
-"""
+"""API エラーレスポンスを `{"detail": "<表示メッセージ>", "code": "<機械判定コード|null>"}` の1形に統一する。"""
 import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-# fastapi.HTTPException はこのサブクラス。フレームワークが投げる 404/405 は
-# 純 starlette の HTTPException なので、必ず starlette の base で登録する。
+# フレームワークが投げる 404/405 は starlette の HTTPException なので base で登録する
+# （fastapi.HTTPException はそのサブクラス）。
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from exceptions import AppError
 
 logger = logging.getLogger(__name__)
 
-# クライアントに内部情報を出さないための汎用 5xx メッセージ
+# 内部情報を出さないための汎用 5xx メッセージ
 _INTERNAL_MESSAGE = "予期しないエラーが発生しました"
 
 
 def _format_validation_message(errors: list) -> str:
-    """pydantic の検証エラー list を表示用の1メッセージに集約する。
-
-    loc（フィールドパス）は使わず msg のみを日本語向けに整形して改行結合する。
-    """
+    """pydantic の検証エラーを表示用の1メッセージ（改行区切り）に集約する。"""
     lines = []
     for e in errors:
         if e.get("type") == "missing":
             lines.append("必須項目が入力されていません")
             continue
         msg = e.get("msg", "")
-        # pydantic は ValueError を "Value error, <本文>" として返すため接頭辞を除去
+        # pydantic は ValueError を "Value error, <本文>" として返すため接頭辞を除く
         msg = msg.replace("Value error, ", "", 1) if msg.startswith("Value error, ") else msg
         if msg:
             lines.append(msg)
@@ -38,17 +32,15 @@ def _format_validation_message(errors: list) -> str:
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    """アプリにエラーハンドラを登録する（main.py から呼ぶ）。
+    """エラーハンドラを登録する。
 
-    @app.exception_handler で登録するため、これらは Starlette の ExceptionMiddleware
-    層（CORSMiddleware の内側）で実行され、エラーレスポンスにも CORS ヘッダが付く。
-    エラー処理を独自 middleware として実装すると CORS ヘッダが落ちるため、必ずここで行う。
+    @app.exception_handler で登録すると CORSMiddleware の内側で実行され、
+    エラーレスポンスにも CORS ヘッダが付く（独自 middleware にすると CORS が落ちる）。
     """
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError):
-        # code を持つ 5xx（endpoint_not_ready 等）は意図的なエラーなので message/code を保持。
-        # code 無しの 5xx（＝素の AppError 等）だけ内部情報を隠して汎用メッセージにする。
+        # code を持たない 5xx はサーバー障害なので内部情報を隠す
         if exc.status_code >= 500 and not exc.code:
             logger.error("5xx AppError at %s: %r", request.url.path, str(exc))
             return JSONResponse(
@@ -65,9 +57,8 @@ def register_error_handlers(app: FastAPI) -> None:
         detail = exc.detail
         headers = getattr(exc, "headers", None)
 
-        # {"error": "...", "message": "..."} 形（endpoint_not_ready 等）は、機械判定コードと
-        # 表示メッセージを保持する。ただし 5xx で保持するのは明示コード(error)を持つ意図的な
-        # エラーのみ。error 無しの 5xx dict は下の 5xx マスクに流し、内部情報の漏洩を防ぐ。
+        # dict detail は {"error": code, "message": text} 形として code/message を取り出す。
+        # 5xx で通すのは code を持つ場合のみ（それ以外の 5xx は下でマスクして内部情報を守る）。
         if isinstance(detail, dict) and (exc.status_code < 500 or detail.get("error")):
             return JSONResponse(
                 status_code=exc.status_code,
@@ -75,7 +66,7 @@ def register_error_handlers(app: FastAPI) -> None:
                 headers=headers,
             )
 
-        # 明示コードを持たない 5xx は内部情報を隠して汎用メッセージに（元 detail はログのみ）
+        # code を持たない 5xx はサーバー障害なので内部情報を隠す
         if exc.status_code >= 500:
             logger.error("5xx HTTPException at %s: %r", request.url.path, detail)
             return JSONResponse(
@@ -84,7 +75,6 @@ def register_error_handlers(app: FastAPI) -> None:
                 headers=headers,
             )
 
-        # 4xx の string detail（大多数）
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": str(detail), "code": None},
@@ -93,7 +83,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        # 生の検証エラーはデバッグ用にサーバーログへ残す（クライアントには集約文字列のみ）
+        # 生の検証エラーはデバッグ用にログへ残す（クライアントには集約文字列のみ返す）
         logger.info("Validation error at %s: %s", request.url.path, exc.errors())
         return JSONResponse(
             status_code=422,
@@ -102,7 +92,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
-        # router の except で拾えなかった例外（依存解決・middleware 等）の最終防御
+        # 想定外の例外の最終防御。内部情報はログのみに残す
         logger.exception("Unhandled exception at %s", request.url.path)
         return JSONResponse(
             status_code=500,

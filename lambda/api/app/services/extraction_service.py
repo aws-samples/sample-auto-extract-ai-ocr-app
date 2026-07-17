@@ -87,7 +87,7 @@ class InformationExtractor(ABC):
             app_name = image_data.get("app_name")
             if not app_name:
                 logger.error(f"app_name not found for image {self.image_id}")
-                raise NotFoundError(f"app_name not found for image {self.image_id}")
+                raise NotFoundError(f"画像のアプリ名が取得できません: {self.image_id}")
 
             update_image_status(self.image_id, ImageStatus.EXTRACTING)
 
@@ -363,7 +363,7 @@ class ExtractionService:
 
             image_data = get_image(image_id)
             if not image_data:
-                raise NotFoundError(f"Image not found: {image_id}")
+                raise NotFoundError(f"画像が見つかりません: {image_id}")
 
             extractor = self._get_extractor(image_id, image_data)
             extractor.extract()

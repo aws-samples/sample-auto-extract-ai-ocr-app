@@ -41,7 +41,8 @@ export class StepFunctions extends Construct {
 
     const processImage = new DockerImageFunction(this, 'ProcessImage', {
       code: DockerImageCode.fromImageAsset('lambda/api', {
-        file: 'Dockerfile.stepfunctions',
+        file: 'Dockerfile.worker',
+        cmd: ['app.workers.step_functions.process_image_handler'],
         platform: Platform.LINUX_AMD64,
       }),
       timeout: cdk.Duration.minutes(15),
@@ -88,7 +89,8 @@ export class StepFunctions extends Construct {
     if (props.enableAgent && props.agentRuntimeArn) {
       const agentKick = new DockerImageFunction(this, 'AgentKick', {
         code: DockerImageCode.fromImageAsset('lambda/api', {
-          file: 'Dockerfile.agentkick',
+          file: 'Dockerfile.worker',
+          cmd: ['app.workers.agent_kick.agent_kick_handler'],
           platform: Platform.LINUX_AMD64,
         }),
         timeout: cdk.Duration.minutes(10),

@@ -37,7 +37,10 @@ class Settings:
 
     # Schema Generation Worker Lambda
     SCHEMA_GENERATE_FUNCTION_NAME: str = os.getenv("SCHEMA_GENERATE_FUNCTION_NAME", "")
-    
+
+    # PDF Convert Worker Lambda
+    PDF_CONVERT_FUNCTION_NAME: str = os.getenv("PDF_CONVERT_FUNCTION_NAME", "")
+
     # Step Functions設定
     STATE_MACHINE_ARN: str = os.getenv("STATE_MACHINE_ARN", "")
 

@@ -12,6 +12,7 @@ from schemas import (
     NAME_PATTERN,
 )
 from config import settings
+from exceptions import NotFoundError, BadRequestError
 from repositories import (
     get_app_schemas, get_app_schema, get_extraction_fields_for_app,
     get_custom_prompt_for_app, update_app_schema, create_app_schema,
@@ -98,7 +99,7 @@ class SchemaService:
             for app in app_schemas.get("apps", []):
                 if app["name"] == app_name:
                     return app
-            raise ValueError(f"App '{app_name}' not found")
+            raise NotFoundError(f"アプリが見つかりません: {app_name}")
         except Exception as e:
             logger.error(f"Error getting app details: {str(e)}")
             raise
@@ -133,7 +134,7 @@ class SchemaService:
             # 既存のアプリスキーマを取得
             app_schema = get_app_schema(app_name)
             if not app_schema:
-                raise ValueError(f"App '{app_name}' not found")
+                raise NotFoundError(f"アプリが見つかりません: {app_name}")
 
             # カスタムプロンプトを更新
             app_schema["custom_prompt"] = request.custom_prompt
@@ -168,15 +169,15 @@ class SchemaService:
         try:
             # 入力バリデーション
             if not request.name or not request.display_name:
-                raise ValueError("アプリ名と表示名は必須です")
+                raise BadRequestError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
             if not NAME_PATTERN.match(request.name):
-                raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
+                raise BadRequestError("アプリ名は英数字とアンダースコアのみ使用できます")
 
             # 入力方法のバリデーション
             if not request.input_methods.get("file_upload", False) and not request.input_methods.get("s3_sync", False):
-                raise ValueError("ファイルアップロードまたはS3同期のいずれかを有効にする必要があります")
+                raise BadRequestError("ファイルアップロードまたはS3同期のいずれかを有効にする必要があります")
 
             # スキーマデータを作成
             app_data = self._build_app_data(request)
@@ -214,7 +215,7 @@ class SchemaService:
         try:
             app_schema = get_app_schema(app_name)
             if not app_schema:
-                raise ValueError(f"App '{app_name}' not found")
+                raise NotFoundError(f"アプリが見つかりません: {app_name}")
 
             s3_key = app_schema.get("sample_image_s3_key")
             if not s3_key:
@@ -292,7 +293,7 @@ class SchemaService:
                 file_data = s3_response['Body'].read()
             except Exception as e:
                 logger.error(f"S3からのファイル取得エラー: {str(e)}")
-                raise ValueError("ファイルが見つかりません")
+                raise NotFoundError("ファイルが見つかりません")
 
             # ファイルの種類を拡張子で判定
             _, ext = os.path.splitext(request.filename)
@@ -305,9 +306,9 @@ class SchemaService:
                     logger.info(f"PDFを画像に変換しました: {request.filename}")
                 except Exception as e:
                     logger.error(f"PDF変換エラー: {str(e)}")
-                    raise ValueError("PDFの変換に失敗しました。有効なPDFファイルをアップロードしてください。")
+                    raise BadRequestError("PDFの変換に失敗しました。有効なPDFファイルをアップロードしてください。")
             elif ext not in ['.jpg', '.jpeg', '.png', '.gif']:
-                raise ValueError(
+                raise BadRequestError(
                     "サポートされていないファイル形式です。JPG、PNG、GIF、PDFのみ対応しています。")
 
             # スキーマフィールドを生成（build → Bedrock 呼び出し → parse）
@@ -343,7 +344,7 @@ class SchemaService:
         """
         try:
             if not settings.SCHEMA_GENERATE_FUNCTION_NAME:
-                raise ValueError("SCHEMA_GENERATE_FUNCTION_NAME is not configured")
+                raise RuntimeError("SCHEMA_GENERATE_FUNCTION_NAME is not configured")
 
             # 1. ジョブレコード作成
             job_id = create_schema_generation_job(
@@ -384,10 +385,10 @@ class SchemaService:
         """
         job = get_job(job_id)
         if not job:
-            raise ValueError(f"Job not found: {job_id}")
+            raise NotFoundError(f"ジョブが見つかりません: {job_id}")
 
         if job.get("job_type") != JobType.SCHEMA_GENERATION:
-            raise ValueError(f"Job {job_id} is not a schema_generation job")
+            raise BadRequestError(f"ジョブ {job_id} はスキーマ生成ジョブではありません")
 
         return {
             "status": job.get("status", "processing"),
@@ -400,15 +401,15 @@ class SchemaService:
         try:
             # 入力バリデーション
             if not request.name or not request.display_name:
-                raise ValueError("アプリ名と表示名は必須です")
+                raise BadRequestError("アプリ名と表示名は必須です")
 
             # アプリ名のバリデーション（英数字とアンダースコアのみ）
             if not NAME_PATTERN.match(request.name):
-                raise ValueError("アプリ名は英数字とアンダースコアのみ使用できます")
+                raise BadRequestError("アプリ名は英数字とアンダースコアのみ使用できます")
 
             # 入力方法のバリデーション
             if not request.input_methods.get("file_upload", False) and not request.input_methods.get("s3_sync", False):
-                raise ValueError("ファイルアップロードまたはS3同期のいずれかを有効にする必要があります")
+                raise BadRequestError("ファイルアップロードまたはS3同期のいずれかを有効にする必要があります")
 
             # スキーマデータを作成
             app_data = self._build_app_data(request)

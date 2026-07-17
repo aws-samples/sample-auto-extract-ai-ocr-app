@@ -9,6 +9,7 @@ from repositories import (
     get_app_display_name, update_verification_status
 )
 from config import settings
+from exceptions import NotFoundError
 from background import BackgroundTaskExtension
 from utils import decimal_to_float
 from utils.bedrock import parse_converse_response, extract_json_from_response
@@ -81,12 +82,12 @@ class InformationExtractor(ABC):
             if not image_data:
                 logger.error(f"画像 {self.image_id} が見つかりません")
                 update_image_status(self.image_id, ImageStatus.FAILED)
-                raise ValueError(f"画像 {self.image_id} が見つかりません")
+                raise NotFoundError(f"画像 {self.image_id} が見つかりません")
 
             app_name = image_data.get("app_name")
             if not app_name:
                 logger.error(f"app_name not found for image {self.image_id}")
-                raise ValueError(f"app_name not found for image {self.image_id}")
+                raise NotFoundError(f"app_name not found for image {self.image_id}")
 
             update_image_status(self.image_id, ImageStatus.EXTRACTING)
 
@@ -168,7 +169,7 @@ class MultiImageExtractor(InformationExtractor):
     def _fetch_images(self, image_data: dict) -> tuple:
         converted_s3_keys = image_data.get("converted_s3_key", [])
         if not converted_s3_keys:
-            raise ValueError("変換済み画像が見つかりません")
+            raise NotFoundError("変換済み画像が見つかりません")
         if not isinstance(converted_s3_keys, list):
             converted_s3_keys = [converted_s3_keys]
 
@@ -186,13 +187,13 @@ class MultiImageExtractor(InformationExtractor):
                 continue
 
         if not page_images:
-            raise ValueError("画像データを取得できませんでした")
+            raise NotFoundError("画像データを取得できませんでした")
         return page_images, content_type
 
     def _get_ocr_data(self, image_data: dict):
         ocr_results = get_multipage_ocr_results(self.image_id)
         if not ocr_results:
-            raise ValueError("OCR結果が見つかりません")
+            raise NotFoundError("OCR結果が見つかりません")
         return ocr_results
 
     def _build_ocr_request(self, images, content_type, ocr_data, fields, custom_prompt) -> tuple:
@@ -223,11 +224,11 @@ class SingleImageExtractor(InformationExtractor):
     def _fetch_images(self, image_data: dict) -> tuple:
         converted_s3_keys = image_data.get("converted_s3_key", [])
         if not converted_s3_keys:
-            raise ValueError("変換済み画像が見つかりません")
+            raise NotFoundError("変換済み画像が見つかりません")
 
         s3_key = converted_s3_keys[0] if isinstance(converted_s3_keys, list) else converted_s3_keys
         if not s3_key:
-            raise ValueError("有効なS3キーが見つかりません")
+            raise NotFoundError("有効なS3キーが見つかりません")
 
         s3_response = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=s3_key)
         image_bytes = s3_response['Body'].read()
@@ -273,12 +274,12 @@ class ExtractionService:
 
             if not image_data:
                 logger.warning(f"画像が見つかりません (image_id: {image_id})")
-                raise ValueError("画像が見つかりません")
+                raise NotFoundError("画像が見つかりません")
 
             app_name = image_data.get("app_name")
             if not app_name:
                 logger.error(f"app_name not found for image {image_id}")
-                raise ValueError(f"app_name not found for image {image_id}")
+                raise NotFoundError(f"画像のアプリ名が取得できません: {image_id}")
 
             app_display_name = get_app_display_name(app_name)
             # snapshot 側と型を揃えて比較・返却するため現スキーマも Decimal→float 正規化する
@@ -362,7 +363,7 @@ class ExtractionService:
 
             image_data = get_image(image_id)
             if not image_data:
-                raise ValueError(f"Image not found: {image_id}")
+                raise NotFoundError(f"Image not found: {image_id}")
 
             extractor = self._get_extractor(image_id, image_data)
             extractor.extract()

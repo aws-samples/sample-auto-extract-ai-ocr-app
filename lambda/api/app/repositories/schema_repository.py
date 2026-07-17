@@ -4,6 +4,7 @@ from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 from clients import dynamodb_resource
+from exceptions import ConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ def _get_schemas_table():
     table_name = os.environ.get('SCHEMAS_TABLE_NAME')
     if not table_name:
         logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-        raise ValueError("SCHEMAS_TABLE_NAME environment variable is not set")
+        raise RuntimeError("SCHEMAS_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
@@ -172,7 +173,7 @@ def create_app_schema(app_name, app_data):
 
     except ClientError as e:
         if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            raise ValueError(f"アプリ名 '{app_name}' は既に使用されています")
+            raise ConflictError(f"アプリ名 '{app_name}' は既に使用されています")
         raise
     except Exception as e:
         logger.error(f"スキーマ作成エラー: {str(e)}")

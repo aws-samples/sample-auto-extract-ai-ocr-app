@@ -34,7 +34,7 @@ const CustomPromptModal: React.FC<CustomPromptModalProps> = ({
       const response = await api.get(`/apps/${appName}/custom-prompt`);
       setCustomPrompt(response.data.custom_prompt || "");
     } catch (err: any) {
-      setError(`カスタムプロンプトの読み込みに失敗しました: ${err.message}`);
+      setError(`カスタムプロンプトの読み込みに失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +51,7 @@ const CustomPromptModal: React.FC<CustomPromptModalProps> = ({
       setSuccessMessage("カスタムプロンプトを保存しました");
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
-      setError(`カスタムプロンプトの保存に失敗しました: ${err.message}`);
+      setError(`カスタムプロンプトの保存に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
     } finally {
       setIsSaving(false);
     }
@@ -120,7 +120,7 @@ const CustomPromptModal: React.FC<CustomPromptModalProps> = ({
 
               {error && (
                 <Alert type="error" className="mb-4">
-                  <span className="block sm:inline">{error}</span>
+                  <span className="block sm:inline whitespace-pre-line">{error}</span>
                 </Alert>
               )}
 

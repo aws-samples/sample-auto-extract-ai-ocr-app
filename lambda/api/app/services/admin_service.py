@@ -1,14 +1,10 @@
 """管理者操作サービス"""
 import logging
 
+from exceptions import NotFoundError, BadRequestError
 from repositories import user_repository, group_repository, usecase_repository, tool_repository
 
 logger = logging.getLogger(__name__)
-
-
-class NotFoundError(Exception):
-    """リソースが見つからない場合のエラー"""
-    pass
 
 
 class AdminService:
@@ -45,18 +41,18 @@ class AdminService:
         """グループを削除する（auto グループは削除不可）"""
         group = group_repository.get_group(group_id)
         if not group:
-            raise NotFoundError("Group not found")
+            raise NotFoundError("グループが見つかりません")
         if group["source"] == "auto":
-            raise ValueError("Cannot delete auto-managed group")
+            raise BadRequestError("自動管理グループは削除できません")
         group_repository.delete_group(group_id)
 
     def update_group(self, group_id: str, name: str = None, description: str = None) -> bool:
         """グループの名前・説明を更新する（auto グループは編集不可）"""
         group = group_repository.get_group(group_id)
         if not group:
-            raise NotFoundError("Group not found")
+            raise NotFoundError("グループが見つかりません")
         if group["source"] == "auto":
-            raise ValueError("Cannot edit auto-managed group")
+            raise BadRequestError("自動管理グループは編集できません")
         return group_repository.update_group(group_id, name=name, description=description)
 
     def update_group_members(self, group_id: str, user_ids: list[str]) -> None:
@@ -70,7 +66,7 @@ class AdminService:
         """app_name から usecase_id を解決する"""
         usecase = usecase_repository.get_usecase_by_app_name(app_name)
         if not usecase:
-            raise NotFoundError(f"Usecase not found for app_name: {app_name}")
+            raise NotFoundError(f"ユースケースが見つかりません: {app_name}")
         return str(usecase["id"])
 
     def get_usecase_permissions(self, app_name: str) -> dict:

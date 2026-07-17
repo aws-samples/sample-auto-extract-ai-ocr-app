@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any
 
+from exceptions import NotFoundError, ForbiddenError
 from repositories import (
     get_image, get_images,
     get_children_by_parent_id, delete_image as repo_delete_image
@@ -109,11 +110,11 @@ class ImageListService:
         try:
             image = get_image(image_id)
             if not image:
-                raise ValueError("Image not found")
+                raise NotFoundError("画像が見つかりません")
 
             if not is_admin:
                 if not cognito_sub or image.get("uploaded_by") != cognito_sub:
-                    raise PermissionError("Forbidden: not the owner")
+                    raise ForbiddenError("この操作を行う権限がありません")
 
             parent_document_id = image.get("parent_document_id")
             page_processing_mode = image.get("page_processing_mode")

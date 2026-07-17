@@ -4,7 +4,7 @@ import { Info } from "lucide-react";
 import SchemaPreview from "./SchemaPreview";
 import SchemaFieldsEditor from "./SchemaFieldsEditor";
 import { Field } from "../../types/app-schema";
-import api, { extractApiErrorMessage } from "../../services/api";
+import api from "../../services/api";
 import { validateSchemaFields, isValidAppName } from "../../utils/schemaValidation";
 import { useAppContext } from "../../contexts/AppContext";
 import { Alert, Button, Skeleton } from "../../components/ui";
@@ -102,7 +102,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
           setAgentEnabled(appData.agent_enabled || false);
         })
         .catch((err) => {
-          setError(`スキーマの読み込みに失敗しました: ${err.message}`);
+          setError(`スキーマの読み込みに失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
         })
         .finally(() => {
           setIsLoading(false);
@@ -330,7 +330,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
       }
     } catch (err: any) {
       console.error("スキーマ生成エラー:", err);
-      setError(`スキーマ生成に失敗しました:\n${extractApiErrorMessage(err)}`);
+      setError(`スキーマ生成に失敗しました:\n${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
     } finally {
       setIsGenerating(false);
     }
@@ -432,8 +432,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
       }, 3000);
     } catch (err: any) {
       console.error("スキーマ保存エラー:", err);
-      const errorMessage = extractApiErrorMessage(err);
-      setError(`スキーマの保存に失敗しました:\n${errorMessage}`);
+      setError(`スキーマの保存に失敗しました:\n${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
       setSuccessMessage(null); // 成功メッセージをクリア
     } finally {
       setIsSaving(false);
@@ -673,7 +672,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                                           tool_ids: updated.map((t: any) => t.id),
                                         }).catch((err: any) => {
                                           setUsecaseTools(prev);
-                                          setError(`ツール解除に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                          setError(`ツール解除に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
                                         });
                                       }}
                                       className="w-5 h-5 flex items-center justify-center rounded text-danger hover:bg-danger-light text-sm font-bold"
@@ -710,7 +709,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                                             tool_ids: updated.map((t: any) => t.id),
                                           }).catch((err: any) => {
                                             setUsecaseTools(prev);
-                                            setError(`ツール追加に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                            setError(`ツール追加に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
                                           });
                                         }}
                                         className="w-5 h-5 flex items-center justify-center rounded text-primary hover:bg-primary/10 text-sm font-bold"

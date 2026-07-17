@@ -938,7 +938,7 @@ function OcrResult() {
       startPolling();
     } catch (error: any) {
       console.error("再抽出エラー:", error);
-      showToast(error.response?.data?.detail?.message || error.response?.data?.detail || "再抽出に失敗しました", "error");
+      showToast(error?.userMessage ?? error?.message ?? "再抽出に失敗しました", "error");
       setExtractionStatus("failed");
     }
   };

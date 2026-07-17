@@ -15,6 +15,7 @@ import io
 
 from clients import s3_client
 from config import settings
+from exceptions import NotFoundError, BadRequestError
 from repositories import (
     get_image, update_image_status, update_converted_image,
     update_ocr_result, update_parent_document_status,
@@ -34,10 +35,10 @@ def convert_pdf_to_image(image_id: str, s3_key: str):
 
         image_data = get_image(image_id)
         if not image_data:
-            raise ValueError(f"Image not found: {image_id}")
+            raise NotFoundError(f"Image not found: {image_id}")
         app_name = image_data.get("app_name")
         if not app_name:
-            raise ValueError(f"app_name not found for image {image_id}")
+            raise NotFoundError(f"app_name not found for image {image_id}")
 
         processing_mode = image_data.get("page_processing_mode", PageProcessingMode.COMBINED)
         input_methods = get_app_input_methods(app_name)
@@ -62,11 +63,11 @@ def convert_pdf_to_image(image_id: str, s3_key: str):
         try:
             pdf_document = fitz.open(temp_pdf_path)
             if pdf_document.page_count == 0:
-                raise ValueError("PDF has no pages")
+                raise BadRequestError("PDF has no pages")
 
             upload_bucket = settings.BUCKET_NAME
             if not upload_bucket:
-                raise ValueError("BUCKET_NAME environment variable is not set")
+                raise RuntimeError("BUCKET_NAME environment variable is not set")
 
             if processing_mode == PageProcessingMode.COMBINED:
                 _process_combined_pages(pdf_document, image_id, s3_key, upload_bucket)
@@ -123,7 +124,7 @@ def _process_combined_pages(pdf_document, image_id: str, s3_key: str, upload_buc
     logger.info(f"複数画像処理を開始: {total_pages}ページ")
 
     if total_pages > 10:
-        raise ValueError(f"PDF has too many pages ({total_pages}). Maximum supported: 10")
+        raise BadRequestError(f"PDF has too many pages ({total_pages}). Maximum supported: 10")
 
     if total_pages == 1:
         return _process_single_page_combined(pdf_document, image_id, s3_key, upload_bucket)

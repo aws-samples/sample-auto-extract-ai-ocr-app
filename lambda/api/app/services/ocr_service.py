@@ -4,6 +4,7 @@ import json
 import base64
 from typing import Dict, Any
 
+from exceptions import EndpointNotReadyError, NotFoundError, BadRequestError
 from repositories import (
     get_images,
     get_image, update_ocr_result as db_update_ocr_result,
@@ -38,11 +39,6 @@ def _guess_image_content_type(image_data: bytes) -> str:
     return "image/jpeg"
 
 
-class EndpointNotReadyError(Exception):
-    """OCR エンドポイントが起動中の場合のエラー"""
-    pass
-
-
 class OcrService:
     """OCR処理を管理するサービスクラス"""
 
@@ -60,9 +56,9 @@ class OcrService:
     def _invoke_ocr(self, image_data: bytes) -> dict:
         """SageMaker OCR エンドポイントを呼び出し、整形済み結果を返す"""
         if not self.enable_ocr:
-            raise ValueError("OCR is disabled in this deployment")
+            raise BadRequestError("この環境では OCR が無効です")
         if not settings.SAGEMAKER_ENDPOINT_NAME:
-            raise ValueError("SageMaker endpoint not configured")
+            raise RuntimeError("SageMaker endpoint not configured")
 
         if settings.OCR_ENGINE == "yomitoku-mp":
             return self._invoke_yomitoku_mp(image_data)
@@ -102,7 +98,7 @@ class OcrService:
         """OCR結果を取得する"""
         image_data = get_image(image_id)
         if not image_data:
-            raise ValueError("Image not found")
+            raise NotFoundError("画像が見つかりません")
 
         ocr_result = image_data.get("ocr_result", {})
         # OCR無効時はocr_resultが存在しない
@@ -134,7 +130,7 @@ class OcrService:
             logger.info(f"Processing single image: {image_id}")
             image_data = get_image(image_id)
             if not image_data:
-                raise ValueError(f"Image not found: {image_id}")
+                raise NotFoundError(f"画像が見つかりません: {image_id}")
 
             update_image_status(image_id, ImageStatus.OCR)
             sync_parent_status(image_id)
@@ -175,7 +171,7 @@ class OcrService:
 
         converted_s3_keys = image_data.get("converted_s3_key")
         if not converted_s3_keys or not isinstance(converted_s3_keys, list):
-            raise ValueError("複数ページの変換済み画像が見つかりません")
+            raise NotFoundError("複数ページの変換済み画像が見つかりません")
 
         ocr_results = []
         for i, s3_key in enumerate(converted_s3_keys):
@@ -185,7 +181,7 @@ class OcrService:
                 image_bytes = s3_response['Body'].read()
                 ocr_result = self._invoke_ocr(image_bytes)
                 if "error" in ocr_result:
-                    raise ValueError(f"OCR処理エラー: {ocr_result['error']}")
+                    raise RuntimeError(f"OCR処理エラー: {ocr_result['error']}")
                 page_result = {
                     "page": i + 1,
                     "words": ocr_result.get("words", []),
@@ -289,7 +285,7 @@ class OcrService:
                 if not status['ready']:
                     if settings.OCR_ENGINE != "yomitoku-mp":
                         trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
-                    raise EndpointNotReadyError('Endpoint warming up')
+                    raise EndpointNotReadyError('OCR エンドポイントが起動中です。しばらくお待ちください。')
 
             job_id = str(uuid.uuid4())
             app_name = request.app_name
@@ -353,7 +349,7 @@ class OcrService:
                 if not status['ready']:
                     if settings.OCR_ENGINE != "yomitoku-mp":
                         trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
-                    raise EndpointNotReadyError('Endpoint warming up')
+                    raise EndpointNotReadyError('OCR エンドポイントが起動中です。しばらくお待ちください。')
 
             job_id = str(uuid.uuid4())
 

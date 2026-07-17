@@ -16,12 +16,16 @@ from services.sharing_service import SharingService
 
 from routers import health, images, jobs, system, tools, apps
 from routers import admin, user, sharing
+from errors import register_error_handlers
 
 # アプリケーション全体のログレベル設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# エラーレスポンスを統一形（{detail, code}）に正規化するハンドラを登録
+register_error_handlers(app)
 
 # バックグラウンドタスク拡張機能を初期化
 background_task = BackgroundTaskExtension()

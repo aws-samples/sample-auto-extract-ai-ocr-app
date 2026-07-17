@@ -23,7 +23,7 @@ def get_images_table():
     table_name = settings.IMAGES_TABLE_NAME
     if not table_name:
         logger.error("IMAGES_TABLE_NAME 環境変数が設定されていません")
-        raise ValueError("IMAGES_TABLE_NAME environment variable is not set")
+        raise RuntimeError("IMAGES_TABLE_NAME environment variable is not set")
 
     return dynamodb_resource.Table(table_name)
 

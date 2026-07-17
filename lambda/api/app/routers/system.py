@@ -2,7 +2,7 @@
 
 Infrastructure status endpoints (no auth required).
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 import logging
 
 from services.ocr_service import OcrService
@@ -17,8 +17,4 @@ async def get_ocr_endpoint_status(
     service: OcrService = Depends(get_ocr_service),
 ):
     """OCRエンドポイントの状態を確認（ポーリング用、認証不要）"""
-    try:
-        return service.get_endpoint_status()
-    except Exception as e:
-        logger.error(f"Error checking endpoint status: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+    return service.get_endpoint_status()

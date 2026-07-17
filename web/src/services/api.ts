@@ -1,6 +1,16 @@
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
+// axios のエラーに、表示用メッセージと機械判定コードを添付する。
+// interceptor が必ず生やすので、各ページは err.userMessage / err.apiErrorCode を読むだけでよい。
+// apiErrorCode は axios ネイティブの AxiosError.code（ECONNABORTED 等）との衝突を避けた命名。
+declare module 'axios' {
+  interface AxiosError {
+    userMessage?: string;
+    apiErrorCode?: string | null;
+  }
+}
+
 // 環境変数からAPIのベースURLを取得
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
@@ -74,6 +84,9 @@ api.interceptors.response.use(
         console.error('API Config Error:', error.message);
       }
     }
+    // 表示用メッセージと機械判定コードを1回だけ生成して添付する
+    error.userMessage = formatApiError(error);
+    error.apiErrorCode = error.response?.data?.code ?? null;
     return Promise.reject(error);
   }
 );
@@ -89,16 +102,20 @@ function formatDetailEntry(d: any): string {
 }
 
 /**
- * API エラーから表示用メッセージを取り出す。
- * FastAPI の 422 は detail が配列（[{loc, msg, type}, ...]）で返るため、
- * そのままだと "[object Object]" になる。string / 配列 の両方を読める形に整形する。
+ * API エラーから表示用の日本語メッセージを整形する（interceptor 専用の非公開 helper）。
+ * detail は通常 string だが、配列 / オブジェクト形も読めるようにして常に非空文字列を返す。
  */
-export function extractApiErrorMessage(err: any, fallback = '不明なエラーが発生しました'): string {
+function formatApiError(err: any, fallback = '不明なエラーが発生しました'): string {
   const detail = err?.response?.data?.detail;
   if (typeof detail === 'string') return detail;
+  // API Gateway/ALB など、通常の detail:string に沿わない形式への防御
   if (Array.isArray(detail)) {
     const lines = detail.map(formatDetailEntry).filter(Boolean);
     if (lines.length > 0) return lines.join('\n');
+  }
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string') return detail.message;
+    if (typeof detail.error === 'string') return detail.error;
   }
   return err?.message || fallback;
 }

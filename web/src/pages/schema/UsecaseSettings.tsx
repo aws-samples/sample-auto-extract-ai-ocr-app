@@ -58,7 +58,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
           setAgentEnabled(appData.agent_enabled || false);
         })
         .catch((err) => {
-          setError(`設定の読み込みに失敗しました: ${err.message}`);
+          setError(`設定の読み込みに失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
         })
         .finally(() => {
           setIsLoading(false);
@@ -133,8 +133,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
         return;
       }
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || "不明なエラー";
-      setError(`保存に失敗しました: ${msg}`);
+      setError(`保存に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
     } finally {
       setIsSaving(false);
     }
@@ -196,7 +195,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
 
           {error && (
             <Alert type="error" className="mb-6">
-              <span className="block sm:inline">{error}</span>
+              <span className="block sm:inline whitespace-pre-line">{error}</span>
             </Alert>
           )}
 
@@ -359,7 +358,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                                         tool_ids: updated.map((t: any) => t.id),
                                       }).catch((err: any) => {
                                         setUsecaseTools(prev);
-                                        setError(`ツール解除に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                        setError(`ツール解除に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
                                       });
                                     }}
                                     className="w-5 h-5 flex items-center justify-center rounded text-danger hover:bg-danger-light text-sm font-bold"
@@ -396,7 +395,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                                           tool_ids: updated.map((t: any) => t.id),
                                         }).catch((err: any) => {
                                           setUsecaseTools(prev);
-                                          setError(`ツール追加に失敗しました: ${err.response?.data?.detail || err.message}`);
+                                          setError(`ツール追加に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
                                         });
                                       }}
                                       className="w-5 h-5 flex items-center justify-center rounded text-primary hover:bg-primary/10 text-sm font-bold"

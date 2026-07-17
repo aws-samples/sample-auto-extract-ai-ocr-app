@@ -31,7 +31,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
       setFiles(response.data.files || []);
     } catch (err: any) {
       console.error('S3ファイル一覧の取得に失敗しました:', err);
-      setError(err.response?.data?.detail || 'S3ファイル一覧の取得に失敗しました');
+      setError(err?.userMessage ?? err?.message ?? 'S3ファイル一覧の取得に失敗しました');
     } finally {
       setLoading(false);
     }
@@ -103,7 +103,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
       
     } catch (err: any) {
       console.error('ファイルのインポートに失敗しました:', err);
-      setError(err.response?.data?.detail || 'ファイルのインポートに失敗しました');
+      setError(err?.userMessage ?? err?.message ?? 'ファイルのインポートに失敗しました');
     } finally {
       setImporting(false);
     }
@@ -159,7 +159,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
         <div className="p-4">
           {error && (
             <Alert type="error" className="mb-4">
-              <p>{error}</p>
+              <p className="whitespace-pre-line">{error}</p>
             </Alert>
           )}
 

@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 import pytest
 
+from exceptions import BadRequestError
 from repositories.job_repository import (
     SuggestionStatus, validate_suggestion_status,
     JobStatus, validate_job_status,
@@ -17,7 +18,8 @@ class TestSuggestionStatus:
             validate_suggestion_status(s)
 
     def test_invalid_rejected(self):
-        with pytest.raises(ValueError):
+        # 無効値は BadRequestError（400）になる
+        with pytest.raises(BadRequestError):
             validate_suggestion_status("bogus")
 
 
@@ -27,5 +29,5 @@ class TestJobStatus:
             validate_job_status(s)
 
     def test_invalid_rejected(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(BadRequestError):
             validate_job_status("bogus")

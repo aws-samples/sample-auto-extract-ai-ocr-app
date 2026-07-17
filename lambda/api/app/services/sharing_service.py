@@ -1,14 +1,10 @@
 """共有設定サービス"""
 import logging
 
+from exceptions import LastOwnerError, NotFoundError
 from repositories import usecase_repository, group_repository
 
 logger = logging.getLogger(__name__)
-
-
-class LastOwnerError(Exception):
-    """最後のオーナーを削除しようとした場合のエラー"""
-    pass
 
 
 class SharingService:
@@ -18,7 +14,7 @@ class SharingService:
     def _get_usecase_id(self, app_name: str) -> str:
         uc = usecase_repository.get_usecase_by_app_name(app_name)
         if not uc:
-            raise ValueError("Usecase not found")
+            raise NotFoundError("ユースケースが見つかりません")
         return str(uc["id"])
 
     def get_sharing(self, app_name: str) -> dict:
@@ -36,7 +32,7 @@ class SharingService:
         uc_id = self._get_usecase_id(app_name)
         deleted = usecase_repository.delete_user_permission_safe(user_id, uc_id)
         if not deleted:
-            raise LastOwnerError("Cannot remove the last owner")
+            raise LastOwnerError("最後のオーナーは削除できません")
 
     def add_group_sharing(self, app_name: str, group_id: str, permission: str) -> None:
         uc_id = self._get_usecase_id(app_name)
@@ -50,5 +46,5 @@ class SharingService:
         uc_id = self._get_usecase_id(app_name)
         all_group = group_repository.get_group_by_name("all")
         if not all_group:
-            raise ValueError("all group not found")
+            raise NotFoundError("all グループが見つかりません")
         usecase_repository.upsert_group_permission(str(all_group["id"]), uc_id, "viewer")

@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 from datetime import datetime
 import uuid
 from config import settings
+from exceptions import NotFoundError, BadRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,11 @@ class JobStatus(StrEnum):
 
 
 def validate_job_status(status: str) -> None:
-    """無効なジョブステータス値なら ValueError。"""
-    JobStatus(status)
+    """無効なジョブステータス値なら BadRequestError。"""
+    try:
+        JobStatus(status)
+    except ValueError:
+        raise BadRequestError(f"不正なジョブステータスです: {status}")
 
 
 class JobType(StrEnum):
@@ -37,8 +41,11 @@ class SuggestionStatus(StrEnum):
 
 
 def validate_suggestion_status(status: str) -> None:
-    """無効な提案ステータス値なら ValueError。"""
-    SuggestionStatus(status)
+    """無効な提案ステータス値なら BadRequestError。"""
+    try:
+        SuggestionStatus(status)
+    except ValueError:
+        raise BadRequestError(f"不正な提案ステータスです: {status}")
 
 
 def get_jobs_table():
@@ -46,7 +53,7 @@ def get_jobs_table():
     table_name = settings.JOBS_TABLE_NAME
     if not table_name:
         logger.error("JOBS_TABLE_NAME 環境変数が設定されていません")
-        raise ValueError("JOBS_TABLE_NAME environment variable is not set")
+        raise RuntimeError("JOBS_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
@@ -55,7 +62,7 @@ def get_images_table():
     table_name = settings.IMAGES_TABLE_NAME
     if not table_name:
         logger.error("IMAGES_TABLE_NAME 環境変数が設定されていません")
-        raise ValueError("IMAGES_TABLE_NAME environment variable is not set")
+        raise RuntimeError("IMAGES_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
@@ -132,11 +139,11 @@ def update_suggestion_status(image_id: str, suggestion_index: int, status: str) 
     validate_suggestion_status(status)
     job = get_latest_agent_job_by_image_id(image_id)
     if not job:
-        raise ValueError("No agent job found for this image")
+        raise NotFoundError("この画像のエージェントジョブが見つかりません")
 
     suggestions = job.get("suggestions", [])
     if suggestion_index < 0 or suggestion_index >= len(suggestions):
-        raise ValueError(f"Invalid suggestion index: {suggestion_index}")
+        raise BadRequestError(f"提案のインデックスが不正です: {suggestion_index}")
 
     # Atomically update single element using DynamoDB path expression
     table = get_jobs_table()

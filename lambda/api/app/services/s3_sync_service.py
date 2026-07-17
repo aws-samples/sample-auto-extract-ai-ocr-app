@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError
 
 from config import settings
+from exceptions import NotFoundError, BadRequestError, ConflictError
 from domains.image_status import ImageStatus, PageProcessingMode
 from repositories.schema_repository import get_app_schema
 from repositories.image_repository import create_image_record, get_images_by_sync_source, get_existing_sync_sources
@@ -29,13 +30,13 @@ class S3SyncService:
             # アプリケーションの入力方法設定を取得
             app_schema = get_app_schema(app_name)
             if not app_schema:
-                raise ValueError(f"アプリが見つかりません: {app_name}")
+                raise NotFoundError(f"アプリが見つかりません: {app_name}")
 
             input_methods = app_schema.get("input_methods", {})
 
             # S3同期が有効かチェック
             if not input_methods.get("s3_sync", False):
-                raise ValueError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
+                raise BadRequestError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
 
             # 同期バケットからファイル一覧を取得
             s3_path = f"{app_name}/"
@@ -66,13 +67,13 @@ class S3SyncService:
             # アプリケーションの入力方法設定を取得
             app_schema = get_app_schema(app_name)
             if not app_schema:
-                raise ValueError(f"アプリが見つかりません: {app_name}")
+                raise NotFoundError(f"アプリが見つかりません: {app_name}")
 
             input_methods = app_schema.get("input_methods", {})
 
             # S3同期が有効かチェック
             if not input_methods.get("s3_sync", False):
-                raise ValueError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
+                raise BadRequestError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
 
             # ファイル情報を取得
             source_bucket = file_data.get("bucket")
@@ -81,15 +82,15 @@ class S3SyncService:
             page_processing_mode = file_data.get("page_processing_mode", PageProcessingMode.COMBINED)
 
             if not all([source_bucket, source_key, filename]):
-                raise ValueError("bucket, key, filename are required")
+                raise BadRequestError("bucket, key, filename は必須です")
 
             if source_bucket != self.sync_bucket_name:
-                raise ValueError("Invalid source bucket")
+                raise BadRequestError("無効なソースバケットです")
 
             # 重複チェック
             existing_files = get_images_by_sync_source(filename, source_key, app_name)
             if existing_files:
-                raise ValueError(f"ファイル '{filename}' は既にインポート済みです")
+                raise ConflictError(f"ファイル '{filename}' は既にインポート済みです")
 
             # 新しい画像IDを生成
             image_id = str(uuid.uuid4())
@@ -236,7 +237,7 @@ class S3SyncService:
 
         except ClientError as e:
             logger.error(f"Error listing S3 files: {str(e)}")
-            raise ValueError(f"S3バケットへのアクセスに失敗しました: {str(e)}")
+            raise RuntimeError(f"S3バケットへのアクセスに失敗しました: {str(e)}")
 
     async def _copy_s3_file(self, source_bucket: str, source_key: str, destination_key: str) -> None:
         """S3ファイルを自分のバケットにコピーする"""
@@ -256,4 +257,4 @@ class S3SyncService:
 
         except ClientError as e:
             logger.error(f"Error copying S3 file: {str(e)}")
-            raise ValueError(f"S3ファイルのコピーに失敗しました: {str(e)}")
+            raise RuntimeError(f"S3ファイルのコピーに失敗しました: {str(e)}")

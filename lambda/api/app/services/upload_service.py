@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+from exceptions import NotFoundError, BadRequestError
 from repositories import (
     create_image_record, get_image, update_image_status, update_converted_image,
 )
@@ -40,14 +41,14 @@ class UploadService:
 
             if not valid_app:
                 logger.error(f"Invalid app name: {request.app_name}")
-                raise ValueError(f"Invalid app name: {request.app_name}")
+                raise BadRequestError(f"無効なアプリ名です: {request.app_name}")
 
             # アプリケーションの入力方法設定を取得
             input_methods = get_app_input_methods(request.app_name)
 
             # ファイルアップロードが有効かチェック
             if not input_methods.get("file_upload", True):
-                raise ValueError(
+                raise BadRequestError(
                     f"ファイルアップロードはこのアプリケーションでは無効です: {request.app_name}")
 
             # 一意のS3キーを生成
@@ -102,7 +103,7 @@ class UploadService:
                     'ContentType', 'application/octet-stream')
             except Exception as e:
                 logger.error(f"S3 object not found: {str(e)}")
-                raise ValueError("File not found in S3")
+                raise NotFoundError("S3 にファイルが見つかりません")
 
             # ファイル種別を判定
             is_image = content_type.startswith('image/')
@@ -187,7 +188,7 @@ class UploadService:
 
             # バックグラウンドタスクとして変換処理を実行
             if not self.background_task:
-                raise ValueError("background_task is not configured for PDF conversion")
+                raise RuntimeError("background_task is not configured for PDF conversion")
             task_id = self.background_task.add_task(
                 convert_pdf_to_image,
                 image_id,
@@ -212,7 +213,7 @@ class UploadService:
             # 画像情報を取得
             image_data = get_image(image_id)
             if not image_data:
-                raise ValueError("Image not found")
+                raise NotFoundError("画像が見つかりません")
 
             # S3キーを抽出（リスト・文字列両対応）
             def extract_s3_keys_from_dynamo_data(dynamo_data):
@@ -237,7 +238,7 @@ class UploadService:
                 bucket_name = self.bucket_name
                 logger.info(f"元画像のダウンロードURLを生成します: {bucket_name}")
             else:
-                raise ValueError("Image file not found")
+                raise NotFoundError("画像ファイルが見つかりません")
 
             # 複数ページの署名付きURLを生成
             presigned_urls = []
@@ -284,7 +285,7 @@ class UploadService:
                     main_content_type = content_type
 
             if not presigned_urls:
-                raise ValueError("No valid S3 keys found")
+                raise NotFoundError("有効な S3 キーが見つかりません")
 
             logger.info(f"Generated download URL for image {image_id}")
 

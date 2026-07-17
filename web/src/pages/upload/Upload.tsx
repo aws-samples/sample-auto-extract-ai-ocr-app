@@ -96,7 +96,7 @@ function Upload() {
       console.error("OCR処理の開始に失敗しました:", error);
       
       // エンドポイント起動中エラーの場合
-      if (error.response?.status === 503 && error.response?.data?.detail?.error === 'endpoint_not_ready') {
+      if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
         setIsEndpointWarming(true);
         setIsProcessing(false);
 
@@ -163,7 +163,7 @@ function Upload() {
       await refreshApps();
       navigate('/');
     } catch (err: any) {
-      setError(`削除に失敗しました: ${err.message}`);
+      setError(`削除に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
     }
   };
 
@@ -386,7 +386,7 @@ function Upload() {
 
           {error && (
             <Alert type="error" className="mb-4">
-              <span className="block sm:inline">{error}</span>
+              <span className="block sm:inline whitespace-pre-line">{error}</span>
             </Alert>
           )}
 

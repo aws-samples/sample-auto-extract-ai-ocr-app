@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 from domains.image_status import AgentStatus
+from exceptions import NotFoundError
 from repositories.job_repository import JobStatus, SuggestionStatus
 from typing import Dict, Any
 
@@ -68,7 +69,7 @@ class AgentService:
             # Get OCR extraction results
             image_data = get_image(image_id)
             if not image_data:
-                raise ValueError(f"Image not found: {image_id}")
+                raise NotFoundError(f"画像が見つかりません: {image_id}")
 
             extracted_info = image_data.get("extracted_info", {})
             if not extracted_info:
@@ -129,7 +130,7 @@ class AgentService:
         """
         job = get_job(job_id)
         if not job:
-            raise ValueError(f"Job not found: {job_id}")
+            raise NotFoundError(f"ジョブが見つかりません: {job_id}")
 
         suggestions = job.get("suggestions", [])
         pending = []

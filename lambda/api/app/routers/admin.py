@@ -8,7 +8,7 @@ from schemas.admin import (
     UserRoleUpdate, GroupCreate, GroupUpdate, GroupMemberUpdate,
     ToolCreate, ToolUpdate, ToolUserBody, ToolGroupBody,
 )
-from services.admin_service import AdminService, NotFoundError
+from services.admin_service import AdminService
 from services.image_list_service import ImageListService
 from dependencies.services import get_image_list_service, get_admin_service
 
@@ -53,13 +53,8 @@ async def get_group_members(group_id: str, user=Depends(RequireRole("admin")), s
 @router.delete("/groups/{group_id}")
 async def delete_group(group_id: str, user=Depends(RequireRole("admin")), service: AdminService = Depends(get_admin_service)):
     """グループを削除する（auto グループは削除不可）"""
-    try:
-        service.delete_group(group_id)
-        return {"ok": True}
-    except NotFoundError as e:
-        raise HTTPException(404, str(e))
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    service.delete_group(group_id)
+    return {"ok": True}
 
 
 @router.patch("/groups/{group_id}")
@@ -68,14 +63,9 @@ async def update_group(group_id: str, body: GroupUpdate, user=Depends(RequireRol
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
-    try:
-        if not service.update_group(group_id, **updates):
-            raise HTTPException(404, "Group not found")
-        return {"ok": True}
-    except NotFoundError as e:
-        raise HTTPException(404, str(e))
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    if not service.update_group(group_id, **updates):
+        raise HTTPException(404, "Group not found")
+    return {"ok": True}
 
 
 @router.put("/groups/{group_id}/members")

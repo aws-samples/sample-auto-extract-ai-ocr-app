@@ -211,7 +211,8 @@ export class Api extends Construct {
     // 超えるため非同期化した Worker Lambda。API Lambda が async invoke で起動する。
     const schemaGenerate = new DockerImageFunction(this, "SchemaGenerate", {
       code: DockerImageCode.fromImageAsset("lambda/api", {
-        file: "Dockerfile.schemagenerate",
+        file: "Dockerfile.worker",
+        cmd: ["app.workers.schema_generate.schema_generate_handler"],
         platform: Platform.LINUX_AMD64,
       }),
       timeout: Duration.minutes(5),

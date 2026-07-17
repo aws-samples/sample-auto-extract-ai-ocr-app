@@ -39,5 +39,4 @@ export interface S3ImportResponse {
   status: string;
   message: string;
   image_id: string;
-  is_converting: boolean;
 }

@@ -1,4 +1,3 @@
-from background import BackgroundTaskExtension
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,14 +26,11 @@ app = FastAPI()
 # エラーレスポンスを統一形（{detail, code}）に正規化するハンドラを登録
 register_error_handlers(app)
 
-# バックグラウンドタスク拡張機能を初期化
-background_task = BackgroundTaskExtension()
-
 # 全サービスを app.state に集約
 app.state.ocr_service = OcrService()
-app.state.upload_service = UploadService(background_task)
+app.state.upload_service = UploadService()
 app.state.image_list_service = ImageListService()
-app.state.extraction_service = ExtractionService(background_task)
+app.state.extraction_service = ExtractionService()
 app.state.schema_service = SchemaService()
 app.state.s3_sync_service = S3SyncService(upload_service=app.state.upload_service)
 app.state.agent_service = AgentService()
@@ -59,11 +55,3 @@ app.include_router(apps.router)
 app.include_router(admin.router)
 app.include_router(user.router)
 app.include_router(sharing.router)
-
-
-# リクエスト完了時にバックグラウンドタスクに通知するミドルウェア
-@app.middleware("http")
-async def send_done_message(request, call_next):
-    response = await call_next(request)
-    background_task.done()
-    return response

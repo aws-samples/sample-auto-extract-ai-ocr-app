@@ -1,8 +1,10 @@
 from clients import s3_client
+import boto3
+import json
 import uuid
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from exceptions import NotFoundError, BadRequestError
 from repositories import (
@@ -15,8 +17,6 @@ from config import settings
 from domains.image_status import ImageStatus
 from utils import resize_image
 from repositories import get_app_schemas, get_app_input_methods
-from background import BackgroundTaskExtension
-from services.pdf_conversion_service import convert_pdf_to_image
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,8 @@ logger = logging.getLogger(__name__)
 class UploadService:
     """アップロード処理を管理するサービスクラス"""
 
-    def __init__(self, background_task: Optional[BackgroundTaskExtension] = None):
+    def __init__(self):
         self.bucket_name = settings.BUCKET_NAME
-        self.background_task = background_task
 
     async def generate_presigned_url(self, request: PresignedUrlRequest, uploaded_by: str = None) -> PresignedUrlResponse:
         """署名付きURLを生成する"""
@@ -123,7 +122,6 @@ class UploadService:
                     "status": "success",
                     "message": "Upload completed successfully",
                     "image_id": image_id,
-                    "is_converting": False
                 }
 
         except Exception as e:
@@ -186,22 +184,23 @@ class UploadService:
             # ステータスを変換中に更新
             update_image_status(image_id, ImageStatus.CONVERTING)
 
-            # バックグラウンドタスクとして変換処理を実行
-            if not self.background_task:
-                raise RuntimeError("background_task is not configured for PDF conversion")
-            task_id = self.background_task.add_task(
-                convert_pdf_to_image,
-                image_id,
-                request.s3_key
+            # 変換は Worker Lambda に async invoke で委譲する。
+            # HTTP 応答後の実行環境回収で変換が失われないよう API 内スレッドでは行わない。
+            lambda_client = boto3.client("lambda")
+            lambda_client.invoke(
+                FunctionName=settings.PDF_CONVERT_FUNCTION_NAME,
+                InvocationType="Event",
+                Payload=json.dumps({
+                    "image_id": image_id,
+                    "s3_key": request.s3_key,
+                }),
             )
-            logger.info(
-                f"Started PDF conversion task {task_id} for image {image_id}")
+            logger.info(f"Invoked PdfConvert Lambda for image {image_id}")
 
             return {
                 "status": "success",
                 "message": "Upload completed, PDF conversion started",
                 "image_id": image_id,
-                "is_converting": True
             }
         except Exception as e:
             logger.error(f"PDF conversion setup error: {str(e)}")

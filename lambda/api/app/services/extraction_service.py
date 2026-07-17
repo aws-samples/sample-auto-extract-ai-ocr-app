@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from abc import ABC, abstractmethod
 
 from repositories import (
@@ -10,7 +10,6 @@ from repositories import (
 )
 from config import settings
 from exceptions import NotFoundError
-from background import BackgroundTaskExtension
 from utils import decimal_to_float
 from utils.bedrock import parse_converse_response, extract_json_from_response
 from domains.schema_fields import extract_field_names
@@ -263,9 +262,6 @@ class SingleImageExtractor(InformationExtractor):
 
 class ExtractionService:
     """情報抽出処理を管理するサービスクラス"""
-
-    def __init__(self, background_task: Optional[BackgroundTaskExtension] = None):
-        self.background_task = background_task
 
     async def get_extraction_result(self, image_id: str) -> Dict[str, Any]:
         """情報抽出結果を取得する"""

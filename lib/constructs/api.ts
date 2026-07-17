@@ -251,6 +251,35 @@ export class Api extends Construct {
       schemaGenerate.functionName
     );
 
+    // PdfConvert Worker Lambda
+    // PDF→画像変換は数十秒かかりうえに HTTP 応答後の実行環境回収で取りこぼす恐れがあるため、
+    // API Lambda 内スレッドではなく独立 Worker に async invoke で委譲する。
+    const pdfConvert = new DockerImageFunction(this, "PdfConvert", {
+      code: DockerImageCode.fromImageAsset("lambda/api", {
+        file: "Dockerfile.worker",
+        cmd: ["app.workers.pdf_convert.pdf_convert_handler"],
+        platform: Platform.LINUX_AMD64,
+      }),
+      timeout: Duration.minutes(5),
+      memorySize: 4096,
+      environment: {
+        BUCKET_NAME: documentBucket.bucketName,
+        IMAGES_TABLE_NAME: imagesTable.tableName,
+        SCHEMAS_TABLE_NAME: props.schemasTable.tableName,
+      },
+    });
+
+    imagesTable.grantReadWriteData(pdfConvert);
+    props.schemasTable.grantReadData(pdfConvert);
+    documentBucket.grantReadWrite(pdfConvert);
+
+    // API Lambda から PdfConvert を async invoke するための権限と function name 注入
+    pdfConvert.grantInvoke(lambdaFunction);
+    lambdaFunction.addEnvironment(
+      "PDF_CONVERT_FUNCTION_NAME",
+      pdfConvert.functionName
+    );
+
     // AgentRuntime呼び出し権限
     if (props.agentRuntimeArn) {
       lambdaFunction.addToRolePolicy(

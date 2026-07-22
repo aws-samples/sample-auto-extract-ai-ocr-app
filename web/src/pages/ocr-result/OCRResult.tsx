@@ -37,6 +37,12 @@ const styles = {
   scrollContainerStyle: { maxHeight: "calc(100vh - 200px)" },
 };
 
+const LoadingSpinner = () => (
+  <div className={styles.loadingContainer}>
+    <div className={styles.spinner}></div>
+  </div>
+);
+
 function OcrResult() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -955,13 +961,6 @@ function OcrResult() {
 
   // 表示タイトル
   const currentViewTitle = activeView === "ocr" ? "OCR結果" : "抽出結果";
-
-  // ローディングスピナーコンポーネント
-  const LoadingSpinner = () => (
-    <div className={styles.loadingContainer}>
-      <div className={styles.spinner}></div>
-    </div>
-  );
 
   return (
     <div className={styles.container}>

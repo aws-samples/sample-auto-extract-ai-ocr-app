@@ -31,10 +31,10 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { refreshApps, apps, appsLoaded, isAdmin } = useAppContext();
   
-  // モード関連の状態
-  const [isViewMode] = useState(mode === 'view');
-  const [isEditMode] = useState(mode === 'edit');
-  const [isCreateMode] = useState(mode === 'create');
+  // モードは prop から導出する（不変なので state に持たない）
+  const isViewMode = mode === 'view';
+  const isEditMode = mode === 'edit';
+  const isCreateMode = mode === 'create';
   const [isLoading, setIsLoading] = useState(false);
 
   const [appName, setAppName] = useState("");

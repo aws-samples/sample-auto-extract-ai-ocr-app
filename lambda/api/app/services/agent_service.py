@@ -8,13 +8,11 @@ from exceptions import NotFoundError
 from repositories.job_repository import JobStatus, SuggestionStatus
 from typing import Dict, Any
 
-import boto3
-
 from repositories import get_image, update_agent_status
 from repositories.job_repository import create_agent_job, update_agent_job, get_job
 from repositories.tool_repository import list_tools, get_usecase_allowed_tool_names, get_usecase_tools
 from repositories.usecase_repository import get_usecase_by_app_name
-from clients import AgentClient, s3_client
+from clients import AgentClient, s3_client, invoke_worker_async
 from config import settings
 logger = logging.getLogger(__name__)
 
@@ -42,12 +40,9 @@ class AgentService:
             update_agent_status(image_id, AgentStatus.PROCESSING, suggestions_count=0)
 
             # Invoke AgentKick Lambda asynchronously
-            lambda_client = boto3.client("lambda")
-            lambda_client.invoke(
-                FunctionName=settings.AGENT_KICK_FUNCTION_NAME,
-                InvocationType="Event",  # async
-                Payload=json.dumps({"image_id": image_id, "job_id": job_id, "manual": True}),
-            )
+            invoke_worker_async(settings.AGENT_KICK_FUNCTION_NAME, {
+                "image_id": image_id, "job_id": job_id, "manual": True,
+            })
             logger.info(f"Invoked AgentKick Lambda for job {job_id}")
 
             return job_id

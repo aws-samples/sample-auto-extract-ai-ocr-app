@@ -1,6 +1,4 @@
-from clients import s3_client
-import boto3
-import json
+from clients import s3_client, invoke_worker_async
 import logging
 import uuid
 from datetime import datetime
@@ -119,15 +117,11 @@ class S3SyncService:
 
         if items:
             try:
-                boto3.client("lambda").invoke(
-                    FunctionName=settings.S3_SYNC_IMPORT_FUNCTION_NAME,
-                    InvocationType="Event",
-                    Payload=json.dumps({
-                        "app_name": app_name,
-                        "page_processing_mode": page_processing_mode,
-                        "items": items,
-                    }),
-                )
+                invoke_worker_async(settings.S3_SYNC_IMPORT_FUNCTION_NAME, {
+                    "app_name": app_name,
+                    "page_processing_mode": page_processing_mode,
+                    "items": items,
+                })
             except Exception:
                 # invoke 失敗時は作成済みレコードを FAILED にし、UPLOADING のまま残さない
                 for image_id in created_image_ids:

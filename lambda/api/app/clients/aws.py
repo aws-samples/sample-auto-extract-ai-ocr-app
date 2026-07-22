@@ -1,4 +1,5 @@
 """AWS SDK クライアント生成 + グローバルインスタンス"""
+import json
 import boto3
 from botocore.config import Config
 from config import settings
@@ -68,6 +69,11 @@ def create_sfn_client():
     return boto3.client("stepfunctions", region_name=settings.AWS_REGION)
 
 
+def create_lambda_client():
+    """Lambda クライアントを作成（Worker への async invoke 用）"""
+    return boto3.client("lambda", region_name=settings.AWS_REGION)
+
+
 # グローバルインスタンス
 s3_client = create_s3_client()
 bedrock_client = create_bedrock_client()
@@ -77,6 +83,19 @@ sagemaker_runtime_client = create_sagemaker_runtime_client()
 sagemaker_client = create_sagemaker_client()
 bedrock_agentcore_client = create_bedrock_agentcore_client()
 sfn_client = create_sfn_client()
+lambda_client = create_lambda_client()
+
+
+def invoke_worker_async(function_name: str, payload: dict) -> None:
+    """Worker Lambda を非同期（InvocationType="Event"）で起動する。
+
+    単発 fire-and-forget の Worker 起動を1箇所に集約する。
+    """
+    lambda_client.invoke(
+        FunctionName=function_name,
+        InvocationType="Event",
+        Payload=json.dumps(payload),
+    )
 
 
 def get_inference_component_status(component_name: str) -> dict:

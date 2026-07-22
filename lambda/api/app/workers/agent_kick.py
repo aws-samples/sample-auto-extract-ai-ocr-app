@@ -65,15 +65,21 @@ def agent_kick_handler(event, context):
         sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "no app_name"}
 
-    # 自動実行は agent_enabled かつ agent_auto_run のときのみ。
-    # 手動実行は別経路で、このゲートを通らない。
+    # 手動実行（manual=True）は agent_enabled のみ要求し、自動実行判定を通さない。
+    # 自動実行（Step Functions 経由）は agent_enabled かつ agent_auto_run のときのみ。
+    is_manual = event.get("manual", False)
     schema = get_app_schema(app_name)
-    if not schema or not schema.get("agent_enabled", False) or not schema.get("agent_auto_run", False):
-        logger.info(f"Agent auto-run not enabled for app: {app_name}")
-        _update_agent_status(image_id, AgentStatus.SKIPPED)
+    enabled = bool(schema and schema.get("agent_enabled", False))
+    allowed = enabled if is_manual else (enabled and bool(schema.get("agent_auto_run", False)))
+    if not allowed:
+        reason = "agent_enabled=false" if is_manual else "agent_auto_run=false"
+        logger.info(f"Agent skipped for app {app_name} (manual={is_manual}): {reason}")
+        # 検証対象外のユースケースは「検証していない」状態＝idle にする。
+        # SKIPPED にすると GET /agent が過去ジョブを返し古い結果が復活するため。
+        _update_agent_status(image_id, AgentStatus.IDLE)
         _finalize_skipped_job(event)
         sync_parent_agent_status(image_id)
-        return {"status": "skipped", "reason": "agent_auto_run=false"}
+        return {"status": "skipped", "reason": reason}
 
     job_id = event.get("job_id")
     try:

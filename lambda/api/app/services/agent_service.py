@@ -46,7 +46,7 @@ class AgentService:
             lambda_client.invoke(
                 FunctionName=settings.AGENT_KICK_FUNCTION_NAME,
                 InvocationType="Event",  # async
-                Payload=json.dumps({"image_id": image_id, "job_id": job_id}),
+                Payload=json.dumps({"image_id": image_id, "job_id": job_id, "manual": True}),
             )
             logger.info(f"Invoked AgentKick Lambda for job {job_id}")
 

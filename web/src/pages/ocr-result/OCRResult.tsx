@@ -1102,10 +1102,10 @@ function OcrResult() {
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" size="sm" onClick={() => { suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}>
+                    <Button variant="outline" size="sm" disabled={agentStatus === 'running'} onClick={() => { suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}>
                       <Pencil size={14} className="mr-1" />編集
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleReExtract} disabled={loading}>
+                    <Button variant="outline" size="sm" onClick={handleReExtract} disabled={loading || agentStatus === 'running'}>
                       <RefreshCw size={14} className="mr-1" />抽出設定
                     </Button>
                     {agentEnabled && (
@@ -1193,7 +1193,7 @@ function OcrResult() {
                     agentSuggestions={agentSuggestions}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
-                    onEnterEditMode={() => { suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}
+                    onEnterEditMode={() => { if (agentStatus === 'running') return; suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}
                   />
                 </>
               )}

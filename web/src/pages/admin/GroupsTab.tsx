@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Users, Trash2, Plus, X, Search, User } from 'lucide-react';
 import { Button, Table, Thead, Tbody, Badge, Modal, Input, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton } from '../../components/ui';
+import { useFetch } from '../../hooks/useFetch';
 import * as adminApi from '../../services/adminApi';
 import api from '../../services/api';
 import { AdminToolbar } from './AdminToolbar';
@@ -10,8 +11,6 @@ import type { GroupMember, SearchUser } from '../../types/user';
 const MEMBER_PAGE_SIZE = 10;
 
 export default function GroupsTab() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
@@ -26,15 +25,8 @@ export default function GroupsTab() {
   const [addSearch, setAddSearch] = useState('');
   const [addResults, setAddResults] = useState<SearchUser[]>([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await adminApi.getGroups();
-      setGroups(data.groups || []);
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const fetchGroups = useCallback(async () => (await adminApi.getGroups()).groups || [], []);
+  const { data: groups, loading, refetch: load } = useFetch<Group[]>(fetchGroups, []);
 
   const visible = useMemo(() => groups.filter((g) => g.source !== 'auto'), [groups]);
   const filtered = useMemo(() => {

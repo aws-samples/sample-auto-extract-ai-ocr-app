@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Users } from 'lucide-react';
 import { Table, Thead, Tbody, Badge, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton } from '../../components/ui';
+import { useFetch } from '../../hooks/useFetch';
 import * as adminApi from '../../services/adminApi';
 import { AdminToolbar } from './AdminToolbar';
 import type { User } from '../../types/user';
@@ -20,23 +21,12 @@ const ROLE_BADGE_COLOR = {
 } as const;
 
 export default function UsersTab() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await adminApi.getUsers();
-      setUsers(data.users || []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const fetchUsers = useCallback(async () => (await adminApi.getUsers()).users || [], []);
+  const { data: users, loading, refetch } = useFetch<User[]>(fetchUsers, []);
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -51,9 +41,7 @@ export default function UsersTab() {
 
   const { page, setPage, total, paged, pageSize, changePageSize, totalItems } = usePagination(filtered);
 
-  const handleUpdated = (userId: string, newRole: string) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-  };
+  const handleUpdated = () => { refetch(); };
 
   if (loading) return <TableSkeleton rows={5} cols={5} />;
 

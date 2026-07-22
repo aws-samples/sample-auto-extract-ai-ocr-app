@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Image, CheckCircle } from 'lucide-react';
 import { Table, Thead, Tbody, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton, Tooltip } from '../../components/ui';
+import { useFetch } from '../../hooks/useFetch';
 import ProcessStatusBadge from '../../components/shared/ProcessStatusBadge';
 import PresenceBadge from '../../components/shared/PresenceBadge';
 import { usePresence, PRESENCE_LIST_MODE } from '../../hooks/usePresence';
@@ -26,22 +27,18 @@ export default function ImagesTab() {
   const navigate = useNavigate();
   const { apps } = useAppContext();
   const { byImageId: presenceByImageId } = usePresence({ imageId: PRESENCE_LIST_MODE });
-  const [images, setImages] = useState<AdminImage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [appFilter, setAppFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [verificationFilter, setVerificationFilter] = useState('');
 
-  useEffect(() => {
-    adminApi.getAllImages().then((data) => {
-      const list: AdminImage[] = (data.images || []).sort((a: AdminImage, b: AdminImage) =>
-        (b.uploadTime || '').localeCompare(a.uploadTime || '')
-      );
-      setImages(list);
-      setLoading(false);
-    });
+  const fetchImages = useCallback(async (): Promise<AdminImage[]> => {
+    const data = await adminApi.getAllImages();
+    return (data.images || []).sort((a: AdminImage, b: AdminImage) =>
+      (b.uploadTime || '').localeCompare(a.uploadTime || '')
+    );
   }, []);
+  const { data: images, loading } = useFetch<AdminImage[]>(fetchImages, []);
 
   const appNames = useMemo(() => [...new Set(images.map((i) => i.appName).filter(Boolean))], [images]);
 

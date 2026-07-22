@@ -39,7 +39,7 @@ export default function ReExtractModal({ isOpen, onClose, onExecute, appName, lo
       setCustomPrompt(prompt);
       setOriginalPrompt(prompt);
     } catch (err: any) {
-      setError('カスタムプロンプトの読み込みに失敗しました');
+      setError(err?.userMessage ?? err?.message ?? 'カスタムプロンプトの読み込みに失敗しました');
     } finally {
       setLoadingPrompt(false);
     }
@@ -61,8 +61,8 @@ export default function ReExtractModal({ isOpen, onClose, onExecute, appName, lo
       try {
         await api.put(`/apps/${appName}/custom-prompt`, { custom_prompt: customPrompt });
         setOriginalPrompt(customPrompt);
-      } catch {
-        setError('カスタムプロンプトの保存に失敗しました');
+      } catch (err: any) {
+        setError(err?.userMessage ?? err?.message ?? 'カスタムプロンプトの保存に失敗しました');
         setSavingPrompt(false);
         return;
       }

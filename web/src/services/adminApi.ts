@@ -27,8 +27,6 @@ export const getUsecasePermissions = (appName: string) =>
 export const getTools = () => api.get('/admin/tools').then(r => r.data);
 export const getToolPermissions = (toolId: string) =>
   api.get(`/admin/tools/${toolId}/permissions`).then(r => r.data);
-export const createTool = (name: string, description?: string) =>
-  api.post('/admin/tools', { name, description });
 export const updateTool = (toolId: string, data: { name?: string; description?: string; is_active?: boolean }) =>
   api.patch(`/admin/tools/${toolId}`, data);
 

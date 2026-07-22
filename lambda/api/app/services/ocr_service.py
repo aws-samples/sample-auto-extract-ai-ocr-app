@@ -162,7 +162,7 @@ class OcrService:
             raise
 
     # ========================================
-    # OCR オーケストレーション（元 domains/ocr_engine.py から移動）
+    # OCR オーケストレーション
     # ========================================
 
     def _process_ocr_multipage(self, image_id: str, image_data: dict) -> list:

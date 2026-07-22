@@ -3,6 +3,7 @@ import { X, Loader2, RefreshCw, Download, Folder } from 'lucide-react';
 import api from '../../services/api';
 import { S3SyncFile, S3ImportBatchResponse } from '../../types/app-schema';
 import { Alert, Button, Modal } from '../../components/ui';
+import { formatDateTimeJST } from '../../utils/dateUtils';
 
 interface S3SyncModalProps {
   isOpen: boolean;
@@ -276,7 +277,7 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
                                   )}
                                 </div>
                                 <div className="text-xs text-neutral-500">
-                                  {(file.size / 1024).toFixed(1)} KB • {new Date(file.last_modified).toLocaleString()}
+                                  {(file.size / 1024).toFixed(1)} KB • {formatDateTimeJST(file.last_modified)}
                                 </div>
                               </div>
                             </div>

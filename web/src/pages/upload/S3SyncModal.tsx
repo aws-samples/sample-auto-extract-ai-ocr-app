@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, RefreshCw, Download, Folder } from 'lucide-react';
 import api from '../../services/api';
-import { S3SyncFile, S3ImportResponse } from '../../types/app-schema';
+import { S3SyncFile, S3ImportBatchResponse } from '../../types/app-schema';
 import { Alert, Button, Modal } from '../../components/ui';
 
 interface S3SyncModalProps {
@@ -89,18 +89,16 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
     setError(null);
     
     try {
-      for (const file of selectedFileObjects) {
-        const importData = {
-          ...file,
-          page_processing_mode: pageProcessingMode
-        };
-        await api.post<S3ImportResponse>(`/apps/${appName}/s3-sync/import`, importData);
-      }
-      
-      await fetchS3Files();
+      // 1 リクエストでバッチ全体をバックエンドに引き渡す。重い処理は Worker が担うため
+      // ブラウザはこの後モーダルを閉じてよい（取り込み結果は一覧のポーリングで反映される）。
+      await api.post<S3ImportBatchResponse>(`/apps/${appName}/s3-sync/import`, {
+        files: selectedFileObjects.map(f => ({ bucket: f.bucket, key: f.key, filename: f.filename })),
+        page_processing_mode: pageProcessingMode,
+      });
+
       setSelectedFiles(new Set());
       onImportComplete();
-      
+      onClose();
     } catch (err: any) {
       console.error('ファイルのインポートに失敗しました:', err);
       setError(err?.userMessage ?? err?.message ?? 'ファイルのインポートに失敗しました');

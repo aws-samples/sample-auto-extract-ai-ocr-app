@@ -1,5 +1,5 @@
 """Schemas for image operation requests (process, verification, agent)"""
-from typing import Literal
+from typing import List, Literal
 from pydantic import BaseModel
 
 
@@ -16,8 +16,12 @@ class SuggestionStatusUpdate(BaseModel):
     status: Literal["accepted", "rejected"]
 
 
-class S3ImportRequest(BaseModel):
+class S3ImportItem(BaseModel):
     bucket: str
     key: str
     filename: str
+
+
+class S3ImportBatchRequest(BaseModel):
+    files: List[S3ImportItem]
     page_processing_mode: Literal["combined", "individual"] = "combined"

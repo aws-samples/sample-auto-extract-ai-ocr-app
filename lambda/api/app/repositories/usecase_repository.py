@@ -35,7 +35,7 @@ def list_usecases() -> list[dict]:
 def get_usecase_owners(usecase_id: str) -> list[dict]:
     """ユースケースの owner 一覧"""
     rows = query("""
-        SELECT u.email FROM user_usecases uu
+        SELECT u.id, u.email, u.display_name FROM user_usecases uu
         JOIN users u ON uu.user_id = u.id
         WHERE uu.usecase_id = %s AND uu.permission = 'owner'
         ORDER BY u.email

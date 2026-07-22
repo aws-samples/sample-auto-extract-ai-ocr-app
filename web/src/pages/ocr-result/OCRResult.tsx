@@ -7,7 +7,7 @@ import { updateVerificationStatus } from "../../services/imageApi";
 import { OcrWord, OcrBoundingBox, OcrResponse, PresignedDownloadUrlResponse } from "../../types/ocr";
 import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
 import { Field, AppSchema } from "../../types/app-schema";
-import { Suggestion, Tool } from "../../types/agent";
+import { Suggestion, Tool, AgentJobResponse } from "../../types/agent";
 import { isOcrEnabled } from "../../config";
 import { usePresence } from "../../hooks/usePresence";
 import PresenceBadge from "../../components/shared/PresenceBadge";
@@ -90,7 +90,7 @@ function OcrResult() {
     type: 'success'
   });
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'completed'>('idle');
-  const [initialAgentResult, setInitialAgentResult] = useState<any>(null);
+  const [initialAgentResult, setInitialAgentResult] = useState<AgentJobResponse | null>(null);
   const [agentSuggestions, setAgentSuggestions] = useState<Suggestion[]>([]);
   const [pendingSuggestionActions, setPendingSuggestionActions] = useState<{ index: number; status: 'accepted' | 'rejected' }[]>([]);
   const suggestionsSnapshotRef = useRef<Suggestion[]>([]);

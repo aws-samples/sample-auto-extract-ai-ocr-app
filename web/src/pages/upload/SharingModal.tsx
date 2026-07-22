@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { PermissionModal } from '../../components/shared/PermissionModal';
+import type { Owner, PermissionUser, PermissionGroup } from '../../components/shared/PermissionModal';
 
 interface SharingModalProps {
   isOpen: boolean;
@@ -23,9 +24,9 @@ const GROUP_PERM_LEVELS = [
 ];
 
 export default function SharingModal({ isOpen, onClose, appName, appDisplayName, currentUserId, onPermissionLost }: SharingModalProps) {
-  const [owners, setOwners] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [users, setUsers] = useState<PermissionUser[]>([]);
+  const [groups, setGroups] = useState<PermissionGroup[]>([]);
   const [isPublic, setIsPublic] = useState(false);
 
   const loadSharing = async () => {
@@ -35,7 +36,7 @@ export default function SharingModal({ isOpen, onClose, appName, appDisplayName,
       setUsers(r.data.users || []);
       const grps = r.data.groups || [];
       setGroups(grps);
-      setIsPublic(grps.some((g: any) => g.name === 'all'));
+      setIsPublic(grps.some((g: PermissionGroup) => g.name === 'all'));
     } catch {}
   };
 

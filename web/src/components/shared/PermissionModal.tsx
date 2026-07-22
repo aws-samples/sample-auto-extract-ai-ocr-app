@@ -4,20 +4,20 @@ import { Button, Badge, Modal } from '../ui';
 import api from '../../services/api';
 import type { SearchResult } from '../../types/group';
 
-interface PermissionUser {
+export interface PermissionUser {
   id: string;
   email: string;
   display_name?: string;
   permission?: string;
 }
 
-interface PermissionGroup {
+export interface PermissionGroup {
   id: string;
   name: string;
   permission?: string;
 }
 
-interface Owner {
+export interface Owner {
   id: string;
   email: string;
   display_name?: string;

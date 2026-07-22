@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import api from "../../services/api";
+import { Tool } from "../../types/agent";
 import { useAppContext } from "../../contexts/AppContext";
 import { Alert, Button, Skeleton } from "../../components/ui";
 
@@ -35,8 +36,8 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
   // エージェント設定
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [agentAutoRun, setAgentAutoRun] = useState(false);
-  const [usecaseTools, setUsecaseTools] = useState<any[]>([]);
-  const [availableTools, setAvailableTools] = useState<any[]>([]);
+  const [usecaseTools, setUsecaseTools] = useState<Tool[]>([]);
+  const [availableTools, setAvailableTools] = useState<Tool[]>([]);
 
   // 既存のユースケースを読み込む
   useEffect(() => {
@@ -344,7 +345,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                         <p className="text-sm text-muted mb-2">割当済みツール:</p>
                         {usecaseTools.length > 0 ? (
                           <div className="space-y-1">
-                            {usecaseTools.map((tool: any) => (
+                            {usecaseTools.map((tool) => (
                               <div key={tool.id} className="text-sm px-2 py-1 bg-surface rounded">
                                 <span className="font-medium">{tool.name}</span>
                                 {tool.description && (
@@ -363,17 +364,17 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                         <div>
                           <p className="text-sm font-medium text-muted mb-2">割当済みツール</p>
                           <div className="border border-default rounded-lg p-2 min-h-[100px] space-y-1">
-                            {usecaseTools.length > 0 ? usecaseTools.map((tool: any) => (
+                            {usecaseTools.length > 0 ? usecaseTools.map((tool) => (
                               <div key={tool.id} className="text-sm px-2 py-1.5 bg-surface rounded">
                                 <div className="flex justify-between items-center">
                                   <span className="font-medium">{tool.name}</span>
                                   <button
                                     onClick={() => {
                                       const prev = usecaseTools;
-                                      const updated = usecaseTools.filter((t: any) => t.id !== tool.id);
+                                      const updated = usecaseTools.filter((t) => t.id !== tool.id);
                                       setUsecaseTools(updated);
                                       api.put(`/apps/${urlAppName}/tools`, {
-                                        tool_ids: updated.map((t: any) => t.id),
+                                        tool_ids: updated.map((t) => t.id),
                                       }).catch((err: any) => {
                                         setUsecaseTools(prev);
                                         setError(`ツール解除に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
@@ -399,8 +400,8 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                           <p className="text-sm font-medium text-muted mb-2">追加可能なツール</p>
                           <div className="border border-default rounded-lg p-2 min-h-[100px] space-y-1">
                             {availableTools
-                              .filter((t: any) => !usecaseTools.find((ut: any) => ut.id === t.id))
-                              .map((tool: any) => (
+                              .filter((t) => !usecaseTools.find((ut) => ut.id === t.id))
+                              .map((tool) => (
                                 <div key={tool.id} className="text-sm px-2 py-1.5 bg-surface rounded">
                                   <div className="flex justify-between items-center">
                                     <span className="font-medium">{tool.name}</span>
@@ -410,7 +411,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                                         const updated = [...usecaseTools, tool];
                                         setUsecaseTools(updated);
                                         api.put(`/apps/${urlAppName}/tools`, {
-                                          tool_ids: updated.map((t: any) => t.id),
+                                          tool_ids: updated.map((t) => t.id),
                                         }).catch((err: any) => {
                                           setUsecaseTools(prev);
                                           setError(`ツール追加に失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
@@ -427,7 +428,7 @@ const UsecaseSettings: React.FC<UsecaseSettingsProps> = ({ mode = 'create' }) =>
                                   )}
                                 </div>
                               ))}
-                            {availableTools.filter((t: any) => !usecaseTools.find((ut: any) => ut.id === t.id)).length === 0 && (
+                            {availableTools.filter((t) => !usecaseTools.find((ut) => ut.id === t.id)).length === 0 && (
                               <p className="text-xs text-muted p-2">追加可能なツールはありません</p>
                             )}
                           </div>

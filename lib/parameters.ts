@@ -22,7 +22,6 @@ export interface AppParameters {
   marketplaceModelPackageArn?: string;
 
   // Agent
-  enableAgent: boolean;
   enableAgentDemo: boolean;
 
   // Cognito
@@ -56,7 +55,6 @@ const defaultParameters: AppParameters = {
   ocrEngine: "paddle",
   sagemakerZeroScale: true,
   sagemakerScaleInCooldownSeconds: 3600,
-  enableAgent: true,
   enableAgentDemo: true,
   selfSignUpEnabled: true,
   allowedSignUpEmailDomains: [],

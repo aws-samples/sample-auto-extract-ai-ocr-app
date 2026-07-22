@@ -46,7 +46,7 @@ class AgentService:
             lambda_client.invoke(
                 FunctionName=settings.AGENT_KICK_FUNCTION_NAME,
                 InvocationType="Event",  # async
-                Payload=json.dumps({"image_id": image_id, "job_id": job_id}),
+                Payload=json.dumps({"image_id": image_id, "job_id": job_id, "manual": True}),
             )
             logger.info(f"Invoked AgentKick Lambda for job {job_id}")
 
@@ -81,13 +81,8 @@ class AgentService:
             app_name = image_data.get("app_name", "")
             usecase = get_usecase_by_app_name(app_name) if app_name else None
             usecase_id = str(usecase["id"]) if usecase else ""
+            # ツール未割当でも LLM 単体で検証を実行する（allowed_tool_names 空 → invoke_agent には None を渡す）
             allowed_tool_names = get_usecase_allowed_tool_names(usecase_id) if usecase_id else []
-
-            # Skip agent execution if no tools are configured
-            if not allowed_tool_names:
-                logger.info(f"No tools configured for usecase '{app_name}'. Skipping agent.")
-                update_agent_job(job_id, JobStatus.SKIPPED)
-                return
 
             # Fetch images from S3
             image_content = self._fetch_images(image_data)
@@ -104,7 +99,7 @@ class AgentService:
                     "modelId": settings.MODEL_ID,
                     "region": settings.MODEL_REGION
                 },
-                allowed_tool_names=allowed_tool_names or None,
+                allowed_tool_names=allowed_tool_names,
                 image_content=image_content or None,
             )
 

@@ -70,6 +70,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
   // エージェント設定
   const [agentEnabled, setAgentEnabled] = useState(false);
+  const [agentAutoRun, setAgentAutoRun] = useState(false);
   const [usecaseTools, setUsecaseTools] = useState<any[]>([]);
   const [availableTools, setAvailableTools] = useState<any[]>([]);
 
@@ -100,6 +101,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
 
           // エージェント設定を復元
           setAgentEnabled(appData.agent_enabled || false);
+          setAgentAutoRun(appData.agent_auto_run || false);
         })
         .catch((err) => {
           setError(`スキーマの読み込みに失敗しました: ${err?.userMessage ?? err?.message ?? "不明なエラー"}`);
@@ -391,6 +393,7 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         description: appDescription,
         input_methods: inputMethods,
         agent_enabled: agentEnabled,
+        agent_auto_run: agentEnabled && agentAutoRun,
         // 生成指示プロンプトも保存し、編集画面で復元できるようにする
         schema_instructions: extractionInstructions || "",
       };
@@ -625,9 +628,27 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
                       htmlFor="agentEnabled"
                       className="ml-2 block text-sm text-neutral-900"
                     >
-                      抽出後にエージェント検証を自動実行
+                      エージェント検証を有効にする
                     </label>
                   </div>
+                  {agentEnabled && (
+                    <div className="flex items-center pl-6">
+                      <input
+                        type="checkbox"
+                        id="agentAutoRun"
+                        checked={agentAutoRun}
+                        onChange={(e) => setAgentAutoRun(e.target.checked)}
+                        className="h-4 w-4 text-info focus:ring-primary border-neutral-300 rounded"
+                        disabled={isViewMode}
+                      />
+                      <label
+                        htmlFor="agentAutoRun"
+                        className="ml-2 block text-sm text-neutral-900"
+                      >
+                        抽出後に自動実行する
+                      </label>
+                    </div>
+                  )}
                   {agentEnabled && !isEditMode && !isViewMode && (
                     <p className="pl-6 mt-2 text-sm text-neutral-500">
                       ツールの設定は保存後に編集画面で行えます

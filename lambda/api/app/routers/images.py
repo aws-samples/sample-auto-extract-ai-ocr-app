@@ -26,6 +26,7 @@ from dependencies.auth import (
 )
 from repositories import get_image
 from repositories.job_repository import get_latest_agent_job_by_image_id, update_suggestion_status, SuggestionStatus
+from domains.image_status import AgentStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/images", tags=["Images"])
@@ -210,6 +211,11 @@ async def get_agent_job_by_image(
     """画像の最新エージェントジョブを取得"""
     image = get_image(image_id)
     image_agent_status = image.get("agent_status") if image else None
+
+    # 抽出開始時に agent_status は idle にリセットされる。idle/未設定なら過去ジョブは
+    # 現在の抽出と無関係なので返さない（再抽出後に古い検証結果が復活するのを防ぐ）。
+    if image_agent_status in (None, AgentStatus.IDLE):
+        return {"status": "none", "suggestions": []}
 
     job = get_latest_agent_job_by_image_id(image_id)
     if not job:

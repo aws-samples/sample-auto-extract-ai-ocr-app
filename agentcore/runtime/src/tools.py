@@ -83,25 +83,25 @@ def create_gateway_mcp_client(
     """SigV4 署名付き MCPClient を生成。
 
     Args:
-        allowed_tool_names: 許可するツール名のリスト。None の場合は全ツールを公開。
+        allowed_tool_names: 許可するツール名のリスト。空/None の場合はツールを公開しない
+            （LLM 単体で処理させる）。全ツールを無条件公開するモードは設けない。
 
     Returns:
-        MCPClient instance or None if Gateway URL is not configured.
+        MCPClient instance、または Gateway URL 未設定・許可ツールなしの場合は None。
     """
+    if not allowed_tool_names:
+        return None
+
     gateway_url = os.environ.get("AGENTCORE_GATEWAY_ENDPOINT")
     if not gateway_url:
         logger.warning("AGENTCORE_GATEWAY_ENDPOINT not set. Gateway tools disabled.")
         return None
 
     auth = SigV4HttpxAuth()
-
-    if allowed_tool_names:
-        client = FilteredMCPClient(
-            lambda: streamablehttp_client(gateway_url, auth=auth),
-            allowed_tool_names=allowed_tool_names,
-        )
-    else:
-        client = MCPClient(lambda: streamablehttp_client(gateway_url, auth=auth))
+    client = FilteredMCPClient(
+        lambda: streamablehttp_client(gateway_url, auth=auth),
+        allowed_tool_names=allowed_tool_names,
+    )
 
     logger.info(f"Gateway MCP client created: {gateway_url}")
     return client

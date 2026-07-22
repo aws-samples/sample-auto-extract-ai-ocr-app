@@ -87,7 +87,10 @@ class SchemaSaveRequest(BaseModel):
     description: Optional[str] = None
     fields: List[SchemaField]
     input_methods: Dict[str, Any]
+    # agent_enabled: このユースケースでエージェント検証を使うか（手動実行の可否）。
+    # agent_auto_run: 抽出後に自動実行するか。agent_enabled が前提。
     agent_enabled: bool = False
+    agent_auto_run: bool = False
     # スキーマ生成に使ったサンプル画像の S3 キー (schema-uploads/ 配下)。
     # None の場合、update 時は既存値を保持する (画像未変更の編集で消えないように)。
     sample_image_s3_key: Optional[str] = None

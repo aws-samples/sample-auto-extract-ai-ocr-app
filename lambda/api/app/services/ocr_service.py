@@ -356,7 +356,9 @@ class OcrService:
             # 再処理の起点。抽出フェーズへの遷移は extract() 冒頭が担う。
             update_image_status(image_id, ImageStatus.OCR, job_id)
 
-            update_agent_status(image_id, AgentStatus.PROCESSING, suggestions_count=0)
+            # agent 検証は AgentKick が実行時に PROCESSING へ更新する。ここでは過去結果を
+            # 破棄する意味で idle に戻す（auto_run 無効なら idle のまま＝抽出で完結）。
+            update_agent_status(image_id, AgentStatus.IDLE, suggestions_count=0)
 
             # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(

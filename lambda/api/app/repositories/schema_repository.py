@@ -46,6 +46,7 @@ def load_app_schemas():
                     'input_methods': item.get('input_methods', {'file_upload': True, 's3_sync': False}),
                     'custom_prompt': item.get('custom_prompt', ''),
                     'agent_enabled': item.get('agent_enabled', False),
+                    'agent_auto_run': item.get('agent_auto_run', False),
                     'sample_image_s3_key': item.get('sample_image_s3_key'),
                     'sample_image_filename': item.get('sample_image_filename'),
                     'schema_instructions': item.get('schema_instructions', ''),
@@ -146,6 +147,7 @@ def create_app_schema(app_name, app_data):
             'fields': app_data.get('fields', []),
             'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
             'agent_enabled': app_data.get('agent_enabled', False),
+            'agent_auto_run': app_data.get('agent_auto_run', False),
             'created_at': current_time,
             'updated_at': current_time
         }
@@ -213,6 +215,7 @@ def update_app_schema(app_name, app_data):
             'fields': app_data.get('fields', []),
             'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
             'agent_enabled': app_data.get('agent_enabled', False),
+            'agent_auto_run': app_data.get('agent_auto_run', False),
             'created_at': created_at,
             'updated_at': current_time
         }

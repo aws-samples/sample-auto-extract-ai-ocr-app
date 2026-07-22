@@ -76,17 +76,21 @@ def determine_parent_status(children: list[dict]) -> str:
 def determine_parent_agent_status(children: list[dict]) -> str:
     """子ページの agent_status から親ドキュメントの agent_status を判定する
 
-    優先度: failed > processing > idle(未実行あり) > completed > skipped
+    優先度: failed > processing > idle(一部のみ未実行) > completed > skipped
+    全て未実行なら親も idle（検証がまだ始まっていない）。
     """
     if not children:
         return AgentStatus.IDLE
 
     statuses = [child.get("agent_status") or AgentStatus.IDLE for child in children]
 
+    if all(s == AgentStatus.IDLE for s in statuses):
+        return AgentStatus.IDLE
     if any(s == AgentStatus.FAILED for s in statuses):
         return AgentStatus.FAILED
     if any(s == AgentStatus.PROCESSING for s in statuses):
         return AgentStatus.PROCESSING
+    # 一部だけ未実行 = 残りが処理される見込みなので処理中扱い
     if any(s == AgentStatus.IDLE for s in statuses):
         return AgentStatus.PROCESSING
     if all(s == AgentStatus.COMPLETED for s in statuses):

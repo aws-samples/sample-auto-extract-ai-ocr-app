@@ -15,7 +15,7 @@ export interface ImageFile {
   uploaded_by_email?: string;
   verified_by?: string;
   verified_by_email?: string;
-  agentStatus?: 'processing' | 'completed' | 'failed' | 'skipped';
+  agentStatus?: 'idle' | 'processing' | 'completed' | 'failed' | 'skipped';
   agentSuggestionsCount?: number;
 }
 

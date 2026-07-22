@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Image, CheckCircle } from 'lucide-react';
 import { Table, Thead, Tbody, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton, Tooltip } from '../../components/ui';
-import StatusBadge from '../../components/shared/StatusBadge';
+import ProcessStatusBadge from '../../components/shared/ProcessStatusBadge';
 import PresenceBadge from '../../components/shared/PresenceBadge';
 import { usePresence, PRESENCE_LIST_MODE } from '../../hooks/usePresence';
 import { formatDateTimeJST } from '../../utils/dateUtils';
@@ -116,7 +116,7 @@ export default function ImagesTab() {
                     <td className="px-4 py-3 text-sm">{formatDateTimeJST(img.uploadTime || '')}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <StatusBadge status={img.status} />
+                        <ProcessStatusBadge status={img.status} agentStatus={img.agentStatus} />
                         <PresenceBadge viewers={presenceByImageId[img.id] ?? []} />
                       </div>
                     </td>

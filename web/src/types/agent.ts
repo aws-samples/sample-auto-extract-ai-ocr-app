@@ -14,13 +14,3 @@ export interface Suggestion {
   tool_used?: string;
   index: number;  // original index in backend suggestions array
 }
-
-export interface AgentResponse {
-  status: string;
-  suggestions: Suggestion[];
-}
-
-export interface ToolsResponse {
-  status: string;
-  tools: Tool[];
-}

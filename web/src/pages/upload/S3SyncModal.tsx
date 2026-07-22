@@ -89,8 +89,6 @@ const S3SyncModal: React.FC<S3SyncModalProps> = ({ isOpen, onClose, appName, onI
     setError(null);
     
     try {
-      // 1 リクエストでバッチ全体をバックエンドに引き渡す。重い処理は Worker が担うため
-      // ブラウザはこの後モーダルを閉じてよい（取り込み結果は一覧のポーリングで反映される）。
       await api.post<S3ImportBatchResponse>(`/apps/${appName}/s3-sync/import`, {
         files: selectedFileObjects.map(f => ({ bucket: f.bucket, key: f.key, filename: f.filename })),
         page_processing_mode: pageProcessingMode,

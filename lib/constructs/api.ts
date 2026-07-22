@@ -281,9 +281,8 @@ export class Api extends Construct {
     );
 
     // S3SyncImport Worker Lambda
-    // S3 同期インポートの重い処理（同期バケットからのコピー→リサイズ / PDF変換キックオフ）を
-    // ブラウザのループから独立 Worker に移し、画面を閉じても取りこぼさないようにする。
-    // Worker 内で複数ファイルを並列処理し、PDF は PdfConvert に再委譲する。
+    // S3 同期インポートの重い処理をブラウザのループから独立 Worker に移し、
+    // 画面を閉じても取りこぼさないようにする。
     const s3SyncImport = new DockerImageFunction(this, "S3SyncImport", {
       code: DockerImageCode.fromImageAsset("lambda/api", {
         file: "Dockerfile.worker",

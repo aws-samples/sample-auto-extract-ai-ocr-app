@@ -1,13 +1,7 @@
 """S3 Sync Import Worker Lambda ハンドラー
 
-S3 同期でインポートされた複数ファイルの重い処理（同期バケットからのコピー →
-画像リサイズ / PDF 変換キックオフ）を担う Worker。API Lambda が async invoke で起動する。
-以前はブラウザが1ファイルずつ順次リクエストしており、画面を閉じると残りが取り込まれ
-なかった。バッチを丸ごとバックエンドに引き渡すことで画面非依存にする。
-
-画像レコードは API 側で作成済み（重複チェック済み）。この Worker は items を
-ThreadPoolExecutor で並列処理する（S3 コピー・リサイズは IO/CPU バウンドの同期処理で、
-boto3 クライアントはスレッドセーフ）。
+S3 同期インポートの重い処理（コピー → リサイズ / PDF 変換キックオフ）を担う Worker。
+画像レコードは API 側で作成・重複チェック済み。
 
 event: {"app_name": str, "page_processing_mode": str,
         "items": [{"image_id", "source_bucket", "source_key", "destination_key", "filename"}, ...]}
@@ -37,14 +31,13 @@ def _process_item(item: dict, app_name: str, page_processing_mode: str) -> bool:
     """1 ファイルを処理する。成功で True。例外は握って画像を FAILED にする。"""
     image_id = item.get("image_id")
     try:
-        # 同期バケット → document バケットへコピー
         s3_client.copy_object(
             CopySource={"Bucket": item["source_bucket"], "Key": item["source_key"]},
             Bucket=settings.BUCKET_NAME,
             Key=item["destination_key"],
         )
 
-        # 直接アップロードと同じ OCR/変換キックオフフローを再利用
+        # 直接アップロードと同じフローを再利用（リサイズ / PDF 変換キックオフ）
         request = UploadCompleteRequest(
             filename=item["filename"],
             s3_key=item["destination_key"],

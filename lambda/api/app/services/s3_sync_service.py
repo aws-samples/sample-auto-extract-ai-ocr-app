@@ -65,8 +65,7 @@ class S3SyncService:
     ) -> Dict[str, Any]:
         """複数の S3 ファイルをまとめてインポートする。
 
-        レコード作成（重複チェック込み）だけを同期で行い、S3 コピー・変換等の重い処理は
-        S3SyncImport worker に async invoke で委譲する。ブラウザは応答後すぐ閉じてよい。
+        レコード作成だけを同期で行い、S3 コピー・変換は S3SyncImport worker に委譲する。
         """
         app_schema = get_app_schema(app_name)
         if not app_schema:
@@ -77,7 +76,6 @@ class S3SyncService:
         if not settings.S3_SYNC_IMPORT_FUNCTION_NAME:
             raise RuntimeError("S3_SYNC_IMPORT_FUNCTION_NAME is not configured")
 
-        # 1 回の scan で既存の同期元パスを取得しバッチ重複チェック
         existing_sources = get_existing_sync_sources(app_name)
 
         items = []

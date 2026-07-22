@@ -1,30 +1,20 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Wrench } from 'lucide-react';
 import { Button, Table, Thead, Tbody, Toggle, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton } from '../../components/ui';
+import { useFetch } from '../../hooks/useFetch';
 import * as adminApi from '../../services/adminApi';
 import { PermissionModal } from '../../components/shared/PermissionModal';
 import { AdminToolbar } from './AdminToolbar';
 import type { ManagedTool, ToolPermissions } from '../../types/tool';
 
 export default function ToolsTab() {
-  const [tools, setTools] = useState<ManagedTool[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedTool, setSelectedTool] = useState<ManagedTool | null>(null);
   const [perms, setPerms] = useState<ToolPermissions>({ users: [], groups: [], usecases: [] });
   const [isPublic, setIsPublic] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await adminApi.getTools();
-      setTools(data.tools || []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const fetchTools = useCallback(async () => (await adminApi.getTools()).tools || [], []);
+  const { data: tools, loading, refetch: load } = useFetch<ManagedTool[]>(fetchTools, []);
 
   const filtered = useMemo(() => {
     if (!search) return tools;
@@ -39,7 +29,8 @@ export default function ToolsTab() {
       await adminApi.updateTool(tool.id, { is_active: !tool.is_active });
       await load();
     } catch {
-      setTools((prev) => prev.map((t) => t.id === tool.id ? { ...t, is_active: !t.is_active } : t));
+      // 失敗時は一覧を再取得して実際の状態に戻す
+      await load();
     }
   };
 

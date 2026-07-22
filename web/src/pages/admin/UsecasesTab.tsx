@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Layers } from 'lucide-react';
 import { Table, Thead, Tbody, Button, usePagination, Pagination, SearchBox, CardTable, EmptyState, TableSkeleton } from '../../components/ui';
 import api from '../../services/api';
+import { useFetch } from '../../hooks/useFetch';
 import * as adminApi from '../../services/adminApi';
 import { PermissionModal } from '../../components/shared/PermissionModal';
 import { AdminToolbar } from './AdminToolbar';
@@ -19,19 +20,13 @@ const GROUP_PERM_LEVELS = [
 ];
 
 export default function UsecasesTab() {
-  const [usecases, setUsecases] = useState<Usecase[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Usecase | null>(null);
   const [perms, setPerms] = useState<{ users: UsecaseUserPermission[]; groups: UsecaseGroupPermission[] }>({ users: [], groups: [] });
   const [isPublic, setIsPublic] = useState(false);
 
-  useEffect(() => {
-    adminApi.getUsecases().then((data) => {
-      setUsecases(data.usecases || []);
-      setLoading(false);
-    });
-  }, []);
+  const fetchUsecases = useCallback(async () => (await adminApi.getUsecases()).usecases || [], []);
+  const { data: usecases, loading } = useFetch<Usecase[]>(fetchUsecases, []);
 
   const filtered = useMemo(() => {
     if (!search) return usecases;

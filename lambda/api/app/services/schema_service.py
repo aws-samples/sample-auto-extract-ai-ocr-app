@@ -1,6 +1,4 @@
-from clients import s3_client
-import boto3
-import json
+from clients import s3_client, invoke_worker_async
 import logging
 import os
 import uuid
@@ -356,17 +354,12 @@ class SchemaService:
             logger.info(f"Created schema generation job: {job_id}")
 
             # 2. Worker Lambda を async invoke
-            lambda_client = boto3.client("lambda")
-            lambda_client.invoke(
-                FunctionName=settings.SCHEMA_GENERATE_FUNCTION_NAME,
-                InvocationType="Event",  # async
-                Payload=json.dumps({
-                    "job_id": job_id,
-                    "s3_key": request.s3_key,
-                    "filename": request.filename,
-                    "instructions": request.instructions or "",
-                }),
-            )
+            invoke_worker_async(settings.SCHEMA_GENERATE_FUNCTION_NAME, {
+                "job_id": job_id,
+                "s3_key": request.s3_key,
+                "filename": request.filename,
+                "instructions": request.instructions or "",
+            })
             logger.info(f"Invoked SchemaGenerate Lambda for job {job_id}")
 
             return {"job_id": job_id, "status": "processing"}

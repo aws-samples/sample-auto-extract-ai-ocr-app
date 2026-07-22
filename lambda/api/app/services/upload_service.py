@@ -1,6 +1,4 @@
-from clients import s3_client
-import boto3
-import json
+from clients import s3_client, invoke_worker_async
 import uuid
 import logging
 from datetime import datetime
@@ -186,15 +184,10 @@ class UploadService:
 
             # 変換は Worker Lambda に async invoke で委譲する。
             # HTTP 応答後の実行環境回収で変換が失われないよう API 内スレッドでは行わない。
-            lambda_client = boto3.client("lambda")
-            lambda_client.invoke(
-                FunctionName=settings.PDF_CONVERT_FUNCTION_NAME,
-                InvocationType="Event",
-                Payload=json.dumps({
-                    "image_id": image_id,
-                    "s3_key": request.s3_key,
-                }),
-            )
+            invoke_worker_async(settings.PDF_CONVERT_FUNCTION_NAME, {
+                "image_id": image_id,
+                "s3_key": request.s3_key,
+            })
             logger.info(f"Invoked PdfConvert Lambda for image {image_id}")
 
             return {

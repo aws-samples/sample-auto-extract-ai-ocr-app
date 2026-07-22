@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Outlet, Link, useParams } from 'react-router-dom';
 import { useAppContext } from '../../contexts/AppContext';
 import { UserMenu } from './UserMenu';
@@ -32,7 +33,9 @@ export function AppLayout() {
       <div className="flex flex-grow">
         <Sidebar />
         <main className="flex-grow overflow-auto">
-          <Outlet />
+          <Suspense fallback={<div className="flex justify-center items-center h-full py-20"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-info" /></div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

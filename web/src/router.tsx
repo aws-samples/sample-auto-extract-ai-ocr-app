@@ -1,15 +1,18 @@
 import { createBrowserRouter } from 'react-router-dom';
+import { lazy } from 'react';
 import { AuthWrapper } from './components/layout/AuthWrapper';
 import { AppLayout } from './components/layout/AppLayout';
 import { AppProvider } from './contexts/AppContext';
-import Home from './pages/Home';
-import Stars from './pages/Stars';
-import History from './pages/History';
-import Upload from './pages/upload/Upload';
-import OCRResult from './pages/ocr-result/OCRResult';
-import SchemaGenerator from './pages/schema/SchemaGenerator';
-import Admin from './pages/Admin';
-import NotFound from './pages/NotFound';
+
+// ルート単位でコード分割し、初回ロードの単一巨大チャンクを避ける。
+const Home = lazy(() => import('./pages/Home'));
+const Stars = lazy(() => import('./pages/Stars'));
+const History = lazy(() => import('./pages/History'));
+const Upload = lazy(() => import('./pages/upload/Upload'));
+const OCRResult = lazy(() => import('./pages/ocr-result/OCRResult'));
+const SchemaGenerator = lazy(() => import('./pages/schema/SchemaGenerator'));
+const Admin = lazy(() => import('./pages/Admin'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 const Root = () => (
   <AuthWrapper>

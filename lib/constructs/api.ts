@@ -280,6 +280,40 @@ export class Api extends Construct {
       pdfConvert.functionName
     );
 
+    // S3SyncImport Worker Lambda
+    // S3 同期インポートの重い処理をブラウザのループから独立 Worker に移し、
+    // 画面を閉じても取りこぼさないようにする。
+    const s3SyncImport = new DockerImageFunction(this, "S3SyncImport", {
+      code: DockerImageCode.fromImageAsset("lambda/api", {
+        file: "Dockerfile.worker",
+        cmd: ["app.workers.s3_sync_import.s3_sync_import_handler"],
+        platform: Platform.LINUX_AMD64,
+      }),
+      timeout: Duration.minutes(15),
+      memorySize: 4096,
+      environment: {
+        BUCKET_NAME: documentBucket.bucketName,
+        SYNC_BUCKET_NAME: syncBucket.bucketName,
+        IMAGES_TABLE_NAME: imagesTable.tableName,
+        SCHEMAS_TABLE_NAME: props.schemasTable.tableName,
+        PDF_CONVERT_FUNCTION_NAME: pdfConvert.functionName,
+      },
+    });
+
+    imagesTable.grantReadWriteData(s3SyncImport);
+    props.schemasTable.grantReadData(s3SyncImport);
+    documentBucket.grantReadWrite(s3SyncImport);
+    syncBucket.grantRead(s3SyncImport);
+    // Worker が PDF 変換を再委譲するため PdfConvert を invoke できる
+    pdfConvert.grantInvoke(s3SyncImport);
+
+    // API Lambda から S3SyncImport を async invoke するための権限と function name 注入
+    s3SyncImport.grantInvoke(lambdaFunction);
+    lambdaFunction.addEnvironment(
+      "S3_SYNC_IMPORT_FUNCTION_NAME",
+      s3SyncImport.functionName
+    );
+
     // AgentRuntime呼び出し権限
     if (props.agentRuntimeArn) {
       lambdaFunction.addToRolePolicy(

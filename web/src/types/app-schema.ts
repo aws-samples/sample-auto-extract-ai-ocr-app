@@ -37,8 +37,9 @@ export interface S3SyncFile {
   is_existing?: boolean;
 }
 
-export interface S3ImportResponse {
+export interface S3ImportBatchResponse {
   status: string;
-  message: string;
-  image_id: string;
+  imported_count: number;
+  image_ids: string[];
+  skipped?: { key: string; reason: string }[];
 }

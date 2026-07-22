@@ -41,6 +41,9 @@ class Settings:
     # PDF Convert Worker Lambda
     PDF_CONVERT_FUNCTION_NAME: str = os.getenv("PDF_CONVERT_FUNCTION_NAME", "")
 
+    # S3 Sync Import Worker Lambda
+    S3_SYNC_IMPORT_FUNCTION_NAME: str = os.getenv("S3_SYNC_IMPORT_FUNCTION_NAME", "")
+
     # Step Functions設定
     STATE_MACHINE_ARN: str = os.getenv("STATE_MACHINE_ARN", "")
 

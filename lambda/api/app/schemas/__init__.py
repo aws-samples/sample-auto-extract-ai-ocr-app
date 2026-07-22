@@ -13,7 +13,7 @@ from .schema import (
 from .job import JobStartResponse
 from .image import ImageInfo
 from .app import CustomPromptRequest
-from .image_operations import ProcessRequest, VerificationRequest, SuggestionStatusUpdate, S3ImportRequest
+from .image_operations import ProcessRequest, VerificationRequest, SuggestionStatusUpdate, S3ImportItem, S3ImportBatchRequest
 from .usecase import UsecaseToolsUpdate
 
 __all__ = [
@@ -42,7 +42,8 @@ __all__ = [
     "ProcessRequest",
     "VerificationRequest",
     "SuggestionStatusUpdate",
-    "S3ImportRequest",
+    "S3ImportItem",
+    "S3ImportBatchRequest",
     # Usecase
     "UsecaseToolsUpdate",
 ]

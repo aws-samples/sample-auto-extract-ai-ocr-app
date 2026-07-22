@@ -10,7 +10,7 @@ from schemas import (
     SchemaGenerateRequest,
     PresignedUrlRequest, CustomPromptRequest, SchemaSaveRequest,
     OcrStartRequest, JobStartResponse,
-    S3ImportRequest, UsecaseToolsUpdate,
+    S3ImportBatchRequest, UsecaseToolsUpdate,
     SchemaGenerateStartResponse, SchemaGenerateStatusResponse,
 )
 from services.schema_service import SchemaService
@@ -154,16 +154,21 @@ async def sync_s3_files(
 
 
 @router.post("/apps/{app_name}/s3-sync/import")
-async def import_s3_file(
+async def import_s3_files(
     app_name: str,
-    body: S3ImportRequest,
+    body: S3ImportBatchRequest,
     req: Request,
     user=Depends(RequirePermission("editor")),
     service: S3SyncService = Depends(get_s3_sync_service),
 ):
-    """S3バケットからファイルをインポートしてOCR処理を開始する"""
+    """S3バケットから複数ファイルを一括インポートする（重い処理は Worker に委譲）"""
     sub = get_cognito_sub(req)
-    return await service.import_s3_file(app_name, body.model_dump(), uploaded_by=sub)
+    return await service.import_s3_files_batch(
+        app_name,
+        [f.model_dump() for f in body.files],
+        body.page_processing_mode,
+        uploaded_by=sub,
+    )
 
 
 @router.get("/apps/{app_name}/s3-sync/files")

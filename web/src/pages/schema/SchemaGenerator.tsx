@@ -405,8 +405,6 @@ const SchemaGenerator: React.FC<SchemaGeneratorProps> = ({ mode = 'create' }) =>
         finalSchema.sample_image_filename = uploadedFile?.name || "";
       }
 
-      console.log("送信するスキーマデータ:", finalSchema);
-
       // 新規作成か更新かで処理を分ける
       if (isEditMode && urlAppName) {
         await api.put(`/apps/${urlAppName}`, finalSchema);

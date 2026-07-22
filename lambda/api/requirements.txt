@@ -5,4 +5,3 @@ psycopg2-binary
 boto3
 PyMuPDF
 Pillow
-requests

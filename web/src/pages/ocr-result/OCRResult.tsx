@@ -334,15 +334,18 @@ function OcrResult() {
         if (agentResult.status === 'completed' || agentResult.status === 'failed' || agentResult.status === 'skipped') {
           setAgentStatus('completed');
           setInitialAgentResult(agentResult);
-          if (agentResult.total_suggestions_count > 0) {
+          if ((agentResult.total_suggestions_count ?? 0) > 0) {
             setAgentFoundIssues(true);
           }
         } else if (agentResult.status === 'processing') {
           setAgentStatus('running');
-          pollAgentJobStatus(agentResult.job_id).then(result => {
-            setAgentStatus('completed');
-            setInitialAgentResult({ status: 'completed', suggestions: result.suggestions });
-          }).catch(() => setAgentStatus('idle'));
+          // job_id 未確定（AgentKick がジョブ作成中）のときは poll しない
+          if (agentResult.job_id) {
+            pollAgentJobStatus(agentResult.job_id).then(result => {
+              setAgentStatus('completed');
+              setInitialAgentResult({ status: 'completed', suggestions: result.suggestions });
+            }).catch(() => setAgentStatus('idle'));
+          }
         }
       } catch {
         // No agent result - that's fine

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, Plus, X, User, Users, Crown, Eye, Pencil, Building2 } from 'lucide-react';
 import { Button, Badge, Modal } from '../ui';
 import api from '../../services/api';
+import type { SearchResult } from '../../types/group';
 
 interface PermissionUser {
   id: string;
@@ -120,7 +121,7 @@ export function PermissionModal({
   onTogglePublic,
 }: PermissionModalProps) {
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<{ users: any[]; groups: any[] }>({ users: [], groups: [] });
+  const [searchResults, setSearchResults] = useState<SearchResult>({ users: [], groups: [] });
   const [memberTab, setMemberTab] = useState<MemberTab>('users');
 
   useEffect(() => {
@@ -131,7 +132,7 @@ export function PermissionModal({
     if (!search || search.length < 2) { setSearchResults({ users: [], groups: [] }); return; }
     const timer = setTimeout(async () => {
       try {
-        const r = await api.get(`/user/search?q=${encodeURIComponent(search)}`);
+        const r = await api.get<SearchResult>(`/user/search?q=${encodeURIComponent(search)}`);
         setSearchResults({ users: r.data.users || [], groups: r.data.groups || [] });
       } catch { setSearchResults({ users: [], groups: [] }); }
     }, 300);
@@ -146,11 +147,11 @@ export function PermissionModal({
   const allGroup = groups.find((g) => g.name === 'all');
 
   const filteredSearchUsers = useMemo(
-    () => searchResults.users.filter((u: any) => !existingUserIds.has(u.id) && !ownerIds.has(u.id)),
+    () => searchResults.users.filter((u) => !existingUserIds.has(u.id) && !ownerIds.has(u.id)),
     [searchResults.users, existingUserIds, ownerIds]
   );
   const filteredSearchGroups = useMemo(
-    () => searchResults.groups.filter((g: any) => !existingGroupIds.has(g.id)),
+    () => searchResults.groups.filter((g) => !existingGroupIds.has(g.id)),
     [searchResults.groups, existingGroupIds]
   );
 
@@ -187,7 +188,7 @@ export function PermissionModal({
       {/* 検索結果 */}
       {search.length >= 2 && (filteredSearchUsers.length > 0 || filteredSearchGroups.length > 0) && (
         <div className="border border-default rounded-lg mb-4 max-h-48 overflow-y-auto">
-          {filteredSearchUsers.map((u: any) => (
+          {filteredSearchUsers.map((u) => (
             <button key={`u-${u.id}`} onClick={() => handleAddUser(u.id)} className="flex items-center justify-between w-full px-3 py-2 hover:bg-surface text-left text-sm">
               <span className="flex items-center gap-2">
                 <User size={14} className="text-muted" />
@@ -197,7 +198,7 @@ export function PermissionModal({
               <Plus size={14} className="text-neutral-400" />
             </button>
           ))}
-          {filteredSearchGroups.map((g: any) => (
+          {filteredSearchGroups.map((g) => (
             <button key={`g-${g.id}`} onClick={() => handleAddGroup(g.id)} className="flex items-center justify-between w-full px-3 py-2 hover:bg-surface text-left text-sm">
               <span className="flex items-center gap-2">
                 <Users size={14} className="text-info" />

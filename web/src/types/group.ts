@@ -1,3 +1,5 @@
+import type { SearchUser } from './user';
+
 export interface Group {
   id: string;
   name: string;
@@ -7,13 +9,15 @@ export interface Group {
   member_count: number;
 }
 
+// GET /user/search の検索結果に含まれるグループ要素
 export interface SearchGroup {
   id: string;
   name: string;
   description?: string;
 }
 
+// GET /user/search のレスポンス
 export interface SearchResult {
-  users: { id: string; email: string; display_name?: string }[];
-  groups: { id: string; name: string }[];
+  users: SearchUser[];
+  groups: SearchGroup[];
 }

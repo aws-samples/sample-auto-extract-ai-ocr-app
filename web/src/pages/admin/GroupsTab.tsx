@@ -5,7 +5,7 @@ import { useFetch } from '../../hooks/useFetch';
 import * as adminApi from '../../services/adminApi';
 import api from '../../services/api';
 import { AdminToolbar } from './AdminToolbar';
-import type { Group } from '../../types/group';
+import type { Group, SearchResult } from '../../types/group';
 import type { GroupMember, SearchUser } from '../../types/user';
 
 const MEMBER_PAGE_SIZE = 10;
@@ -87,7 +87,7 @@ export default function GroupsTab() {
     if (!addSearch || addSearch.length < 2) { setAddResults([]); return; }
     const timer = setTimeout(async () => {
       try {
-        const r = await api.get(`/user/search?q=${encodeURIComponent(addSearch)}`);
+        const r = await api.get<SearchResult>(`/user/search?q=${encodeURIComponent(addSearch)}`);
         setAddResults(r.data.users || []);
       } catch { setAddResults([]); }
     }, 300);

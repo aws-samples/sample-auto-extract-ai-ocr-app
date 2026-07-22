@@ -1,8 +1,9 @@
 /** OCR / Agent / 抽出関連 API */
 import api from './api';
+import { AgentJobResponse, AgentRunResult, ToolsResponse } from '../types/agent';
 
-export const runAgent = async (imageId: string) => {
-  const startResponse = await api.post(`/images/${imageId}/agent`);
+export const runAgent = async (imageId: string): Promise<AgentRunResult> => {
+  const startResponse = await api.post<{ jobId: string }>(`/images/${imageId}/agent`);
   const jobId = startResponse.data.jobId;
   return pollAgentJobStatus(jobId);
 };
@@ -11,9 +12,9 @@ export const pollAgentJobStatus = async (
   jobId: string,
   maxAttempts = 60,
   interval = 2000
-): Promise<any> => {
+): Promise<AgentRunResult> => {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const response = await api.get(`/jobs/${jobId}`);
+    const response = await api.get<AgentJobResponse>(`/jobs/${jobId}`);
     const { status, suggestions, error } = response.data;
 
     if (status === 'completed' || status === 'skipped') {
@@ -30,13 +31,13 @@ export const pollAgentJobStatus = async (
   throw new Error('Agent processing timed out');
 };
 
-export const getAgentToolsForImage = async (imageId: string) => {
-  const response = await api.get(`/images/${imageId}/agent/tools`);
+export const getAgentToolsForImage = async (imageId: string): Promise<ToolsResponse> => {
+  const response = await api.get<ToolsResponse>(`/images/${imageId}/agent/tools`);
   return response.data;
 };
 
-export const getAgentJobByImage = async (imageId: string) => {
-  const response = await api.get(`/images/${imageId}/agent`);
+export const getAgentJobByImage = async (imageId: string): Promise<AgentJobResponse> => {
+  const response = await api.get<AgentJobResponse>(`/images/${imageId}/agent`);
   return response.data;
 };
 

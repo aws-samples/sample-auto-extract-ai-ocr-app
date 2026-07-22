@@ -2,9 +2,6 @@
 export const APP_CONFIG = {
   // OCRモードの設定
   enableOcr: import.meta.env.VITE_ENABLE_OCR === 'true',
-  
-  // Agentモードの設定
-  enableAgent: import.meta.env.VITE_ENABLE_AGENT === 'true',
 
   // その他の設定
   userPoolClientId: import.meta.env.VITE_APP_USER_POOL_CLIENT_ID,
@@ -15,6 +12,3 @@ export const APP_CONFIG = {
 
 // OCRモードのチェック関数
 export const isOcrEnabled = () => APP_CONFIG.enableOcr;
-
-// Agentモードのチェック関数
-export const isAgentEnabled = () => APP_CONFIG.enableAgent;

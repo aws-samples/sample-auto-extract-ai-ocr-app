@@ -61,7 +61,7 @@ export default function AgentModal({ isOpen, onClose, tools, onRunAgent, agentSt
           variant="primary"
           size="sm"
           onClick={handleExecute}
-          disabled={running || tools.length === 0}
+          disabled={running}
         >
           {running ? '検証中...' : '検証実行'}
         </Button>

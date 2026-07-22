@@ -55,6 +55,7 @@ class SchemaService:
             "fields": [f.model_dump(exclude_none=True) for f in request.fields],
             "input_methods": request.input_methods,
             "agent_enabled": request.agent_enabled,
+            "agent_auto_run": request.agent_auto_run,
             "sample_image_s3_key": request.sample_image_s3_key,
             "sample_image_filename": request.sample_image_filename,
             "schema_instructions": request.schema_instructions,

@@ -65,14 +65,15 @@ def agent_kick_handler(event, context):
         sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "no app_name"}
 
-    # Check agent_enabled (avoid unnecessary job creation)
+    # 自動実行は agent_enabled かつ agent_auto_run のときのみ。
+    # 手動実行は別経路で、このゲートを通らない。
     schema = get_app_schema(app_name)
-    if not schema or not schema.get("agent_enabled", False):
-        logger.info(f"Agent not enabled for app: {app_name}")
+    if not schema or not schema.get("agent_enabled", False) or not schema.get("agent_auto_run", False):
+        logger.info(f"Agent auto-run not enabled for app: {app_name}")
         _update_agent_status(image_id, AgentStatus.SKIPPED)
         _finalize_skipped_job(event)
         sync_parent_agent_status(image_id)
-        return {"status": "skipped", "reason": "agent_enabled=false"}
+        return {"status": "skipped", "reason": "agent_auto_run=false"}
 
     job_id = event.get("job_id")
     try:

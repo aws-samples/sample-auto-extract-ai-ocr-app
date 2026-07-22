@@ -24,6 +24,8 @@ export interface AppSchema {
   permission?: string;
   sample_image_s3_key?: string;
   sample_image_filename?: string;
+  agent_enabled?: boolean;
+  agent_auto_run?: boolean;
 }
 
 export interface S3SyncFile {

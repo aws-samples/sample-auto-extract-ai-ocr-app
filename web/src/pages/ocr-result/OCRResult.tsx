@@ -6,9 +6,9 @@ import { runAgent as apiRunAgent, getAgentToolsForImage, getAgentJobByImage, pol
 import { updateVerificationStatus } from "../../services/imageApi";
 import { OcrWord, OcrBoundingBox, OcrResponse, PresignedDownloadUrlResponse } from "../../types/ocr";
 import { ExtractionResponse, ExtractionMapping } from "../../types/extraction";
-import { Field } from "../../types/app-schema";
+import { Field, AppSchema } from "../../types/app-schema";
 import { Suggestion, Tool } from "../../types/agent";
-import { isOcrEnabled, isAgentEnabled } from "../../config";
+import { isOcrEnabled } from "../../config";
 import { usePresence } from "../../hooks/usePresence";
 import PresenceBadge from "../../components/shared/PresenceBadge";
 import ImagePreview from "./ImagePreview";
@@ -61,6 +61,7 @@ function OcrResult() {
   const [appFields, setAppFields] = useState<Field[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [appName, setAppName] = useState<string>("");
+  const [agentEnabled, setAgentEnabled] = useState(false);
   const [mapping, setMapping] = useState<ExtractionMapping>({});
   const [pollingAttemptCount, setPollingAttemptCount] = useState(0);
   const [activeView, setActiveView] = useState<"ocr" | "extraction">(
@@ -355,6 +356,15 @@ function OcrResult() {
       setLoading(false);
     }
   }, [id]);
+
+  // エージェント検証はユースケース単位の agent_enabled で有効化する
+  useEffect(() => {
+    if (!appName) return;
+    api
+      .get<AppSchema>(`/apps/${appName}`)
+      .then((res) => setAgentEnabled(res.data.agent_enabled ?? false))
+      .catch(() => setAgentEnabled(false));
+  }, [appName]);
 
   // 抽出情報の取得
   const fetchExtractionInfo = async () => {
@@ -977,7 +987,7 @@ function OcrResult() {
       />
 
       {/* エージェント検証モーダル */}
-      {isAgentEnabled() && (
+      {agentEnabled && (
         <AgentModal
           isOpen={showAgentModal}
           onClose={() => setShowAgentModal(false)}
@@ -1098,7 +1108,7 @@ function OcrResult() {
                     <Button variant="outline" size="sm" onClick={handleReExtract} disabled={loading}>
                       <RefreshCw size={14} className="mr-1" />抽出設定
                     </Button>
-                    {isAgentEnabled() && (
+                    {agentEnabled && (
                       <Button variant="outline" size="sm" onClick={() => setShowAgentModal(true)} disabled={agentStatus === 'running'}>
                         <Bot size={14} className="mr-1" />エージェント検証
                       </Button>

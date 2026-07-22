@@ -57,19 +57,16 @@ export class OcrAppStack extends cdk.Stack {
       ocrEndpoint = ocr;
     }
 
-    let agent = undefined;
-    if (p.enableAgent) {
-      agent = new Agent(this, "Agent", {
-        region: this.region,
-        enableDemo: p.enableAgentDemo,
-        schemasTable: database.schemasTable,
-        dsqlEndpoint: dsql.clusterEndpoint,
-        dsqlRegion: this.region,
-        dsqlClusterArn: dsql.clusterArn,
-        dsqlDdlResource: dsql.ddlResource,
-        dsqlSeedResource: dsql.seedResource,
-      });
-    }
+    const agent = new Agent(this, "Agent", {
+      region: this.region,
+      enableDemo: p.enableAgentDemo,
+      schemasTable: database.schemasTable,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
+      dsqlDdlResource: dsql.ddlResource,
+      dsqlSeedResource: dsql.seedResource,
+    });
 
     const api = new Api(this, "Api", {
       imagesTable: database.imagesTable,
@@ -83,7 +80,7 @@ export class OcrAppStack extends cdk.Stack {
       ocrEngine: p.ocrEngine,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
-      agentRuntimeArn: agent?.runtimeArn,
+      agentRuntimeArn: agent.runtimeArn,
       modelId: p.modelId,
       modelRegion: p.modelRegion,
       dsqlEndpoint: dsql.clusterEndpoint,
@@ -102,8 +99,7 @@ export class OcrAppStack extends cdk.Stack {
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
       modelId: p.modelId,
       modelRegion: p.modelRegion,
-      enableAgent: p.enableAgent,
-      agentRuntimeArn: agent?.runtimeArn,
+      agentRuntimeArn: agent.runtimeArn,
       dsqlEndpoint: dsql.clusterEndpoint,
       dsqlRegion: this.region,
       dsqlClusterArn: dsql.clusterArn,
@@ -141,7 +137,6 @@ export class OcrAppStack extends cdk.Stack {
       userPoolClientId: auth.client.userPoolClientId,
       apiUrl: api.apiEndpoint,
       enableOcr: p.enableOcr,
-      enableAgent: p.enableAgent,
       syncBucketName: api.syncBucket.bucketName,
       webAclArn: props.webAclArn,
       websocketUrl: websocket.apiEndpoint,

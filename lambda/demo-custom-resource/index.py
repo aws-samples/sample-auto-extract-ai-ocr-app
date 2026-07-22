@@ -104,6 +104,7 @@ def insert_demo_usecase(dynamodb, table_name):
             's3_sync': False
         },
         'agent_enabled': True,
+        'agent_auto_run': True,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'updated_at': datetime.now(timezone.utc).isoformat()
     }

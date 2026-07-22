@@ -23,7 +23,6 @@ export interface StepFunctionsProps {
   sagemakerInferenceComponentName?: string;
   modelId: string;
   modelRegion: string;
-  enableAgent?: boolean;
   agentRuntimeArn?: string;
   dsqlEndpoint?: string;
   dsqlRegion?: string;
@@ -85,7 +84,7 @@ export class StepFunctions extends Construct {
     // AgentKick Lambda (runs after ProcessImage, checks agent_enabled internally)
     let chainedDefinition: cdk.aws_stepfunctions.IChainable = processImageTask;
 
-    if (props.enableAgent && props.agentRuntimeArn) {
+    if (props.agentRuntimeArn) {
       const agentKick = new DockerImageFunction(this, 'AgentKick', {
         code: DockerImageCode.fromImageAsset('lambda/api', {
           file: 'Dockerfile.agentkick',

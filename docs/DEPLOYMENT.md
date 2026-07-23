@@ -120,9 +120,6 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 - `deepseek`: DeepSeek OCR。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `yomitoku-mp`: Yomitoku Pro（AWS Marketplace 版）。高精度な日本語 OCR です。
 
-> [!Note]
-> OCR エンジンを切り替える際、切り替え前後でエンドポイントの構成が変わる場合（例: `paddle` から `yomitoku-mp` へ変更する場合）は、そのままでは更新できません。一度 `enableOcr: false` でデプロイしてから、`enableOcr: true` に戻して再デプロイしてください。
-
 #### Yomitoku Pro（AWS Marketplace 版）
 
 [AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-64qkuwrqi4lhi) でサブスクライブした後、`lib/parameters.ts` に以下を設定します。

@@ -15,7 +15,7 @@ AutoExtract は OCR + Bedrock を活用した帳票読み取りの AI-OCR ソリ
 
 ![architecture](docs/imgs/architecture.drawio.png)
 
-React（CloudFront + S3）、FastAPI（Lambda）、AWS CDK による 3 層構成です。OCR は SageMaker、情報抽出は Bedrock、エージェント検証は Bedrock AgentCore を利用し、権限管理を Aurora DSQL、帳票データを DynamoDB で管理します。詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照してください。
+フロントエンドは React（CloudFront + S3）、バックエンドは FastAPI（Lambda）で構成し、これらを AWS CDK でデプロイします。OCR は SageMaker、情報抽出は Bedrock、エージェント検証は Bedrock AgentCore を利用し、権限管理を Aurora DSQL、帳票データを DynamoDB で管理します。詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照してください。
 
 ## クイックスタート
 

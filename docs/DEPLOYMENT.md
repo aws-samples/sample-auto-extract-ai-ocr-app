@@ -130,10 +130,7 @@ marketplaceModelPackageArn: "arn:aws:sagemaker:<region>:<account>:model-package/
 sagemakerZeroScale: false, // Marketplace 版はゼロスケーリングに対応しません
 ```
 
-Marketplace 版はゼロスケーリングに対応しないため、エンドポイントは常時起動（ml.g5.xlarge で約 $1.7/h）となります。
-
-> [!Note]
-> OSS 版の Yomitoku を利用した実装例は[こちら](https://github.com/gteu/sample-auto-extract-ai-ocr-app)を参照してください。ただし OSS 版は CC BY-NC-SA 4.0 ライセンスが適用され、商用利用が制限される点にご注意ください（[詳細](https://github.com/kotaro-kinoshita/yomitoku?tab=readme-ov-file#license)）。
+Marketplace 版はゼロスケーリングに対応しないため、エンドポイントは常時起動となります。利用中は Marketplace のソフトウェア使用料と SageMaker のインスタンス料金が継続的にかかります（料金は [AWS Marketplace の製品ページ](https://aws.amazon.com/marketplace/pp/prodview-64qkuwrqi4lhi) を参照してください）。
 
 ### OCR インスタンスのゼロスケーリング
 

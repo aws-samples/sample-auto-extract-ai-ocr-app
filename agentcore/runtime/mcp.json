@@ -1,9 +1,0 @@
-{
-  "_comment": "OCR Agent Runtime Configuration",
-  "mcpServers": {
-    "time": {
-      "command": "uvx",
-      "args": ["mcp-server-time"]
-    }
-  }
-}

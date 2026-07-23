@@ -29,20 +29,6 @@ def get_aws_credentials() -> dict[str, str]:
     return credentials
 
 
-def get_uv_environment() -> dict[str, str]:
-    """Get UV environment with AWS credentials"""
-    aws_creds = get_aws_credentials()
-    return {
-        "UV_NO_CACHE": "1",
-        "UV_PYTHON": "/usr/local/bin/python",
-        "UV_TOOL_DIR": "/tmp/.uv/tool",
-        "UV_TOOL_BIN_DIR": "/tmp/.uv/tool/bin",
-        "UV_PROJECT_ENVIRONMENT": "/tmp/.venv",
-        "npm_config_cache": "/tmp/.npm",
-        **aws_creds,
-    }
-
-
 def get_system_prompt(user_system_prompt: str = None) -> str:
     """Combine user system prompt with fixed instructions"""
     fixed_prompt = """あなたはOCR抽出結果を検証し、誤りを修正するアシスタントです。

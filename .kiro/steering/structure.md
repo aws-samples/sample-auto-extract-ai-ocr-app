@@ -34,5 +34,3 @@ workers/ → services(FastAPI DI 不使用、自前インスタンス化)
 ```
 
 外部 API 系の clients/ について: Clean Architecture では Gateway/Adapter 層を介した抽象化が推奨されるが、現時点ではプロジェクト規模に対してオーバーエンジニアリングとなるため、services/ から clients/ の薄いラッパーを直接呼び出す設計としている。
-
-各レイヤーの責務詳細は `docs/api-structure.md` を参照。

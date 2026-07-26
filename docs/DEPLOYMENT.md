@@ -24,7 +24,7 @@ cdk bootstrap
 npm run cdk:deploy
 ```
 
-デプロイ後に出力される `WebConstructCloudFrontURL` の URL にアクセスすると、Web サイトを開けます。管理画面を使うには、最初のユーザーを管理者に昇格させる必要があります（後述の「初期管理者の設定」を参照してください）。
+デプロイ後に出力される `WebConstructCloudFrontURL` の URL にアクセスすると、Web サイトを開けます。管理画面を使うには、少なくとも 1 人の管理者ユーザーが必要です（後述の「初期ユーザーの投入」を参照してください）。
 
 ### デプロイの環境とリージョンの指定
 
@@ -139,27 +139,92 @@ OCR に使う GPU インスタンスのコストを抑えるため、一定時�
 - `sagemakerZeroScale`: ゼロスケーリングの有効と無効（デフォルトは有効）
 - `sagemakerScaleInCooldownSeconds`: 縮小するまでの待機時間（秒。デフォルトは `3600`、つまり 1 時間）
 
-## 初期管理者の設定
+## 初期ユーザーの投入
 
-デプロイ直後は、すべてのユーザーが一般権限（`author`）です。管理画面にアクセスするには、最初のユーザーを `admin` に昇格させる必要があります。権限の仕組みは [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
+デプロイ直後は Cognito にユーザーが 0 人の状態です。管理画面を使うには、少なくとも 1 人の `admin` ロールを持ったユーザーが必要です。初期ユーザー（admin / author / reader）をまとめて登録するには、`scripts/seed-users.ts` を使います。
 
-1. CloudFront URL にアクセスして、サインアップとログインをします
-2. CDK 出力の `DsqlClusterEndpoint` を確認します
-3. 以下のコマンドで admin 権限を付与します
+### CSV の準備
 
-```sh
-DSQL_ENDPOINT=<DsqlClusterEndpoint の値> DSQL_REGION=<リージョン> \
-  npm run init-admin -- --email <サインアップしたメールアドレス>
+`users.example.csv` をコピーして `users.csv` を作成し、投入したいユーザーを記述します（`users.csv` は仮パスワードを含むため `.gitignore` 済み）。
+
+```csv
+email,tempPassword,role,groups,displayName
+admin@example.com,TempPass123!,admin,admin,Admin User
+alice@example.com,TempPass123!,author,team-a,Alice
+bob@example.com,TempPass123!,author,team-a|team-b,Bob
+carol@example.com,TempPass123!,reader,,Carol
 ```
 
-実行例:
+| カラム | 説明 |
+|---|---|
+| `email` | ユーザーの email（必須） |
+| `tempPassword` | 仮パスワード（必須、Cognito の PasswordPolicy を満たすこと） |
+| `role` | `admin` / `author` / `reader` のいずれか |
+| `groups` | 所属グループ名（パイプ `\|` 区切り、空可）。CSV に登場するグループは自動作成される |
+| `displayName` | 表示名（空可。空なら email を利用） |
+
+### 実行方法
+
+**方法 1: deploy コマンドと同時に投入する（推奨）**
+
+`cdk.sh` の `--seed-users` フラグに CSV パスを渡すと、deploy 完了後に自動で seed-users が実行されます。UserPoolId / DSQL エンドポイントは CFN Outputs から自動取得されます。
 
 ```sh
-DSQL_ENDPOINT=xxxxx.dsql.us-east-1.on.aws DSQL_REGION=us-east-1 \
-  npm run init-admin -- --email user@example.com
+npm run cdk:deploy -- base --region us-east-1 --seed-users users.csv
 ```
 
-成功すると `Admin granted: {"id":"...","email":"...","role":"admin"}` と表示されます。ブラウザをリロードすると、管理画面にアクセスできるようになります。
+**方法 2: deploy 後に単独で実行する**
+
+既にデプロイ済みの環境にユーザーを追加・更新したい場合は、`seed-users` スクリプトを直接呼び出します。**引数を省略すると対話モード**で走り、アカウント確認・リージョン選択・CloudFormation スタック選択・CSV プレビューを経て実行確認に進むので、投入対象を目視で確認できます。
+
+```sh
+# 対話モード (推奨): 何も引数を渡さない
+npm run settings:users
+```
+
+対話モードでは以下の順で選択・確認が行われます。
+
+1. `aws sts get-caller-identity` で現在のアカウント / ARN を表示
+2. 主要リージョン (`ap-northeast-1` / `us-east-1`) を横断して `OcrAppStack` で始まるスタックを検索
+    - 見つからなければリージョン選択メニューにフォールバック
+    - 複数見つかれば環境 (base / dev / stg / prod) とリージョンを表示して選択、単一なら自動選択
+3. スタックの Outputs から `UserPoolId` / DSQL `ClusterEndpoint` を自動取得
+4. CSV ファイルを指定 (カレントに `users.csv` があれば Enter で採用)
+5. CSV の先頭 2 行と検出グループをプレビュー表示、最終確認 `[y/N]` で実行
+
+引数を明示指定して非対話モードで叩くこともできます (自動化やスクリプト経由のとき)。
+
+```sh
+npm run settings:users -- \
+  --csv users.csv \
+  --user-pool-id <AuthUserPoolId の値> \
+  --dsql-endpoint <DsqlClusterEndpoint の値> \
+  --region <リージョン>
+```
+
+`AuthUserPoolId` と `DsqlClusterEndpoint` は `npm run cdk:deploy` の出力または AWS コンソールで確認できます。一部の引数だけ指定した場合は、不足分だけが対話で聞かれます。
+
+**ドライラン**
+
+実際の書き込みを行わず、何が作成・更新されるかだけを確認するには `--dry-run` を付けます。
+
+```sh
+npm run settings:users -- --csv users.csv --user-pool-id ... --dsql-endpoint ... --region ... --dry-run
+```
+
+### 冪等性と既存ユーザーの扱い
+
+seed-users は同じ CSV を何度実行しても安全に動作します。
+
+- 新規ユーザー: Cognito に仮 PW 付きで作成し、DSQL に `role` と `groups` を反映します
+- 既存ユーザー（Cognito に登録済み）: **Cognito 側の PW は上書きしません**。DSQL の `role` と `groups` のみ更新します
+- 未ログインユーザー（Cognito にはいるが DSQL にはまだ登録されていない）: Cognito から `sub` を取得して DSQL に事前登録します。ユーザーが初回ログインしても `role` は保持されます
+
+グループは CSV に登場する分だけ自動で作成されます。CSV から削除しても既存の紐付けは剥がれません（誤操作防止）。所属を外したい場合は管理画面から明示的に操作してください。
+
+### 招待メールの送信
+
+既定では Cognito の招待メールは送信されません（`MessageAction: SUPPRESS`）。仮 PW は CSV 経由で運用者から利用者に伝える運用を想定しています。招待メールを送りたい場合は `--send-invitation` を付けてください。
 
 ## ローカル開発
 

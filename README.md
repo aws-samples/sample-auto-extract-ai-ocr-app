@@ -38,11 +38,11 @@ npm run cdk:deploy
 npm run cdk:deploy -- dev --region us-east-1
 ```
 
-デプロイ後に出力される `WebConstructCloudFrontURL` の URL にアクセスすると Web サイトを開けます。管理画面を使うには最初のユーザーを管理者へ昇格させる必要があります（[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) の「初期管理者の設定」を参照）。
+デプロイ後に出力される `WebConstructCloudFrontURL` の URL にアクセスすると Web サイトを開けます。管理画面を使うには少なくとも 1 人の管理者ユーザーが必要です（[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) の「初期ユーザーの投入」を参照）。
 
 ## ドキュメント
 
-- [デプロイと設定ガイド](docs/DEPLOYMENT.md)：デプロイ方法、パラメータ設定、OCR エンジンの変更、初期管理者の設定、ローカル開発。
+- [デプロイと設定ガイド](docs/DEPLOYMENT.md)：デプロイ方法、パラメータ設定、OCR エンジンの変更、初期ユーザーの投入、ローカル開発。
 - [実装説明](docs/ARCHITECTURE.md)：全体構成、処理の流れ、データストアの使い分け、権限設計、エージェント検証。
 
 ## Security

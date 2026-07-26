@@ -15,7 +15,7 @@
     "cdk:destroy": "bash scripts/cdk.sh destroy",
     "web:build": "npm --prefix web run build",
     "web:dev": "npm --prefix web run dev",
-    "init-admin": "npx ts-node scripts/init-admin.ts"
+    "settings:users": "npx ts-node scripts/seed-users.ts"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

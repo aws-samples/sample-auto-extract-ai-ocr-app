@@ -1,4 +1,4 @@
-import { CfnOutput, Duration, RemovalPolicy } from "aws-cdk-lib";
+import { CfnOutput, Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { Mfa, UserPool, UserPoolClient, UserPoolOperation } from "aws-cdk-lib/aws-cognito";
 import { DockerImageCode, DockerImageFunction, Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -20,6 +20,7 @@ export class Auth extends Construct {
     super(scope, id);
 
     const userPool = new UserPool(this, "UserPool", {
+      userPoolName: `${Stack.of(this).stackName}-UserPool`,
       removalPolicy: RemovalPolicy.DESTROY,
       passwordPolicy: {
         minLength: 8,

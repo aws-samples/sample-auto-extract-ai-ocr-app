@@ -162,8 +162,13 @@ export class Ocr extends Construct {
         platform: Platform.LINUX_AMD64,
       });
 
+      // Image content 由来のサフィックス。CfnModel の PrimaryContainer.Image は Replacement 属性なので、
+      // Docker image 差分ビルドで imageUri が変わるたびに Model は作り直しになる。
+      // 物理名を assetHash で自動ユニーク化することで、Replacement 時の AlreadyExists 衝突を防ぐ。
+      const modelHashSuffix = dockerImage.assetHash.substring(0, 8);
+
       model = new CfnModel(this, "OcrModel", {
-        modelName: containerMap[ocrEngine],
+        modelName: `${containerMap[ocrEngine]}-${modelHashSuffix}`,
         executionRoleArn: sagemakerRole.roleArn,
         primaryContainer: {
           image: dockerImage.imageUri,

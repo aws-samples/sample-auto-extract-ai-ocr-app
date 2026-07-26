@@ -1,0 +1,5 @@
+email,tempPassword,role,groups,displayName
+admin@example.com,TempPass123!,admin,admin,Admin User
+alice@example.com,TempPass123!,author,team-a,Alice
+bob@example.com,TempPass123!,author,team-a|team-b,Bob
+carol@example.com,TempPass123!,reader,,Carol

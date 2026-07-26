@@ -56,22 +56,26 @@ show_help() {
 CDK ラッパースクリプト
 
 使い方:
-  ./scripts/cdk.sh <command> [<env>] [--env <env>] [--region <region>] [-y]
+  ./scripts/cdk.sh <command> [<env>] [--env <env>] [--region <region>] [--seed-users <csv>] [-y]
   ./scripts/cdk.sh                                            # 完全対話型
   npm run cdk:deploy                                          # 同上 (deploy 固定)
   npm run cdk:deploy -- dev --region us-east-1 -y             # 引数渡し
+  npm run cdk:deploy -- dev --region us-east-1 --seed-users users.csv -y
 
 引数:
-  command           deploy | destroy | synth | diff (位置引数)
-  env               base | dev | stg | prod (位置引数 or --env フラグ)
-  --env <env>       env を flag で指定する場合
-  --region <region> AWS リージョン (例: ap-northeast-1, us-east-1)
-  -y, --yes         ラッパー独自の確認プロンプトをスキップ
-  -h, --help        このヘルプを表示
+  command             deploy | destroy | synth | diff (位置引数)
+  env                 base | dev | stg | prod (位置引数 or --env フラグ)
+  --env <env>         env を flag で指定する場合
+  --region <region>   AWS リージョン (例: ap-northeast-1, us-east-1)
+  --seed-users <csv>  deploy 完了後に CSV から Cognito + DSQL にユーザーを一括投入する
+                      (deploy コマンドでのみ有効、CSV パスは事前に存在すること)
+  -y, --yes           ラッパー独自の確認プロンプトをスキップ
+  -h, --help          このヘルプを表示
 
 例:
   ./scripts/cdk.sh deploy dev --region us-east-1
   ./scripts/cdk.sh deploy --env=base --region=ap-northeast-1 -y
+  ./scripts/cdk.sh deploy base --region us-east-1 --seed-users users.csv
   ./scripts/cdk.sh destroy prod --region us-east-1
 
 npm 経由の注意:
@@ -86,6 +90,7 @@ SKIP_CONFIRM=false
 CDK_COMMAND=""
 ENV_NAME=""
 REGION=""
+SEED_USERS_CSV=""
 
 require_value() {
   # フラグに続く値があるか確認
@@ -100,6 +105,8 @@ while [[ $# -gt 0 ]]; do
     --env=*)         ENV_NAME="${1#--env=}"; shift ;;
     --region)        require_value "$@"; REGION="$2"; shift 2 ;;
     --region=*)      REGION="${1#--region=}"; shift ;;
+    --seed-users)    require_value "$@"; SEED_USERS_CSV="$2"; shift 2 ;;
+    --seed-users=*)  SEED_USERS_CSV="${1#--seed-users=}"; shift ;;
     --*)             die "未知のフラグ: $1" ;;
     *)
       # 位置引数を内容で判定:
@@ -126,6 +133,7 @@ done
 # script に直接届かないが、ここで拾えば npm run cdk:deploy --region X も動く。
 [[ -z "$ENV_NAME"  && -n "${npm_config_env:-}"    ]] && ENV_NAME="$npm_config_env"
 [[ -z "$REGION"    && -n "${npm_config_region:-}" ]] && REGION="$npm_config_region"
+[[ -z "$SEED_USERS_CSV" && -n "${npm_config_seed_users:-}" ]] && SEED_USERS_CSV="$npm_config_seed_users"
 [[ "$SKIP_CONFIRM" == "false" && -n "${npm_config_yes:-}" ]] && SKIP_CONFIRM=true
 
 # ── 対話型: メニュー選択 ─────────────────────────────────
@@ -176,6 +184,14 @@ contains "$ENV_NAME" "${VALID_ENVS[@]}" \
 [[ "$REGION" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]] \
   || die "リージョン形式が不正です (指定: ${REGION})"
 
+if [[ -n "$SEED_USERS_CSV" ]]; then
+  if [[ "$CDK_COMMAND" != "deploy" ]]; then
+    die "--seed-users は deploy コマンドでのみ利用できます (指定: ${CDK_COMMAND})"
+  fi
+  [[ -f "$SEED_USERS_CSV" ]] \
+    || die "--seed-users で指定された CSV ファイルが見つかりません: ${SEED_USERS_CSV}"
+fi
+
 # ── AWS 認証情報の確認 ───────────────────────────────────
 echo "${CYAN}[1/3]${RESET} AWS 認証情報を確認中..."
 CALLER_JSON=$(aws sts get-caller-identity --output json 2>/dev/null) \
@@ -200,6 +216,7 @@ echo "  ${BOLD}Region: ${RESET} ${GREEN}$REGION${RESET}"
 echo "  ${BOLD}Account:${RESET} $ACCOUNT_ID"
 echo "  ${BOLD}Role:   ${RESET} $ARN"
 echo "  ${BOLD}Stack:  ${RESET} $STACK_NAME"
+[[ -n "$SEED_USERS_CSV" ]] && echo "  ${BOLD}Seed:   ${RESET} ${GREEN}$SEED_USERS_CSV${RESET} (deploy 完了後に seed-users を実行)"
 echo
 
 # ── 確認プロンプト ──────────────────────────────────────
@@ -236,4 +253,43 @@ export AWS_REGION="$REGION"
 export AWS_DEFAULT_REGION="$REGION"
 
 echo "${CYAN}▶${RESET} ENV=$ENV_NAME CDK_DEFAULT_REGION=$REGION AWS_REGION=$REGION npx cdk ${CDK_COMMAND} --all"
-exec npx cdk "$CDK_COMMAND" --all
+npx cdk "$CDK_COMMAND" --all
+CDK_EXIT=$?
+
+# deploy 成功時、--seed-users があればユーザー投入を自動実行する。
+# 独立コマンド `npm run settings:users -- ...` でも同じスクリプトを叩けるので、
+# ここでの自動連携はあくまで利便機能。CFN Outputs からキーの部分一致で
+# UserPoolId と Dsql ClusterEndpoint を取得して seed-users に渡す。
+if [[ "$CDK_COMMAND" == "deploy" ]] && [[ $CDK_EXIT -eq 0 ]] && [[ -n "$SEED_USERS_CSV" ]]; then
+  echo
+  echo "${CYAN}▶${RESET} Seeding users from ${GREEN}${SEED_USERS_CSV}${RESET}"
+
+  USER_POOL_ID=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --region "$REGION" \
+    --query "Stacks[0].Outputs[?contains(OutputKey, 'UserPoolId') && !contains(OutputKey, 'Client')] | [0].OutputValue" \
+    --output text 2>/dev/null)
+  DSQL_ENDPOINT=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --region "$REGION" \
+    --query "Stacks[0].Outputs[?contains(OutputKey, 'ClusterEndpoint')] | [0].OutputValue" \
+    --output text 2>/dev/null)
+
+  if [[ -z "$USER_POOL_ID" || "$USER_POOL_ID" == "None" ]]; then
+    die "seed-users: CFN Outputs から UserPoolId を解決できませんでした"
+  fi
+  if [[ -z "$DSQL_ENDPOINT" || "$DSQL_ENDPOINT" == "None" ]]; then
+    die "seed-users: CFN Outputs から Dsql ClusterEndpoint を解決できませんでした"
+  fi
+
+  echo "  UserPoolId:   $USER_POOL_ID"
+  echo "  DsqlEndpoint: $DSQL_ENDPOINT"
+
+  npx ts-node scripts/seed-users.ts \
+    --csv "$SEED_USERS_CSV" \
+    --user-pool-id "$USER_POOL_ID" \
+    --dsql-endpoint "$DSQL_ENDPOINT" \
+    --region "$REGION"
+fi
+
+exit $CDK_EXIT

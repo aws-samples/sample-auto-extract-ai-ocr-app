@@ -8,23 +8,24 @@ inclusion: always
 
 ## 命名規約
 
-- CDK Construct: PascalCase(例: `OcrEndpoint`)
 - Lambda ファイル: snake_case(例: `extraction_service.py`)
 - React コンポーネント: PascalCase(例: `ExtractedInfoDisplay.tsx`)
 
-### AWS リソース物理名
+### CDK の construct id（論理 ID）
 
-- 原則ケバブケース(例: `ocr-tool-gateway`)。ただし **AgentCore Runtime 名はスネークケース**
-  (API 制約でハイフン不可・アンダースコアのみ。例: `ocr_agent_runtime`)、**SageMaker/S3 はハイフン**
-  (アンダースコア不可)。リソース種別ごとの許容文字に従う。
-- SageMaker Model 名は物理名を指定せず CDK 自動採番に委ねる(イメージ差分ビルド時の Replacement で
-  AlreadyExists を避けるため)。
-- **マルチ環境の衝突回避**: 固定物理名には env suffix を付ける。base/未指定は suffix 無し(既存名を
-  維持)、dev/stg/prod のみ `-{env}`(Runtime はアンダースコアで `_{env}`)。共通ヘルパー
-  `lib/utils/naming.ts` の `envSuffix()` を使う。物理名を指定せず CFN 自動採番に任せるリソース
-  (DynamoDB/Lambda/S3/StepFunctions 等)は元々衝突しないので suffix 不要。
-- DynamoDB GSI 名は PascalCase(例: `AppNameIndex`)。
-- 既存の CDK construct id は互換性維持のため据え置く(変更は論理ID変更→リソース置換を招くため)。
+- construct id は PascalCase。原則クラス名に揃える。
+
+### AWS リソースの物理名
+
+- **原則として物理名は指定しない**。CloudFormation の自動採番
+  (`{stackName}-{論理ID}-{hash}`)に任せる。スタック名が環境ごとに分かれるため複数環境でも衝突しない。
+- 物理名を明示するのは、自動採番が使えないリソースに限る(名前で一意参照が要る、
+  アカウント/リージョンでグローバル一意になる等)。命名は各サービスの API 制約に従う
+  (横断的なケバブ/スネーク統一ルールは設けない。サービスごとの許容文字が優先)。
+- 物理名を明示するリソースには、複数環境の衝突を避けるため env suffix を付ける。
+  共通ヘルパー `lib/utils/naming.ts` の `envSuffix()` を使い、base は suffix 無しで既存名を維持、
+  dev/stg/prod のみ付与する。
+- DynamoDB GSI 名は PascalCase(例: `AppNameIndex`、`CustomerNameIndex`)。
 
 ## web/src/ フロントエンド構成方針
 

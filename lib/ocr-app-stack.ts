@@ -125,7 +125,7 @@ export class OcrAppStack extends cdk.Stack {
       stepFunctions.agentKickFunction.grantInvoke(api.handler);
     }
 
-    const websocket = new WebSocket(this, "Presence", {
+    const websocket = new WebSocket(this, "WebSocket", {
       userPool: auth.userPool,
       userPoolClient: auth.client,
       connectionsTable: database.connectionsTable,

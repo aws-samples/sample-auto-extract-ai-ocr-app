@@ -323,7 +323,7 @@ export class Agent extends Construct {
       });
 
       this.customersTable.addGlobalSecondaryIndex({
-        indexName: "customer_name-index",
+        indexName: "CustomerNameIndex",
         partitionKey: { name: "customer_name", type: AttributeType.STRING },
       });
 

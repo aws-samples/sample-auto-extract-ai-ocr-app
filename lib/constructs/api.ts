@@ -102,18 +102,9 @@ export class Api extends Construct {
       ],
     });
 
-    // S3へのアクセス権限
-    lambdaRole.addToPolicy(
-      new PolicyStatement({
-        actions: ["s3:*"],
-        resources: [
-          documentBucket.bucketArn, 
-          `${documentBucket.bucketArn}/*`,
-          syncBucket.bucketArn,
-          `${syncBucket.bucketArn}/*`
-        ],
-      })
-    );
+    // S3へのアクセス権限（オブジェクト読み書きのみ。バケット削除やポリシー変更は付与しない）
+    documentBucket.grantReadWrite(lambdaRole);
+    syncBucket.grantReadWrite(lambdaRole);
 
     // SageMakerへのアクセス権限（OCRが有効な場合のみ）
     if (props.enableOcr && props.sagemakerEndpointName) {

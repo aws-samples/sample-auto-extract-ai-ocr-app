@@ -1,8 +1,6 @@
 """Agent management for the agent runtime."""
 
-import json
 import logging
-from collections.abc import AsyncGenerator
 from typing import Any
 
 import boto3
@@ -121,54 +119,3 @@ class AgentManager:
                 "error": str(e),
                 "status": "error"
             }
-
-    async def process_request_streaming(
-        self,
-        messages: list[Message] | list[dict[str, Any]],
-        system_prompt: str | None,
-        prompt: str | list[dict[str, Any]],
-        model_info: ModelInfo,
-        allowed_tool_names: list[str] | None = None,
-        image_content: list[dict[str, Any]] | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Process a request and yield streaming responses"""
-        try:
-            model_id, region = extract_model_info(model_info)
-            combined_system_prompt = get_system_prompt(system_prompt)
-
-            # Gateway MCP client with optional tool filtering
-            mcp_client = create_gateway_mcp_client(allowed_tool_names)
-            tools = [mcp_client] if mcp_client else []
-
-            session = boto3.Session(region_name=region)
-            bedrock_model = BedrockModel(
-                model_id=model_id,
-                boto_session=session,
-            )
-
-            processed_messages = process_messages(messages)
-            processed_prompt = process_prompt(prompt)
-            final_prompt = self._build_prompt_with_images(processed_prompt, image_content)
-
-            agent = StrandsAgent(
-                system_prompt=combined_system_prompt,
-                messages=processed_messages,
-                model=bedrock_model,
-                tools=tools,
-                callback_handler=self._create_iteration_limit_handler(),
-            )
-
-            async for event in agent.stream_async(final_prompt):
-                if "event" in event:
-                    yield json.dumps(event, ensure_ascii=False) + "\n"
-
-        except Exception as e:
-            logger.error(f"Error processing agent request: {e}")
-            error_event = {
-                "event": {
-                    "internalServerException": {
-                        "message": f"An error occurred: {str(e)}",
-                    }
-                }
-            }
-            yield json.dumps(error_event, ensure_ascii=False) + "\n"

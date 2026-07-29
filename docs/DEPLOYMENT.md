@@ -145,20 +145,20 @@ OCR に使う GPU インスタンスのコストを抑えるため、一定時�
 
 ### CSV の準備
 
-`users.example.csv` をコピーして `users.csv` を作成し、投入したいユーザーを記述します（`users.csv` は仮パスワードを含むため `.gitignore` 済み）。
+`users.example.csv` をコピーして `users.csv` を作成し、投入したいユーザーを記述します（`users.csv` は email や仮パスワードなど個人情報を含む可能性があるため `.gitignore` 済み）。
 
 ```csv
 email,tempPassword,role,groups,displayName
-admin@example.com,TempPass123!,admin,admin,Admin User
-alice@example.com,TempPass123!,author,team-a,Alice
-bob@example.com,TempPass123!,author,team-a|team-b,Bob
-carol@example.com,TempPass123!,reader,,Carol
+admin@example.com,,admin,admin,Admin User
+alice@example.com,,author,team-a,Alice
+bob@example.com,,author,team-a|team-b,Bob
+carol@example.com,,reader,,Carol
 ```
 
 | カラム | 説明 |
 |---|---|
 | `email` | ユーザーの email（必須） |
-| `tempPassword` | 仮パスワード（必須、Cognito の PasswordPolicy を満たすこと） |
+| `tempPassword` | 仮パスワード（空可）。空なら Cognito が自動生成し、既定では招待メールで利用者に届きます。手動で指定する場合は Cognito の PasswordPolicy を満たす必要があります |
 | `role` | `admin` / `author` / `reader` のいずれか |
 | `groups` | 所属グループ名（パイプ `\|` 区切り、空可）。CSV に登場するグループは自動作成される |
 | `displayName` | 表示名（空可。空なら email を利用） |
@@ -216,7 +216,7 @@ npm run settings:users -- --csv users.csv --user-pool-id ... --dsql-endpoint ...
 
 seed-users は同じ CSV を何度実行しても安全に動作します。
 
-- 新規ユーザー: Cognito に仮 PW 付きで作成し、DSQL に `role` と `groups` を反映します
+- 新規ユーザー: Cognito にユーザーを作成し、DSQL に `role` と `groups` を反映します。既定では Cognito が仮 PW を自動生成し、招待メールで利用者に届けます（後述の「招待メールの送信」参照）
 - 既存ユーザー（Cognito に登録済み）: **Cognito 側の PW は上書きしません**。DSQL の `role` と `groups` のみ更新します
 - 未ログインユーザー（Cognito にはいるが DSQL にはまだ登録されていない）: Cognito から `sub` を取得して DSQL に事前登録します。ユーザーが初回ログインしても `role` は保持されます
 
@@ -224,7 +224,22 @@ seed-users は同じ CSV を何度実行しても安全に動作します。
 
 ### 招待メールの送信
 
-既定では Cognito の招待メールは送信されません（`MessageAction: SUPPRESS`）。仮 PW は CSV 経由で運用者から利用者に伝える運用を想定しています。招待メールを送りたい場合は `--send-invitation` を付けてください。
+既定では Cognito の招待メールを送信します。CSV の `tempPassword` を空にしておくと Cognito が仮 PW を自動生成し、そのままメール本文に埋めて送るので、運用者が仮 PW を扱わずに済みます。`tempPassword` を明示した場合はその値が仮 PW としてセットされ、同じくメールで通知されます。
+
+招待メールを飛ばしたくない場合（運用者が仮 PW を手渡しで伝える運用など）は `--suppress-invitation` を付けてください。この場合、Cognito は `MessageAction: SUPPRESS` でユーザーを作成し、メールは送信されません。
+
+```sh
+# メール送信を抑止する例
+npm run settings:users -- --csv users.csv --suppress-invitation
+```
+
+**Cognito のメール送信に関する注意点**
+
+本アプリのデフォルト構成では、Cognito UserPool を SES と連携させていません。そのため以下の制約があります。
+
+- **送信元アドレス**: `no-reply@verificationemail.com`（Cognito default）。迷惑メール判定に落ちやすいので、実運用では SES 連携を推奨します
+- **日次送信上限**: UserPool あたり **50 通/日**（Cognito default）。大量ユーザーを一度に招待する場合は分割実行するか、SES 連携で上限を引き上げてください
+- **仮 PW の有効期限**: 既定 7 日。期限内に初回サインインしないと、`seed-users` を再実行して仮 PW をリセットする必要があります
 
 ## ローカル開発
 
@@ -240,6 +255,7 @@ VITE_API_BASE_URL=                 # ApiOcrApiEndpoint の値
 VITE_ENABLE_OCR=true               # OCR 機能の有効化
 VITE_ENABLE_AGENT=true             # エージェント検証機能の有効化
 VITE_SYNC_BUCKET_NAME=             # S3 同期バケット名
+VITE_SELF_SIGN_UP_ENABLED=true     # ログイン画面のサインアップタブ表示（false で非表示）
 ```
 
 続いて、開発サーバーを起動します。

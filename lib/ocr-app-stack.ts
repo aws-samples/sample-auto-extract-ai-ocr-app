@@ -16,6 +16,8 @@ import { AppParameters } from "./parameters";
 export interface OcrAppStackProps extends cdk.StackProps {
   params: AppParameters;
   webAclArn?: string;
+  /** 環境名（base/dev/stg/prod）。リソース名の env suffix に使う。 */
+  envName?: string;
 }
 
 export class OcrAppStack extends cdk.Stack {
@@ -53,6 +55,7 @@ export class OcrAppStack extends cdk.Stack {
         scaleInCooldownSeconds: p.sagemakerScaleInCooldownSeconds,
         ocrEngine: p.ocrEngine,
         marketplaceModelPackageArn: p.marketplaceModelPackageArn,
+        envName: props.envName,
       });
       ocrEndpoint = ocr;
     }
@@ -60,6 +63,7 @@ export class OcrAppStack extends cdk.Stack {
     const agent = new Agent(this, "Agent", {
       region: this.region,
       enableDemo: p.enableAgentDemo,
+      envName: props.envName,
       schemasTable: database.schemasTable,
       dsqlEndpoint: dsql.clusterEndpoint,
       dsqlRegion: this.region,

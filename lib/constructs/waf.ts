@@ -2,6 +2,7 @@ import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { WafOptions } from '../parameters';
+import { envSuffix } from '../utils/naming';
 
 export interface WafProps {
   options: WafOptions;
@@ -19,8 +20,8 @@ export class Waf extends Construct {
       return;
     }
 
-    const envName = props.envName || '';
-    const envSuffix = envName ? `-${envName}` : '';
+    // base / 未指定は suffix 無し。dev/stg/prod のみ付与（共通ヘルパーで統一）。
+    const suffix = envSuffix(props.envName);
     const rules: wafv2.CfnWebACL.RuleProperty[] = [];
 
     // IPアドレス制限（IPv4）
@@ -33,7 +34,7 @@ export class Waf extends Construct {
       });
 
       rules.push({
-        name: `allow-ipv4-ranges${envSuffix}`,
+        name: `allow-ipv4-ranges${suffix}`,
         priority: 1,
         statement: {
           notStatement: {
@@ -65,7 +66,7 @@ export class Waf extends Construct {
       });
 
       rules.push({
-        name: `allow-ipv6-ranges${envSuffix}`,
+        name: `allow-ipv6-ranges${suffix}`,
         priority: 2,
         statement: {
           notStatement: {
@@ -90,7 +91,7 @@ export class Waf extends Construct {
     // 地理的制限
     if (props.options.allowedCountryCodes && props.options.allowedCountryCodes.length > 0) {
       rules.push({
-        name: `allow-country-codes${envSuffix}`,
+        name: `allow-country-codes${suffix}`,
         priority: 3,
         statement: {
           notStatement: {

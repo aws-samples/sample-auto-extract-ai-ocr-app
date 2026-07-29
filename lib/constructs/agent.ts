@@ -30,6 +30,7 @@ import * as agentcore from "@aws-cdk/aws-bedrock-agentcore-alpha";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as path from "path";
 import * as fs from "fs";
+import { envSuffix } from "../utils/naming";
 
 export interface AgentProps {
   region: string;
@@ -42,6 +43,8 @@ export interface AgentProps {
   dsqlDdlResource?: CustomResource;
   /** DSQL Seed custom resource — demo data must run after the 'all' group is created */
   dsqlSeedResource?: CustomResource;
+  /** 環境名（base/dev/stg/prod）。リソース名の env suffix に使う。 */
+  envName?: string;
 }
 
 export class Agent extends Construct {
@@ -59,7 +62,7 @@ export class Agent extends Construct {
     // =========================================================================
 
     this.gateway = new agentcore.Gateway(this, "Gateway", {
-      gatewayName: "ocr-tool-gateway",
+      gatewayName: `ocr-tool-gateway${envSuffix(props.envName)}`,
       protocolConfiguration: new agentcore.McpProtocolConfiguration({
         supportedVersions: [agentcore.MCPProtocolVersion.MCP_2025_03_26],
       }),
@@ -393,7 +396,7 @@ export class Agent extends Construct {
     // =========================================================================
 
     const runtime = new CfnRuntime(this, "Runtime", {
-      agentRuntimeName: "ocr_agent_runtime",
+      agentRuntimeName: `ocr_agent_runtime${envSuffix(props.envName, "_")}`,
       agentRuntimeArtifact: {
         containerConfiguration: {
           containerUri: dockerImage.imageUri,

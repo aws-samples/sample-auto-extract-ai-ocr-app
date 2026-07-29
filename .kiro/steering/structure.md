@@ -12,6 +12,20 @@ inclusion: always
 - Lambda ファイル: snake_case(例: `extraction_service.py`)
 - React コンポーネント: PascalCase(例: `ExtractedInfoDisplay.tsx`)
 
+### AWS リソース物理名
+
+- 原則ケバブケース(例: `ocr-tool-gateway`)。ただし **AgentCore Runtime 名はスネークケース**
+  (API 制約でハイフン不可・アンダースコアのみ。例: `ocr_agent_runtime`)、**SageMaker/S3 はハイフン**
+  (アンダースコア不可)。リソース種別ごとの許容文字に従う。
+- SageMaker Model 名は物理名を指定せず CDK 自動採番に委ねる(イメージ差分ビルド時の Replacement で
+  AlreadyExists を避けるため)。
+- **マルチ環境の衝突回避**: 固定物理名には env suffix を付ける。base/未指定は suffix 無し(既存名を
+  維持)、dev/stg/prod のみ `-{env}`(Runtime はアンダースコアで `_{env}`)。共通ヘルパー
+  `lib/utils/naming.ts` の `envSuffix()` を使う。物理名を指定せず CFN 自動採番に任せるリソース
+  (DynamoDB/Lambda/S3/StepFunctions 等)は元々衝突しないので suffix 不要。
+- DynamoDB GSI 名は PascalCase(例: `AppNameIndex`)。
+- 既存の CDK construct id は互換性維持のため据え置く(変更は論理ID変更→リソース置換を招くため)。
+
 ## web/src/ フロントエンド構成方針
 
 - `components/ui/` — テーマ非依存の汎用 UI 部品

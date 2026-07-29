@@ -33,4 +33,5 @@ new OcrAppStack(app, stackName, {
   crossRegionReferences: true,
   params,
   webAclArn,
+  envName: env,
 });

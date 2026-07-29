@@ -37,6 +37,8 @@
     "web/tailwind.config.d.ts",
     "web/tailwind.config.js",
     "web/dist",
+    "web",
+    "scripts",
     "lambda/pre-signup",
     "lambda/websocket"
   ]

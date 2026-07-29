@@ -11,21 +11,15 @@ inclusion: always
 - Lambda ファイル: snake_case(例: `extraction_service.py`)
 - React コンポーネント: PascalCase(例: `ExtractedInfoDisplay.tsx`)
 
-### CDK の construct id（論理 ID）
+### CDK
 
 - construct id は PascalCase。原則クラス名に揃える。
-
-### AWS リソースの物理名
-
-- **原則として物理名は指定しない**。CloudFormation の自動採番
-  (`{stackName}-{論理ID}-{hash}`)に任せる。スタック名が環境ごとに分かれるため複数環境でも衝突しない。
+- リソースの物理名は原則指定せず、CloudFormation の自動採番に任せる
+  (`{stackName}-{論理ID}-{hash}`。スタック名が環境ごとに分かれるため複数環境でも衝突しない)。
 - 物理名を明示するのは、自動採番が使えないリソースに限る(名前で一意参照が要る、
-  アカウント/リージョンでグローバル一意になる等)。命名は各サービスの API 制約に従う
-  (横断的なケバブ/スネーク統一ルールは設けない。サービスごとの許容文字が優先)。
-- 物理名を明示するリソースには、複数環境の衝突を避けるため env suffix を付ける。
-  共通ヘルパー `lib/utils/naming.ts` の `envSuffix()` を使い、base は suffix 無しで既存名を維持、
-  dev/stg/prod のみ付与する。
-- DynamoDB GSI 名は PascalCase(例: `AppNameIndex`、`CustomerNameIndex`)。
+  アカウント/リージョンでグローバル一意になる等)。命名は各サービスの API 制約に従い、
+  複数環境の衝突を避けるため env suffix を付ける
+  (共通ヘルパー `lib/utils/naming.ts` の `envSuffix()`。base は付けず、dev/stg/prod のみ)。
 
 ## web/src/ フロントエンド構成方針
 

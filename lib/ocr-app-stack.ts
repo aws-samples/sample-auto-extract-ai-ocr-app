@@ -140,6 +140,7 @@ export class OcrAppStack extends cdk.Stack {
       syncBucketName: api.syncBucket.bucketName,
       webAclArn: props.webAclArn,
       websocketUrl: websocket.apiEndpoint,
+      selfSignUpEnabled: p.selfSignUpEnabled,
     });
 
     new cdk.CfnOutput(this, "StateMachineArn", {

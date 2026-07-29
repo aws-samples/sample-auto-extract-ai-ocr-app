@@ -322,11 +322,6 @@ export class Agent extends Construct {
         pointInTimeRecovery: true,
       });
 
-      this.customersTable.addGlobalSecondaryIndex({
-        indexName: "CustomerNameIndex",
-        partitionKey: { name: "customer_name", type: AttributeType.STRING },
-      });
-
       // Grant customer-lookup Lambda Target access to CustomersTable
       this.customersTable.grantReadData(customerLookupFn!);
 

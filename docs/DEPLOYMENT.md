@@ -238,8 +238,8 @@ VITE_APP_USER_POOL_ID=             # AuthUserPoolId の値
 VITE_APP_REGION=                   # デプロイしたリージョン
 VITE_API_BASE_URL=                 # ApiOcrApiEndpoint の値
 VITE_ENABLE_OCR=true               # OCR 機能の有効化
-VITE_ENABLE_AGENT=true             # エージェント検証機能の有効化
 VITE_SYNC_BUCKET_NAME=             # S3 同期バケット名
+VITE_WEBSOCKET_URL=                # WebSocketEndpoint の値
 ```
 
 続いて、開発サーバーを起動します。

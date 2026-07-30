@@ -9,6 +9,7 @@ from domains.image_status import (
     ImageStatus, PageProcessingMode,
     validate_image_status, validate_agent_status, validate_page_processing_mode,
 )
+from utils.helpers import float_to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +258,7 @@ def update_ocr_result(image_id: str, ocr_result: dict) -> None:
             Key={"id": image_id},
             UpdateExpression="SET ocr_result = :ocr_result",
             ExpressionAttributeValues={
-                ":ocr_result": ocr_result
+                ":ocr_result": float_to_decimal(ocr_result)
             }
         )
         logger.info(f"OCR結果を更新しました: {image_id}")
@@ -267,7 +268,7 @@ def update_ocr_result(image_id: str, ocr_result: dict) -> None:
         raise
 
 
-def update_extracted_info(image_id, extracted_info, extraction_mapping, extracted_fields=None):
+def update_extracted_info(image_id: str, extracted_info: dict, extraction_mapping: dict, extracted_fields: list = None) -> None:
     """
     抽出情報を更新する（Map型で保存）
 
@@ -282,12 +283,12 @@ def update_extracted_info(image_id, extracted_info, extraction_mapping, extracte
 
     update_expression = "SET extracted_info = :extracted_info, extraction_mapping = :extraction_mapping"
     expression_attribute_values = {
-        ":extracted_info": extracted_info,
-        ":extraction_mapping": extraction_mapping,
+        ":extracted_info": float_to_decimal(extracted_info),
+        ":extraction_mapping": float_to_decimal(extraction_mapping),
     }
     if extracted_fields is not None:
         update_expression += ", extracted_fields = :extracted_fields"
-        expression_attribute_values[":extracted_fields"] = extracted_fields
+        expression_attribute_values[":extracted_fields"] = float_to_decimal(extracted_fields)
 
     try:
         table.update_item(

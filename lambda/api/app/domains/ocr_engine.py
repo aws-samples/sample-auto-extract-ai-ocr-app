@@ -8,6 +8,32 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _normalize_points(points):
+    """OCR 座標 (points) をピクセル整数に正規化する。
+
+    `[[x, y], ...]` の各座標を int に丸める。数値でない要素や list-of-list でない形は
+    そのまま返す。
+
+    Args:
+        points: 座標リスト。
+
+    Returns:
+        各座標を int に丸めたリスト。正規化できない形はそのまま返す。
+    """
+    if not isinstance(points, list):
+        return points
+    normalized = []
+    for point in points:
+        if isinstance(point, list):
+            normalized.append([
+                int(round(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+                for v in point
+            ])
+        else:
+            normalized.append(point)
+    return normalized
+
+
 def parse_ocr_response(response_body: dict) -> dict:
     """SageMaker OCR レスポンスを整形・軽量化する（純粋関数）
 
@@ -29,7 +55,7 @@ def parse_ocr_response(response_body: dict) -> dict:
             simplified_word = {
                 "id": word["id"],
                 "content": word["content"],
-                "points": word["points"],
+                "points": _normalize_points(word["points"]),
             }
             if "direction" in word:
                 simplified_word["direction"] = word["direction"]
@@ -64,7 +90,7 @@ def parse_yomitoku_mp_response(response_body: dict) -> dict:
             all_words.append({
                 "id": word_id,
                 "content": word["content"],
-                "points": word["points"],
+                "points": _normalize_points(word["points"]),
                 "direction": word.get("direction", "horizontal"),
             })
             word_id += 1

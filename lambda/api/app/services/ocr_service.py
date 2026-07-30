@@ -18,7 +18,7 @@ from clients import s3_client, sagemaker_runtime_client, sfn_client
 from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response
 from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from services.pdf_conversion_service import sync_parent_status
-from utils.helpers import float_to_decimal, compress_image_for_payload
+from utils.helpers import compress_image_for_payload
 
 logger = logging.getLogger(__name__)
 
@@ -257,11 +257,11 @@ class OcrService:
                 updated_page["words"] = page_words
                 updated_pages.append(updated_page)
 
-            combined_result = float_to_decimal({
+            combined_result = {
                 "words": all_words,
                 "pages": updated_pages,
                 "total_pages": len(ocr_results)
-            })
+            }
 
             db_update_ocr_result(image_id, combined_result)
             sync_parent_status(image_id)

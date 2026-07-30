@@ -1,22 +1,25 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
+import { resolveDeploymentPlanFromEnvironment } from "../lib/deployment-plan";
 import { OcrAppStack } from "../lib/ocr-app-stack";
 import { WafStack } from "../lib/waf-stack";
-import { getParameters, getStackName } from "../lib/parameters";
 
 const env = process.env.ENV;
-const params = getParameters(env);
-const stackName = getStackName(env);
+const deploymentPlan = resolveDeploymentPlanFromEnvironment(
+  env,
+  process.env.CDK_DEFAULT_REGION,
+);
+const params = deploymentPlan.params;
 
 const app = new cdk.App();
 
 // WAF Stack（CloudFront 用 WAF は us-east-1 に作成する必要がある）
 let webAclArn: string | undefined;
-if (params.waf.enabled) {
-  const wafStack = new WafStack(app, `${stackName}-Waf`, {
+if (deploymentPlan.wafStack) {
+  const wafStack = new WafStack(app, deploymentPlan.wafStack.name, {
     env: {
       account: process.env.CDK_DEFAULT_ACCOUNT,
-      region: "us-east-1",
+      region: deploymentPlan.wafStack.region,
     },
     crossRegionReferences: true,
     wafOptions: params.waf,
@@ -25,10 +28,10 @@ if (params.waf.enabled) {
   webAclArn = wafStack.webAclArn;
 }
 
-new OcrAppStack(app, stackName, {
+new OcrAppStack(app, deploymentPlan.applicationStack.name, {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION || "ap-northeast-1",
+    region: deploymentPlan.applicationStack.region,
   },
   crossRegionReferences: true,
   params,

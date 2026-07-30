@@ -193,29 +193,118 @@ if [[ -n "$SEED_USERS_CSV" ]]; then
 fi
 
 # ── AWS 認証情報の確認 ───────────────────────────────────
-echo "${CYAN}[1/3]${RESET} AWS 認証情報を確認中..."
+echo "${CYAN}[1/4]${RESET} AWS 認証情報を確認中..."
 CALLER_JSON=$(aws sts get-caller-identity --output json 2>/dev/null) \
   || die "AWS credentials が未設定または無効です。aws sso login / aws configure などを実行してください。"
 
 ACCOUNT_ID=$(echo "$CALLER_JSON" | sed -n 's/.*"Account": *"\([^"]*\)".*/\1/p')
 ARN=$(echo "$CALLER_JSON" | sed -n 's/.*"Arn": *"\([^"]*\)".*/\1/p')
 
-# ── スタック名解決 ───────────────────────────────────────
-echo "${CYAN}[2/3]${RESET} スタック名を解決中..."
-if [[ "$ENV_NAME" == "base" ]]; then
-  STACK_NAME="OcrAppStack"
+# bin/ocr-app.ts と bin/stack-plan.ts は以下の環境変数を参照する:
+#   - ENV: 環境名 (base/dev/stg/prod) → parameters.ts でルックアップ
+#   - CDK_DEFAULT_REGION: Application Stack のデプロイ先リージョン
+#   - CDK_DEFAULT_ACCOUNT: デプロイ先 AWS アカウント
+# 加えて、CDK の bundling / asset publishing や、Docker 内で走る AWS SDK
+# (boto3 等) が region を必要とするため、AWS_REGION / AWS_DEFAULT_REGION
+# も同じ値で export する。片方だけだと SDK が ~/.aws/config の
+# default region にフォールバックしてしまう場合がある。
+export ENV="$ENV_NAME"
+export CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID"
+export CDK_DEFAULT_REGION="$REGION"
+export AWS_REGION="$REGION"
+export AWS_DEFAULT_REGION="$REGION"
+
+# ── デプロイ予定スタックの解決 ───────────────────────────
+echo "${CYAN}[2/4]${RESET} デプロイ予定スタックを解決中..."
+STACK_PLAN_TSV=""
+if ! STACK_PLAN_TSV=$(npx ts-node --prefer-ts-exts bin/stack-plan.ts); then
+  die "CDK のデプロイ予定スタックを解決できませんでした"
+fi
+
+STACK_KINDS=()
+STACK_NAMES=()
+STACK_REGIONS=()
+STACK_NAME=""
+while IFS=$'\t' read -r stack_kind stack_name stack_region; do
+  [[ -z "${stack_kind}${stack_name}${stack_region}" ]] && continue
+  if [[ -z "$stack_kind" || -z "$stack_name" || -z "$stack_region" ]]; then
+    die "stack-plan の出力形式が不正です: ${stack_kind:-<empty>} ${stack_name:-<empty>} ${stack_region:-<empty>}"
+  fi
+  if [[ "$stack_kind" != "waf" && "$stack_kind" != "application" ]]; then
+    die "stack-plan が未知の種別を返しました: $stack_kind"
+  fi
+  STACK_KINDS+=("$stack_kind")
+  STACK_NAMES+=("$stack_name")
+  STACK_REGIONS+=("$stack_region")
+  [[ "$stack_kind" == "application" ]] && STACK_NAME="$stack_name"
+done <<< "$STACK_PLAN_TSV"
+
+(( ${#STACK_NAMES[@]} > 0 )) || die "デプロイ予定スタックがありません"
+[[ -n "$STACK_NAME" ]] || die "Application Stack を解決できませんでした"
+
+# ── deploy時のCloudFormation存在確認 ─────────────────────
+STACK_ACTIONS=()
+STACK_STATUSES=()
+if [[ "$CDK_COMMAND" == "deploy" ]]; then
+  echo "${CYAN}[3/4]${RESET} CloudFormation の既存状態を確認中..."
+  for i in "${!STACK_NAMES[@]}"; do
+    stack_name="${STACK_NAMES[$i]}"
+    stack_region="${STACK_REGIONS[$i]}"
+    describe_result=""
+    if describe_result=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --region "$stack_region" \
+      --query 'Stacks[0].StackStatus' \
+      --output text 2>&1); then
+      if [[ -z "$describe_result" || "$describe_result" == "None" ]]; then
+        die "CloudFormation StackStatus が空です: $stack_name ($stack_region)"
+      fi
+      if [[ "$describe_result" == "DELETE_COMPLETE" ]]; then
+        STACK_ACTIONS+=("CREATE")
+      else
+        STACK_ACTIONS+=("UPDATE")
+      fi
+      STACK_STATUSES+=("$describe_result")
+    elif [[ "$describe_result" == *"ValidationError"* && "$describe_result" == *"Stack with id"* && "$describe_result" == *"does not exist"* ]]; then
+      STACK_ACTIONS+=("CREATE")
+      STACK_STATUSES+=("not found")
+    else
+      die "CloudFormation Stack の存在確認に失敗しました: $stack_name ($stack_region)\n$describe_result"
+    fi
+  done
 else
-  STACK_NAME="OcrAppStack-${ENV_NAME}"
+  echo "${CYAN}[3/4]${RESET} CREATE / UPDATE 判定は deploy 時のみ実行します"
 fi
 
 # ── サマリー表示 ─────────────────────────────────────────
-echo "${CYAN}[3/3]${RESET} 設定サマリー"
+echo "${CYAN}[4/4]${RESET} 設定サマリー"
 echo "  ${BOLD}Command:${RESET} $CDK_COMMAND"
 echo "  ${BOLD}Env:    ${RESET} ${GREEN}$ENV_NAME${RESET}"
 echo "  ${BOLD}Region: ${RESET} ${GREEN}$REGION${RESET}"
 echo "  ${BOLD}Account:${RESET} $ACCOUNT_ID"
 echo "  ${BOLD}Role:   ${RESET} $ARN"
-echo "  ${BOLD}Stack:  ${RESET} $STACK_NAME"
+echo "  ${BOLD}Planned stacks:${RESET}"
+for i in "${!STACK_NAMES[@]}"; do
+  stack_kind="${STACK_KINDS[$i]}"
+  stack_name="${STACK_NAMES[$i]}"
+  stack_region="${STACK_REGIONS[$i]}"
+  if [[ "$CDK_COMMAND" == "deploy" ]]; then
+    stack_action="${STACK_ACTIONS[$i]}"
+    stack_status="${STACK_STATUSES[$i]}"
+    if [[ "$stack_action" == "CREATE" ]]; then
+      action_color="$GREEN"
+    else
+      action_color="$YELLOW"
+    fi
+    printf "    ${action_color}%-6s${RESET} %-30s (%s) [%s]\n" \
+      "$stack_action" "$stack_name" "$stack_region" "$stack_status"
+  else
+    printf "    %-11s %-30s (%s)\n" "$stack_kind" "$stack_name" "$stack_region"
+  fi
+done
+if [[ "$CDK_COMMAND" == "deploy" ]]; then
+  echo "  ${YELLOW}Note:${RESET} UPDATE は既存Stackを示します。差分がなければCDKは更新を行いません。"
+fi
 [[ -n "$SEED_USERS_CSV" ]] && echo "  ${BOLD}Seed:   ${RESET} ${GREEN}$SEED_USERS_CSV${RESET} (deploy 完了後に seed-users を実行)"
 echo
 
@@ -238,20 +327,6 @@ if [[ "$SKIP_CONFIRM" == "false" ]]; then
 fi
 
 # ── CDK コマンド実行 ────────────────────────────────────
-# bin/ocr-app.ts は以下の環境変数を参照する:
-#   - ENV: 環境名 (base/dev/stg/prod) → parameters.ts でルックアップ
-#   - CDK_DEFAULT_REGION: デプロイ先リージョン
-#   - CDK_DEFAULT_ACCOUNT: デプロイ先 AWS アカウント
-# 加えて、CDK の bundling / asset publishing や、Docker 内で走る AWS SDK
-# (boto3 等) が region を必要とするため、AWS_REGION / AWS_DEFAULT_REGION
-# も同じ値で export する。片方だけだと SDK が ~/.aws/config の
-# default region にフォールバックしてしまう場合がある。
-export ENV="$ENV_NAME"
-export CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID"
-export CDK_DEFAULT_REGION="$REGION"
-export AWS_REGION="$REGION"
-export AWS_DEFAULT_REGION="$REGION"
-
 echo "${CYAN}▶${RESET} ENV=$ENV_NAME CDK_DEFAULT_REGION=$REGION AWS_REGION=$REGION npx cdk ${CDK_COMMAND} --all"
 npx cdk "$CDK_COMMAND" --all
 CDK_EXIT=$?

@@ -98,7 +98,7 @@ export class WebSocket extends Construct {
     // websocketHandler がクライアントへ PostToConnection できるように権限付与
     this.api.grantManageConnections(websocketHandler);
 
-    new CfnOutput(this, "WebSocketEndpoint", {
+    new CfnOutput(this, "Endpoint", {
       value: this.apiEndpoint,
       description: "WebSocket API Endpoint for Presence feature",
     });

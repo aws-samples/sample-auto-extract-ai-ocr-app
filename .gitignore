@@ -4,6 +4,7 @@ node_modules
 # CDK
 .cdk.staging
 cdk.out
+cdk.context.json
 
 # CDK TypeScript build output
 bin/**/*.js

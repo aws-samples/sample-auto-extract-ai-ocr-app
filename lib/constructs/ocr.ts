@@ -24,6 +24,7 @@ import {
 } from "aws-cdk-lib/aws-sagemaker";
 import { Construct } from "constructs";
 import * as path from "path";
+import { envSuffix } from "../utils/naming";
 
 export interface OcrProps {
   baseName?: string;
@@ -33,6 +34,8 @@ export interface OcrProps {
   enableZeroScale?: boolean;
   scaleInCooldownSeconds?: number;
   marketplaceModelPackageArn?: string;
+  /** 環境名（base/dev/stg/prod）。リソース名の env suffix に使う。 */
+  envName?: string;
 }
 
 export class Ocr extends Construct {
@@ -74,10 +77,11 @@ export class Ocr extends Construct {
     };
 
     const variantName = "AllTraffic";
-    // InstanceType をサフィックスに含め、作り直し時に新旧の名前が衝突しないようにする
+    // InstanceType をサフィックスに含め、作り直し時に新旧の名前が衝突しないようにする。
+    // さらに env suffix を付け、複数環境を同一リージョンにデプロイしても衝突しないようにする。
     this.inferenceComponentName = isMarketplace
       ? ""
-      : `${baseName}-inference-component-${itSuffix}`;
+      : `${baseName}-inference-component-${itSuffix}${envSuffix(props.envName)}`;
 
     // SageMaker用のIAMロール
     const sagemakerRole = new Role(this, "SageMakerExecutionRole", {
@@ -162,13 +166,9 @@ export class Ocr extends Construct {
         platform: Platform.LINUX_AMD64,
       });
 
-      // Image content 由来のサフィックス。CfnModel の PrimaryContainer.Image は Replacement 属性なので、
-      // Docker image 差分ビルドで imageUri が変わるたびに Model は作り直しになる。
-      // 物理名を assetHash で自動ユニーク化することで、Replacement 時の AlreadyExists 衝突を防ぐ。
-      const modelHashSuffix = dockerImage.assetHash.substring(0, 8);
-
+      // modelName は指定せず CDK 自動採番に委ねる（イメージ差分ビルド時の Replacement で
+      // AlreadyExists を避け、複数環境の衝突も防ぐ）。参照側は attrModelName 経由。
       model = new CfnModel(this, "OcrModel", {
-        modelName: `${containerMap[ocrEngine]}-${modelHashSuffix}`,
         executionRoleArn: sagemakerRole.roleArn,
         primaryContainer: {
           image: dockerImage.imageUri,

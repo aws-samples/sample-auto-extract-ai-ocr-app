@@ -6,7 +6,6 @@ from domains.prompts import (
     create_single_with_ocr_prompt, create_single_without_ocr_prompt,
     create_multi_with_ocr_prompt, create_multi_without_ocr_prompt
 )
-from utils.helpers import float_to_decimal
 from domains.template import generate_unified_template
 import logging
 import json
@@ -58,10 +57,10 @@ def parse_extraction_response(ai_response, field_names):
 
 
 def finalize_extraction_result(extracted_info, mapping=None):
-    """抽出結果を Decimal 変換して最終形式にする"""
-    result = {"extracted_info": float_to_decimal(extracted_info)}
+    """抽出結果を最終形式の dict にまとめる"""
+    result = {"extracted_info": extracted_info}
     if mapping is not None:
-        result["mapping"] = float_to_decimal(mapping)
+        result["mapping"] = mapping
     return result
 
 

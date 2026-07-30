@@ -7,6 +7,7 @@ from datetime import datetime
 import uuid
 from config import settings
 from exceptions import NotFoundError, BadRequestError
+from utils.helpers import float_to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
 
             if suggestions is not None:
                 update_expr += ", suggestions = :suggestions"
-                expr_attr_values[":suggestions"] = suggestions
+                expr_attr_values[":suggestions"] = float_to_decimal(suggestions)
 
         if error:
             update_expr += ", #error = :error"
@@ -286,7 +287,7 @@ def update_schema_generation_job(job_id: str, status: str, result: dict = None, 
             if result is not None:
                 update_expr += ", #result = :result"
                 expr_attr_names["#result"] = "result"
-                expr_attr_values[":result"] = result
+                expr_attr_values[":result"] = float_to_decimal(result)
 
         if error:
             update_expr += ", #error = :error"

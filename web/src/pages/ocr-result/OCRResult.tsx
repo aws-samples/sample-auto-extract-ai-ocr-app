@@ -15,6 +15,7 @@ import ImagePreview from "./ImagePreview";
 import OcrResultEditor from "./OcrResultEditor";
 import ExtractionStatusDisplay from "./ExtractionStatusDisplay";
 import ExtractedInfoDisplay from "./ExtractedInfoDisplay";
+import ErrorBoundary from "../../components/shared/ErrorBoundary";
 import ReExtractModal from "./ReExtractModal";
 import AgentModal from "./AgentModal";
 import StatusProgressBar from "../../components/ocr-result/StatusProgressBar";
@@ -1185,18 +1186,20 @@ function OcrResult() {
                       <span className="text-sm text-green-700">問題は検出されませんでした</span>
                     </div>
                   )}
-                  <ExtractedInfoDisplay
-                    extractedInfo={extractedInfo}
-                    fields={appFields}
-                    editMode={editMode}
-                    onHighlightField={highlightField}
-                    onHighlightCell={highlightTableCell}
-                    onUpdateExtractedInfo={updateExtractedInfo}
-                    agentSuggestions={agentSuggestions}
-                    onAcceptSuggestion={handleAcceptSuggestion}
-                    onRejectSuggestion={handleRejectSuggestion}
-                    onEnterEditMode={() => { if (agentStatus === 'running') return; suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}
-                  />
+                  <ErrorBoundary resetKeys={[extractedInfo]} fallback={<div className="p-4 text-sm text-neutral-600 bg-neutral-50 border border-neutral-200 rounded">抽出結果の表示中にエラーが発生しました。データ構造が想定外の可能性があります。</div>}>
+                    <ExtractedInfoDisplay
+                      extractedInfo={extractedInfo}
+                      fields={appFields}
+                      editMode={editMode}
+                      onHighlightField={highlightField}
+                      onHighlightCell={highlightTableCell}
+                      onUpdateExtractedInfo={updateExtractedInfo}
+                      agentSuggestions={agentSuggestions}
+                      onAcceptSuggestion={handleAcceptSuggestion}
+                      onRejectSuggestion={handleRejectSuggestion}
+                      onEnterEditMode={() => { if (agentStatus === 'running') return; suggestionsSnapshotRef.current = [...agentSuggestions]; extractedInfoSnapshotRef.current = { ...extractedInfo }; setEditMode(true); }}
+                    />
+                  </ErrorBoundary>
                 </>
               )}
             </div>

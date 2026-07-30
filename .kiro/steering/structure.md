@@ -8,9 +8,18 @@ inclusion: always
 
 ## 命名規約
 
-- CDK Construct: PascalCase(例: `OcrEndpoint`)
 - Lambda ファイル: snake_case(例: `extraction_service.py`)
 - React コンポーネント: PascalCase(例: `ExtractedInfoDisplay.tsx`)
+
+### CDK
+
+- construct id は PascalCase。原則クラス名に揃える。
+- リソースの物理名は原則指定せず、CloudFormation の自動採番に任せる
+  (`{stackName}-{論理ID}-{hash}`。スタック名が環境ごとに分かれるため複数環境でも衝突しない)。
+- 物理名を明示するのは、自動採番が使えないリソースに限る(名前で一意参照が要る、
+  アカウント/リージョンでグローバル一意になる等)。命名は各サービスの API 制約に従い、
+  複数環境の衝突を避けるため env suffix を付ける
+  (共通ヘルパー `lib/utils/naming.ts` の `envSuffix()`。base は付けず、dev/stg/prod のみ)。
 
 ## web/src/ フロントエンド構成方針
 

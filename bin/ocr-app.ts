@@ -36,4 +36,5 @@ new OcrAppStack(app, deploymentPlan.applicationStack.name, {
   crossRegionReferences: true,
   params,
   webAclArn,
+  envName: env,
 });

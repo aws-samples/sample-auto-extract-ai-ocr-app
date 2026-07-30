@@ -14,6 +14,7 @@ from repositories.tool_repository import list_tools, get_usecase_allowed_tool_na
 from repositories.usecase_repository import get_usecase_by_app_name
 from clients import AgentClient, s3_client, invoke_worker_async
 from config import settings
+from utils.helpers import decimal_to_float
 logger = logging.getLogger(__name__)
 
 
@@ -212,7 +213,7 @@ class AgentService:
             System prompt string (data only — instructions are in runtime config)
         """
         return f"""## 検証対象の抽出結果
-{json.dumps(extracted_info, ensure_ascii=False, indent=2)}
+{json.dumps(decimal_to_float(extracted_info), ensure_ascii=False, indent=2)}
 """
     
 

@@ -35,8 +35,10 @@ const numericInputProps = (isNumber: boolean, onValue: (v: string) => void) =>
         onChange: (e: React.ChangeEvent<HTMLInputElement>) => onValue(e.target.value),
       };
 
-// 抽出済みデータと現在のスキーマが不一致でも、オブジェクトを React child として
-// 直接渡して画面全体を落とさない。旧データは内容を確認できる JSON 文字列で表示する。
+// controlled input の value 用に leaf 値を string に正規化する。
+// input には JSX / object を渡せず、React は object を子要素にできないため、
+// object/array は JSON 文字列に潰し、その他は string / number に落とす。
+// テキスト行内の中間表示（suggestion の「〜」など）にも使う。
 const formatLeafValue = (value: unknown): string | number => {
   if (value === null || value === undefined) return '';
   if (typeof value === 'object') {
@@ -48,6 +50,42 @@ const formatLeafValue = (value: unknown): string | number => {
   }
   if (typeof value === 'boolean') return String(value);
   return typeof value === 'number' ? value : String(value);
+};
+
+// 抽出結果やエージェント提案の値は、スキーマ上は string 想定でも実データが object/array に
+// なりうる（LLM 出力・型ズレ・ネストした項目）。React は object を子要素として描画できず
+// error #31 でクラッシュするため、読み取り表示は必ずこの関数を通す。
+// どんな入力でも string か JSX 要素しか返さないことを保証し、object を素で返さない。
+const MAX_NEST_DEPTH = 8;
+
+const renderNestedValue = (value: any, depth: number = 0): React.ReactNode => {
+  if (value === null || value === undefined) return '';
+  const t = typeof value;
+  if (t === 'string' || t === 'number' || t === 'boolean') return String(value);
+  // 深すぎる／string・number・boolean・object 以外（bigint 等）は文字列へ吸収
+  if (depth >= MAX_NEST_DEPTH || (t !== 'object')) {
+    try { return JSON.stringify(value); } catch { return String(value); }
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '';
+    return (
+      <ul className="list-disc pl-4 space-y-0.5">
+        {value.map((v, i) => <li key={i}>{renderNestedValue(v, depth + 1)}</li>)}
+      </ul>
+    );
+  }
+  const entries = Object.entries(value);
+  if (entries.length === 0) return '';
+  return (
+    <div className="space-y-0.5">
+      {entries.map(([k, v]) => (
+        <div key={k} className="flex gap-1">
+          <span className="text-neutral-500 whitespace-nowrap">{k}:</span>
+          <span className="min-w-0 break-words">{renderNestedValue(v, depth + 1)}</span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 interface ExtractedInfoDisplayProps {
@@ -164,10 +202,10 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
   const renderSuggestion = (suggestion: Suggestion) => (
     <div className="mt-2 p-3 bg-warning-light border border-warning-border rounded">
       <div className="text-sm mb-2">
-        <div className="mb-1">{suggestion.reason}</div>
+        <div className="mb-1">{renderNestedValue(suggestion.reason)}</div>
         <div className="text-xs text-neutral-600">
           「{formatLeafValue(suggestion.original_value)}」→「{formatLeafValue(suggestion.suggested_value)}」
-          {suggestion.tool_used && <span className="ml-2">({suggestion.tool_used})</span>}
+          {suggestion.tool_used && <span className="ml-2">({formatLeafValue(suggestion.tool_used)})</span>}
         </div>
       </div>
       <div className="flex gap-2">
@@ -262,7 +300,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                     className="p-2 bg-neutral-50 border border-neutral-200 rounded cursor-pointer hover:bg-neutral-100 min-h-[2.5rem]"
                     onClick={() => onHighlightField(fieldPath, true)}
                   >
-                    {formatLeafValue(mapValue[subField.name])}
+                    {renderNestedValue(mapValue[subField.name])}
                   </div>
                 )}
                 {suggestion && renderSuggestion(suggestion)}
@@ -298,7 +336,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                   className="w-full p-1 border border-neutral-300 rounded text-sm"
                 />
               ) : (
-                <span className="text-sm">{formatLeafValue(item)}</span>
+                <span className="text-sm">{renderNestedValue(item)}</span>
               )}
             </li>
           ))}
@@ -353,10 +391,26 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                           const cellSuggestion = getSuggestionForField(cellPath);
                           const isEditing = editingCell === cellPath;
                           const isLastCol = colIdx === itemFields.length - 1;
+                          // map/list 型のセルは値がオブジェクト/配列になる。編集経路に入れず、
+                          // 読み取りのネスト展開表示にする（object を素で描画すると error #31 で落ちる）。
+                          const isComplexCell = itemField.type === 'map' || itemField.type === 'list';
 
                           return (
-                            <td key={itemField.name} className="px-3 py-1.5 relative">
-                              {editMode && isEditing ? (
+                            <td key={itemField.name} className="px-3 py-1.5 relative align-top">
+                              {isComplexCell ? (
+                                <div
+                                  className={`text-sm text-neutral-900 px-2 py-1 rounded max-w-xs break-words cursor-pointer min-h-[1.5rem] ${cellSuggestion ? 'text-warning-text font-medium hover:bg-warning-light/50' : 'hover:bg-info-light'}`}
+                                  onClick={() => {
+                                    onHighlightCell(field.name, itemIndex, itemField.name);
+                                    if (rowSuggestions.length > 0) {
+                                      setExpandedSuggestionRow(isExpanded ? null : rowKey);
+                                    }
+                                  }}
+                                >
+                                  {renderNestedValue(item[itemField.name])}
+                                  {cellSuggestion && <span className="ml-1">⚠</span>}
+                                </div>
+                              ) : editMode && isEditing ? (
                                 <input
                                   ref={editInputRef}
                                   type="text"
@@ -404,7 +458,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                                     }
                                   }}
                                 >
-                                  {formatLeafValue(item[itemField.name])}
+                                  {renderNestedValue(item[itemField.name])}
                                   {cellSuggestion && <span className="ml-1">⚠</span>}
                                 </div>
                               )}
@@ -434,10 +488,10 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                               {rowSuggestions.map((suggestion, i) => (
                                 <div key={i} className="p-3 bg-warning-light border border-warning-border rounded">
                                   <div className="text-sm mb-2">
-                                    <div className="mb-1">{suggestion.reason}</div>
+                                    <div className="mb-1">{renderNestedValue(suggestion.reason)}</div>
                                     <div className="text-xs text-neutral-600">
                                       「{formatLeafValue(suggestion.original_value)}」→「{formatLeafValue(suggestion.suggested_value)}」
-                                      {suggestion.tool_used && <span className="ml-2">({suggestion.tool_used})</span>}
+                                      {suggestion.tool_used && <span className="ml-2">({formatLeafValue(suggestion.tool_used)})</span>}
                                     </div>
                                   </div>
                                   <div className="flex gap-2">
@@ -485,7 +539,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                   className="w-full p-1 border border-neutral-300 rounded"
                 />
               ) : (
-                <div className="p-1">{formatLeafValue(item)}</div>
+                <div className="p-1">{renderNestedValue(item)}</div>
               )}
             </li>
           ))}

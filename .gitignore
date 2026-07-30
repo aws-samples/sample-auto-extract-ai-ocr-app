@@ -18,6 +18,8 @@ scripts/**/*.js
 scripts/**/*.d.ts
 lambda/**/*.js
 lambda/**/*.d.ts
+test/**/*.js
+test/**/*.d.ts
 web/**/*.d.ts
 web/src/**/*.js
 web/vite.config.js

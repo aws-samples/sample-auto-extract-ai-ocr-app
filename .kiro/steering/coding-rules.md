@@ -25,6 +25,7 @@ inclusion: always
 - **巨大コンポーネントは分割**: 複雑なステート管理・ポーリングはカスタムフックに切り出す。
 - **enum 的な値は union 型で締める**: status / type 等は `string` でなく取りうる値の union にする。
 - **API エラー表示は `err.userMessage` を使う**: 各所で `detail` / `err.message` を手整形しない。表示用メッセージは axios interceptor が付与する。
+- **変更後は Web ビルドを実行**: フロントエンドを変更した場合、リポジトリルートで `npm run web:build` を実行して型チェックと Vite ビルドを確認する。ルートの `npm run build` は CDK 側の TypeScript しか検証しないため、フロントエンド検証の代用にしない。
 
 ## CDK (TypeScript)
 

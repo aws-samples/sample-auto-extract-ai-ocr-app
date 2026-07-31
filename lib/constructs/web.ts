@@ -17,12 +17,14 @@ export interface WebProps {
   webAclArn?: string;
   /** WebSocket プレゼンス機能のエンドポイント URL */
   websocketUrl: string;
+  /** Cognito のセルフサインアップ許可（Authenticator UI 側の hideSignUp と連動させる） */
+  selfSignUpEnabled: boolean;
 }
 export class Web extends Construct {
   constructor(scope: Construct, id: string, props: WebProps) {
     super(scope, id);
 
-    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, syncBucketName, webAclArn, websocketUrl } = props;
+    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, syncBucketName, webAclArn, websocketUrl, selfSignUpEnabled } = props;
 
     const bucketProps: s3.BucketProps = {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -112,6 +114,7 @@ export class Web extends Construct {
         VITE_ENABLE_OCR: enableOcr.toString(),
         VITE_SYNC_BUCKET_NAME: syncBucketName,
         VITE_WEBSOCKET_URL: websocketUrl,
+        VITE_SELF_SIGN_UP_ENABLED: selfSignUpEnabled.toString(),
       },
     });
 

@@ -2,9 +2,12 @@
 /**
  * CSV から Cognito ユーザーを一括作成し、DSQL に role / groups を反映する。
  *
- * CSV 形式 (Level 2):
+ * CSV 形式:
  *   email,tempPassword,role,groups,displayName
- *   alice@example.com,TempPass123!,admin,admin|team-a,Alice
+ *   alice@example.com,,admin,admin|team-a,Alice
+ *
+ * tempPassword は空可。空なら Cognito が自動生成し、既定では招待メールで
+ * 利用者へ届く。値を書くと従来通りその値を仮 PW としてセット。
  *
  * 冪等性:
  *   - Cognito に存在するユーザーは PW 系操作をスキップ (本 PW を壊さない)
@@ -17,7 +20,7 @@
  *       --user-pool-id us-east-1_XXXX \
  *       --dsql-endpoint xxxxx.dsql.us-east-1.on.aws \
  *       --region us-east-1 \
- *       [--send-invitation] \
+ *       [--suppress-invitation] \
  *       [--dry-run]
  *
  *   対話モード(引数を省略、npm run settings:users で叩くケース):
@@ -57,6 +60,7 @@ const VALID_ROLES: Role[] = ["admin", "author", "reader"];
 
 interface UserRow {
   email: string;
+  // 空文字列可。空なら Cognito 側で自動生成させる。
   tempPassword: string;
   role: Role;
   groups: string[];
@@ -69,7 +73,7 @@ interface RawOptions {
   userPoolId?: string;
   dsqlEndpoint?: string;
   region?: string;
-  sendInvitation: boolean;
+  suppressInvitation: boolean;
   dryRun: boolean;
 }
 
@@ -78,7 +82,7 @@ interface Options {
   userPoolId: string;
   dsqlEndpoint: string;
   region: string;
-  sendInvitation: boolean;
+  suppressInvitation: boolean;
   dryRun: boolean;
 }
 
@@ -96,7 +100,7 @@ interface Summary {
 
 function parseArgs(): RawOptions {
   const args = process.argv.slice(2);
-  const opts: RawOptions = { sendInvitation: false, dryRun: false };
+  const opts: RawOptions = { suppressInvitation: false, dryRun: false };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -113,8 +117,8 @@ function parseArgs(): RawOptions {
       case "--region":
         opts.region = args[++i];
         break;
-      case "--send-invitation":
-        opts.sendInvitation = true;
+      case "--suppress-invitation":
+        opts.suppressInvitation = true;
         break;
       case "--dry-run":
         opts.dryRun = true;
@@ -133,7 +137,7 @@ function parseArgs(): RawOptions {
 }
 
 function printHelp(): void {
-  console.log(`Usage: seed-users.ts [--csv <path>] [--user-pool-id <id>] [--dsql-endpoint <endpoint>] [--region <region>] [--send-invitation] [--dry-run]
+  console.log(`Usage: seed-users.ts [--csv <path>] [--user-pool-id <id>] [--dsql-endpoint <endpoint>] [--region <region>] [--suppress-invitation] [--dry-run]
 
 Modes:
   引数を全指定すると非対話モード (cdk.sh --seed-users から呼ばれるケース)。
@@ -143,10 +147,11 @@ Modes:
 
 Options:
   --csv <path>            CSV file with columns: email,tempPassword,role,groups,displayName
+                          (tempPassword は空可。空なら Cognito が仮 PW を自動生成する)
   --user-pool-id <id>     Cognito UserPool ID (e.g. us-east-1_XXXX)
   --dsql-endpoint <ep>    DSQL cluster endpoint hostname
   --region <region>       AWS region (e.g. us-east-1)
-  --send-invitation       Send Cognito invitation email (default: suppressed)
+  --suppress-invitation   Cognito の招待メール送信を抑止する (default: 送信する)
   --dry-run               Do not write to Cognito or DSQL; print planned actions only
   -h, --help              Show this help
 `);
@@ -489,7 +494,7 @@ async function resolveOptions(raw: RawOptions): Promise<Options> {
   console.log(`  ${BOLD}UserPoolId:   ${RESET} ${userPoolId}`);
   console.log(`  ${BOLD}DsqlEndpoint: ${RESET} ${dsqlEndpoint}`);
   console.log(`  ${BOLD}CSV:          ${RESET} ${csvPath} (${rows.length} users, ${groups.length} groups)`);
-  console.log(`  ${BOLD}Send invite:  ${RESET} ${raw.sendInvitation ? "yes" : "no (SUPPRESS)"}`);
+  console.log(`  ${BOLD}Send invite:  ${RESET} ${raw.suppressInvitation ? "no (SUPPRESS)" : "yes"}`);
   console.log(`  ${BOLD}Dry run:      ${RESET} ${raw.dryRun ? "yes" : "no"}`);
 
   const answer = await ask("\nこのまま実行しますか？ [y/N]: ");
@@ -503,7 +508,7 @@ async function resolveOptions(raw: RawOptions): Promise<Options> {
     userPoolId: userPoolId!,
     dsqlEndpoint: dsqlEndpoint!,
     region: region!,
-    sendInvitation: raw.sendInvitation,
+    suppressInvitation: raw.suppressInvitation,
     dryRun: raw.dryRun,
   };
 }
@@ -572,7 +577,6 @@ function parseCsv(content: string): UserRow[] {
     const displayName = (fields[idx("displayName")] ?? "").trim();
 
     if (!email) throw new Error(`Line ${lineNumber}: email is required`);
-    if (!tempPassword) throw new Error(`Line ${lineNumber}: tempPassword is required`);
     if (!VALID_ROLES.includes(roleStr as Role)) {
       throw new Error(`Line ${lineNumber}: invalid role "${roleStr}". Must be one of ${VALID_ROLES.join(", ")}`);
     }
@@ -595,12 +599,16 @@ function parseCsv(content: string): UserRow[] {
 /**
  * 指定 email のユーザーを Cognito から取得。未存在なら作成する。
  * 戻り値: { sub, created } - created=true は今回このスクリプトが作成したことを表す。
+ *
+ * suppressInvitation=false (既定) のとき、Cognito は招待メールを送信する。
+ * row.tempPassword が空なら Cognito が仮 PW を自動生成し、その値をメール本文に埋める。
+ * suppressInvitation=true なら MessageAction=SUPPRESS で作成しメールは飛ばない。
  */
 async function ensureCognitoUser(
   client: CognitoIdentityProviderClient,
   userPoolId: string,
   row: UserRow,
-  sendInvitation: boolean,
+  suppressInvitation: boolean,
   dryRun: boolean
 ): Promise<{ sub: string | null; created: boolean; skipped: boolean }> {
   try {
@@ -614,7 +622,9 @@ async function ensureCognitoUser(
   }
 
   if (dryRun) {
-    console.log(`  [DRY RUN] Would create Cognito user: ${row.email}`);
+    const pwLabel = row.tempPassword ? "(CSV 指定)" : "(Cognito 自動生成)";
+    const mailLabel = suppressInvitation ? "(SUPPRESS)" : "(送信)";
+    console.log(`  [DRY RUN] Would create Cognito user: ${row.email} PW=${pwLabel} メール=${mailLabel}`);
     return { sub: null, created: true, skipped: false };
   }
 
@@ -622,9 +632,12 @@ async function ensureCognitoUser(
     new AdminCreateUserCommand({
       UserPoolId: userPoolId,
       Username: row.email,
-      TemporaryPassword: row.tempPassword,
-      MessageAction: sendInvitation ? undefined : MessageActionType.SUPPRESS,
-      DesiredDeliveryMediums: sendInvitation ? [DeliveryMediumType.EMAIL] : undefined,
+      // tempPassword 空なら Cognito 側で自動生成させる (キー自体を含めない)
+      ...(row.tempPassword ? { TemporaryPassword: row.tempPassword } : {}),
+      // suppress 指定時のみ MessageAction=SUPPRESS。未指定なら Cognito が招待メールを送る
+      MessageAction: suppressInvitation ? MessageActionType.SUPPRESS : undefined,
+      // メール送信モード時のみ配信メディアを明示。SUPPRESS 時に付けると API 側で拒否される
+      DesiredDeliveryMediums: suppressInvitation ? undefined : [DeliveryMediumType.EMAIL],
       UserAttributes: [
         { Name: "email", Value: row.email },
         { Name: "email_verified", Value: "true" },
@@ -771,7 +784,7 @@ async function main() {
   for (const row of rows) {
     console.log(`\n[Cognito] ${row.email} (line ${row.lineNumber})`);
     try {
-      const r = await ensureCognitoUser(cognito, opts.userPoolId, row, opts.sendInvitation, opts.dryRun);
+      const r = await ensureCognitoUser(cognito, opts.userPoolId, row, opts.suppressInvitation, opts.dryRun);
       if (r.created) {
         summary.cognitoCreated++;
         console.log(`  created (sub=${r.sub ?? "<unknown>"})`);

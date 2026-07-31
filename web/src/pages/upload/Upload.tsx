@@ -1,22 +1,32 @@
-import { useState, useEffect, useRef, FormEvent } from "react";
+import { useState, useEffect, useRef, useMemo, FormEvent } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { deleteImage, updateVerificationStatus } from "../../services/imageApi";
 import { ImageFile } from "../../types/ocr";
 import { useAppContext } from "../../contexts/AppContext";
 import { usePolling } from "../../hooks/usePolling";
 import { usePresence, PRESENCE_LIST_MODE } from "../../hooks/usePresence";
-import FileList from "./FileList";
 import OcrActionBar from "./OcrActionBar";
 import S3SyncModal from "./S3SyncModal";
 import CustomPromptModal from "../../components/shared/CustomPromptModal";
 import ConfirmModal from "../../components/shared/ConfirmModal";
 import LoadingToast from "./LoadingToast";
+import ImageListTable from "../../components/shared/ImageListTable";
+import { ImageListFilterTabs } from "../../components/shared/ImageListFilterTabs";
+import {
+  applyFilter,
+  getTopLevelFiles,
+  normalizeDeletionTargets,
+  normalizeOcrTargets,
+  type FilterKey,
+} from "../../utils/imageListHelpers";
 
 import SharingModal from "./SharingModal";
 
-import { Alert, Button } from "../../components/ui";
+import { Alert, Button, CardTable, EmptyState, usePagination, Pagination } from "../../components/ui";
+import Toast from "../../components/ui/Toast";
 
-import { MoreVertical, Eye, Pencil, RefreshCw, Trash2, Share2 } from "lucide-react";
+import { CheckCircle, MoreVertical, Eye, Pencil, RefreshCw, Trash2, Share2, Upload as UploadIcon } from "lucide-react";
 
 function Upload() {
   const { appName } = useParams<{ appName: string }>();
@@ -38,6 +48,18 @@ function Upload() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pageProcessingMode, setPageProcessingMode] = useState<'combined' | 'individual'>('combined');
 
+  // Image 一覧: フィルタタブ / 選択 / 一括削除
+  const [filterKey, setFilterKey] = useState<FilterKey>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' | 'info' }>({
+    show: false,
+    message: '',
+    type: 'success',
+  });
+
   // 現在選択されているアプリの情報
   const selectedApp = apps.find(app => app.name === appName);
   const appDisplayName = selectedApp?.display_name || appName;
@@ -49,6 +71,7 @@ function Upload() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isEndpointWarming, setIsEndpointWarming] = useState(false);
   const warmingPollRef = useRef<NodeJS.Timeout | null>(null);
+  const ocrRequestGenerationRef = useRef(0);
   // pollingEnabledは使用されているので削除しない
   const [pollingEnabled] = useState(true);
 
@@ -82,53 +105,97 @@ function Upload() {
     }
   };
 
-  // OCR処理を開始
-  const startOcr = async () => {
+  // 選択された pending Image だけを順次開始する。
+  // 途中でエンドポイント起動待ちになった場合は、未開始分だけを再開する。
+  const startOcrTargets = async (
+    targetIds: string[],
+    totalCount = targetIds.length,
+    requestGeneration = ocrRequestGenerationRef.current
+  ) => {
+    if (
+      targetIds.length === 0 ||
+      requestGeneration !== ocrRequestGenerationRef.current
+    ) return;
+
     try {
       setIsProcessing(true);
-      const response = await api.post(`/apps/${appName}/jobs`);
+      for (let index = 0; index < targetIds.length; index += 1) {
+        if (requestGeneration !== ocrRequestGenerationRef.current) return;
 
-      if (response.data && response.data.jobId) {
-        // 成功したら即座に一覧を更新
-        fetchFiles();
-      }
-    } catch (error: any) {
-      console.error("OCR処理の開始に失敗しました:", error);
-      
-      // エンドポイント起動中エラーの場合
-      if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
-        setIsEndpointWarming(true);
-        setIsProcessing(false);
+        try {
+          await api.post(`/images/${targetIds[index]}/process`, { skip_ocr: false });
+        } catch (error: any) {
+          if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
+            const remainingTargetIds = targetIds.slice(index);
+            setIsEndpointWarming(true);
 
-        if (warmingPollRef.current) clearInterval(warmingPollRef.current);
-        warmingPollRef.current = setInterval(async () => {
-          try {
-            const statusResponse = await api.get('/system/ocr-endpoint-status');
-
-            if (statusResponse.data.ready) {
-              if (warmingPollRef.current) {
-                clearInterval(warmingPollRef.current);
-                warmingPollRef.current = null;
+            if (warmingPollRef.current) clearInterval(warmingPollRef.current);
+            warmingPollRef.current = setInterval(async () => {
+              if (requestGeneration !== ocrRequestGenerationRef.current) {
+                if (warmingPollRef.current) {
+                  clearInterval(warmingPollRef.current);
+                  warmingPollRef.current = null;
+                }
+                return;
               }
-              setIsEndpointWarming(false);
 
-              const retryResponse = await api.post(`/apps/${appName}/jobs`);
-              if (retryResponse.data?.jobId) {
-                fetchFiles();
+              try {
+                const statusResponse = await api.get('/system/ocr-endpoint-status');
+
+                if (statusResponse.data.ready) {
+                  if (warmingPollRef.current) {
+                    clearInterval(warmingPollRef.current);
+                    warmingPollRef.current = null;
+                  }
+                  setIsEndpointWarming(false);
+                  void startOcrTargets(
+                    remainingTargetIds,
+                    totalCount,
+                    requestGeneration
+                  );
+                }
+              } catch (pollError) {
+                console.error('ポーリングエラー:', pollError);
               }
-            }
-          } catch (pollError) {
-            console.error('ポーリングエラー:', pollError);
+            }, 10000);
+
+            return;
           }
-        }, 10000);
 
-        return;
+          throw error;
+        }
       }
+
+      if (requestGeneration !== ocrRequestGenerationRef.current) return;
+
+      setToast({
+        show: true,
+        message: `${totalCount} 件のOCR処理を開始しました`,
+        type: 'success',
+      });
+      setSelectedIds(new Set());
+      await fetchFiles();
+    } catch (error: any) {
+      if (requestGeneration !== ocrRequestGenerationRef.current) return;
+
+      console.error('OCR処理の開始に失敗しました:', error);
+      setToast({
+        show: true,
+        message: error.userMessage || 'OCR処理の開始に失敗しました',
+        type: 'error',
+      });
+      await fetchFiles();
     } finally {
-      if (!isEndpointWarming) {
+      if (requestGeneration === ocrRequestGenerationRef.current) {
         setIsProcessing(false);
       }
     }
+  };
+
+  const startOcr = () => {
+    const requestGeneration = ocrRequestGenerationRef.current + 1;
+    ocrRequestGenerationRef.current = requestGeneration;
+    return startOcrTargets(ocrTargetIds, ocrTargetIds.length, requestGeneration);
   };
 
   // 一覧を更新
@@ -172,9 +239,6 @@ function Upload() {
     // ファイル一覧を更新
     fetchFiles();
   };
-
-  // 未処理のファイルがあるかチェック
-  const hasPendingFiles = files.some((file) => file.status === "pending");
 
   // 選択されたファイルにPDFが含まれているかチェック
   const hasPdfFiles = selectedFiles.some(file => file.type === "application/pdf");
@@ -305,6 +369,19 @@ function Upload() {
     }
   };
 
+  // 別ユースケースへ移動した際に、前の画面で選択した Image ID を持ち越さない。
+  // フィルタ・ページ切り替えでは選択状態を維持する。
+  useEffect(() => {
+    ocrRequestGenerationRef.current += 1;
+    setSelectedIds(new Set());
+    if (warmingPollRef.current) {
+      clearInterval(warmingPollRef.current);
+      warmingPollRef.current = null;
+    }
+    setIsEndpointWarming(false);
+    setIsProcessing(false);
+  }, [appName]);
+
   // コンポーネントマウント時にファイル一覧を取得
   useEffect(() => {
     fetchFiles();
@@ -318,9 +395,86 @@ function Upload() {
     imageId: PRESENCE_LIST_MODE,
   });
 
+  // family 全体を保持したまま状態フィルタを適用し、親 / standalone だけをページングする。
+  const filteredFiles = useMemo(() => applyFilter(files, filterKey), [files, filterKey]);
+  const topLevelFiles = useMemo(() => getTopLevelFiles(filteredFiles), [filteredFiles]);
+  const { page, setPage, total, paged, pageSize, changePageSize, totalItems } =
+    usePagination(topLevelFiles);
+  const visibleTopLevelIds = useMemo(() => new Set(paged.map((file) => file.id)), [paged]);
+
+  // ポーリングや削除で件数が減った場合、存在しないページに残らないよう補正する。
+  useEffect(() => {
+    if (total === 0 && page !== 0) setPage(0);
+    else if (total > 0 && page >= total) setPage(total - 1);
+  }, [page, setPage, total]);
+
+  const confirmableSelectedIds = useMemo(
+    () => files
+      .filter((file) =>
+        selectedIds.has(file.id) &&
+        file.status === 'completed' &&
+        !file.verificationCompleted
+      )
+      .map((file) => file.id),
+    [files, selectedIds]
+  );
+
+  const deletionTargetIds = useMemo(
+    () => normalizeDeletionTargets(files, selectedIds),
+    [files, selectedIds]
+  );
+
+  const ocrTargetIds = useMemo(
+    () => normalizeOcrTargets(files, selectedIds),
+    [files, selectedIds]
+  );
+
+  const executeBulkConfirm = async () => {
+    if (confirmableSelectedIds.length === 0) return;
+    setBulkConfirming(true);
+    try {
+      await Promise.all(confirmableSelectedIds.map((id) => updateVerificationStatus(id, true)));
+      setToast({
+        show: true,
+        message: `${confirmableSelectedIds.length} 件を確認済みにしました`,
+        type: 'success',
+      });
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        confirmableSelectedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      fetchFiles();
+    } catch (err) {
+      console.error('一括確認に失敗しました:', err);
+      setToast({ show: true, message: '確認状態の更新に失敗しました', type: 'error' });
+    } finally {
+      setBulkConfirming(false);
+    }
+  };
+
+  // 親削除は子も連鎖削除するため、正規化済み ID だけを API に渡す。
+  const executeBulkDelete = async () => {
+    if (selectedIds.size === 0 || deletionTargetIds.length === 0) return;
+    setBulkDeleteConfirmOpen(false);
+    setBulkDeleting(true);
+    setToast({ show: true, message: `${selectedIds.size} 件を削除中...`, type: 'info' });
+    try {
+      await Promise.all(deletionTargetIds.map((id) => deleteImage(id)));
+      setToast({ show: true, message: `${selectedIds.size} 件のファイルを削除しました`, type: 'success' });
+      setSelectedIds(new Set());
+      fetchFiles();
+    } catch (err) {
+      console.error('一括削除に失敗しました:', err);
+      setToast({ show: true, message: '削除に失敗しました', type: 'error' });
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto bg-bg rounded-lg shadow-md">
+      <div className="max-w-7xl mx-auto bg-bg rounded-lg shadow-md">
         {/* アップロードフォーム */}
         <div className="p-6 border-b border-neutral-200">
           <div className="flex justify-between items-center mb-6">
@@ -538,16 +692,92 @@ function Upload() {
           </form>
         </div>
 
-        {/* OCRアクションバー */}
-        <OcrActionBar
-          hasFiles={files.length > 0}
-          hasPending={hasPendingFiles}
-          isProcessing={isProcessing}
-          onStartOcr={startOcr}
-        />
-
         {/* ファイル一覧 */}
-        <FileList files={files} onRefresh={refreshFiles} presenceByImageId={presenceByImageId} />
+        <div className="p-6">
+          {files.length === 0 ? (
+            <EmptyState icon={UploadIcon} message="ファイルがありません。PDFをアップロードしてください。" />
+          ) : (
+            <>
+              {/* アクション行: 選択件数 + 削除ボタン + Refresh */}
+              <div className="flex justify-between items-center mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted">全 {files.length} 件</span>
+                  {ocrTargetIds.length > 0 && (
+                    <OcrActionBar
+                      selectedCount={ocrTargetIds.length}
+                      isProcessing={isProcessing}
+                      disabled={bulkDeleting || bulkConfirming || isEndpointWarming}
+                      onStartOcr={startOcr}
+                    />
+                  )}
+                  {confirmableSelectedIds.length > 0 && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={executeBulkConfirm}
+                      disabled={bulkConfirming || bulkDeleting || isProcessing || isEndpointWarming}
+                    >
+                      <CheckCircle size={14} className="mr-1" />
+                      {bulkConfirming
+                        ? '確認状態を更新中...'
+                        : `${confirmableSelectedIds.length} 件を確認済みにする`}
+                    </Button>
+                  )}
+                  {selectedIds.size > 0 && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setBulkDeleteConfirmOpen(true)}
+                      disabled={bulkDeleting || bulkConfirming || isProcessing || isEndpointWarming}
+                    >
+                      <Trash2 size={14} className="mr-1" />
+                      {selectedIds.size} 件を削除
+                    </Button>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" onClick={refreshFiles} className="flex items-center">
+                  <RefreshCw size={16} className="mr-1" />
+                  更新
+                </Button>
+              </div>
+
+              {/* フィルタタブ */}
+              <div className="mb-3">
+                <ImageListFilterTabs
+                  files={files}
+                  value={filterKey}
+                  onChange={(key) => {
+                    setFilterKey(key);
+                    setPage(0);
+                  }}
+                />
+              </div>
+
+              {/* テーブル */}
+              <CardTable>
+                <ImageListTable
+                  files={filteredFiles}
+                  visibleTopLevelIds={visibleTopLevelIds}
+                  onRowClick={(file) => navigate(`/ocr-result/${file.id}`)}
+                  showUsecaseColumn={false}
+                  showSelection={true}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                  presenceByImageId={presenceByImageId}
+                  emptyMessage="該当するファイルがありません"
+                />
+              </CardTable>
+              <Pagination
+                page={page}
+                total={total}
+                setPage={setPage}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                onPageSizeChange={changePageSize}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* S3同期モーダル */}
@@ -583,6 +813,25 @@ function Upload() {
         appDisplayName={appDisplayName || appName || ''}
         currentUserId={currentUser?.id}
         onPermissionLost={() => { setShowSharing(false); refreshApps(); }}
+      />
+
+      {/* 一括削除確認モーダル */}
+      <ConfirmModal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={executeBulkDelete}
+        title="ファイルの削除"
+        message={`選択した ${selectedIds.size} 件のファイルを削除します。\nこの操作は取り消せません。`}
+        confirmText="削除"
+        cancelText="キャンセル"
+      />
+
+      {/* Toast 通知 */}
+      <Toast
+        show={toast.show}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ ...toast, show: false })}
       />
 
       {/* エンドポイント起動中表示 */}

@@ -35,9 +35,26 @@ const numericInputProps = (isNumber: boolean, onValue: (v: string) => void) =>
         onChange: (e: React.ChangeEvent<HTMLInputElement>) => onValue(e.target.value),
       };
 
+// controlled input の value 用に leaf 値を string に正規化する。
+// input には JSX / object を渡せず、React は object を子要素にできないため、
+// object/array は JSON 文字列に潰し、その他は string / number に落とす。
+// テキスト行内の中間表示（suggestion の「〜」など）にも使う。
+const formatLeafValue = (value: unknown): string | number => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  if (typeof value === 'boolean') return String(value);
+  return typeof value === 'number' ? value : String(value);
+};
+
 // 抽出結果やエージェント提案の値は、スキーマ上は string 想定でも実データが object/array に
 // なりうる（LLM 出力・型ズレ・ネストした項目）。React は object を子要素として描画できず
-// error #31 でクラッシュするため、値を描画する箇所は必ずこの関数を通す。
+// error #31 でクラッシュするため、読み取り表示は必ずこの関数を通す。
 // どんな入力でも string か JSX 要素しか返さないことを保証し、object を素で返さない。
 const MAX_NEST_DEPTH = 8;
 
@@ -187,8 +204,8 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
       <div className="text-sm mb-2">
         <div className="mb-1">{renderNestedValue(suggestion.reason)}</div>
         <div className="text-xs text-neutral-600">
-          「{renderNestedValue(suggestion.original_value)}」→「{renderNestedValue(suggestion.suggested_value)}」
-          {suggestion.tool_used && <span className="ml-2">({renderNestedValue(suggestion.tool_used)})</span>}
+          「{formatLeafValue(suggestion.original_value)}」→「{formatLeafValue(suggestion.suggested_value)}」
+          {suggestion.tool_used && <span className="ml-2">({formatLeafValue(suggestion.tool_used)})</span>}
         </div>
       </div>
       <div className="flex gap-2">
@@ -200,8 +217,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
 
   const renderStringField = (field: Field) => {
     const rawValue = editMode ? editedInfo[field.name] : extractedInfo[field.name];
-    // スキーマ変更で旧値が object/array の場合、React child に描画できず落ちるため文字列に丸める
-    const value = (rawValue !== null && typeof rawValue === 'object') ? JSON.stringify(rawValue) : rawValue;
+    const value = formatLeafValue(rawValue);
     const suggestion = getSuggestionForField(field.name);
     return (
       <div key={field.name} className="mb-4">
@@ -213,7 +229,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
         {editMode ? (
           <input
             type="text"
-            value={value || ''}
+            value={value}
             {...numericInputProps(field.type === 'number', (v) => updateFieldValue(field.name, v))}
             onFocus={() => onHighlightField(field.name, true)}
             className="w-full p-2 border border-neutral-300 rounded"
@@ -223,7 +239,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
             className="p-2 bg-neutral-50 border border-neutral-200 rounded cursor-pointer hover:bg-neutral-100 min-h-[2.5rem]"
             onClick={() => onHighlightField(field.name, true)}
           >
-            {value || ''}
+            {value}
           </div>
         )}
         {suggestion && renderSuggestion(suggestion)}
@@ -274,7 +290,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                 {editMode ? (
                   <input
                     type="text"
-                    value={typeof mapValue[subField.name] === 'object' ? '' : (mapValue[subField.name] || '')}
+                    value={formatLeafValue(mapValue[subField.name])}
                     {...numericInputProps(subField.type === 'number', (v) => setValueAtPath(fieldPath, v))}
                     onFocus={() => onHighlightField(fieldPath, true)}
                     className="w-full p-2 border border-neutral-300 rounded"
@@ -311,7 +327,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
               {editMode ? (
                 <input
                   type="text"
-                  value={typeof item === 'object' ? '' : (item || '')}
+                  value={formatLeafValue(item)}
                   {...numericInputProps(field.items?.type === 'number', (v) => {
                     const updated = [...listData];
                     updated[i] = v;
@@ -399,7 +415,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                                   ref={editInputRef}
                                   type="text"
                                   inputMode={itemField.type === 'number' ? 'numeric' : undefined}
-                                  value={typeof item[itemField.name] === 'object' ? '' : (item[itemField.name] || '')}
+                                  value={formatLeafValue(item[itemField.name])}
                                   onChange={(e) => {
                                     if (itemField.type !== 'number') {
                                       updateListItemProperty(field.name, itemIndex, itemField.name, e.target.value);
@@ -474,8 +490,8 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
                                   <div className="text-sm mb-2">
                                     <div className="mb-1">{renderNestedValue(suggestion.reason)}</div>
                                     <div className="text-xs text-neutral-600">
-                                      「{renderNestedValue(suggestion.original_value)}」→「{renderNestedValue(suggestion.suggested_value)}」
-                                      {suggestion.tool_used && <span className="ml-2">({renderNestedValue(suggestion.tool_used)})</span>}
+                                      「{formatLeafValue(suggestion.original_value)}」→「{formatLeafValue(suggestion.suggested_value)}」
+                                      {suggestion.tool_used && <span className="ml-2">({formatLeafValue(suggestion.tool_used)})</span>}
                                     </div>
                                   </div>
                                   <div className="flex gap-2">
@@ -514,7 +530,7 @@ const ExtractedInfoDisplay: React.FC<ExtractedInfoDisplayProps> = ({
               {editMode ? (
                 <input
                   type="text"
-                  value={typeof item === 'object' ? '' : (item || '')}
+                  value={formatLeafValue(item)}
                   {...numericInputProps(field.items?.type === 'number', (v) => {
                     const updated = [...listData];
                     updated[i] = v;

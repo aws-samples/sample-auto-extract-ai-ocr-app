@@ -56,7 +56,7 @@ export interface ImageFamily {
   children: ImageFile[];
 }
 
-const isParentDocument = (file: ImageFile): boolean =>
+export const isParentDocument = (file: ImageFile): boolean =>
   file.pageProcessingMode === 'individual' &&
   !file.parentDocumentId &&
   (file.totalPages || 0) > 1;

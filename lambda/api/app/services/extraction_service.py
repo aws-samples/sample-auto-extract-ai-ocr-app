@@ -6,14 +6,15 @@ from repositories import (
     get_image, update_extracted_info,
     update_image_status, get_extraction_fields_for_app,
     get_custom_prompt_for_app,
-    get_app_display_name, update_verification_status
+    get_app_display_name, update_verification_status,
+    get_app_schema, update_agent_status
 )
 from config import settings
 from exceptions import NotFoundError
 from utils import decimal_to_float
 from utils.bedrock import parse_converse_response, extract_json_from_response
-from domains.schema_fields import extract_field_names
-from domains.image_status import ImageStatus, PageProcessingMode
+from domains.schema_fields import extract_field_names, should_run_agent
+from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from clients import s3_client
 from clients.bedrock import call_bedrock, call_bedrock_with_retry
 from domains.extraction_engine import (
@@ -127,6 +128,13 @@ class InformationExtractor(ABC):
                 result.get("mapping", {}),
                 extracted_fields=app_extraction_fields.get("fields", [])
             )
+
+            # Agent 検証が自動実行されるユースケースでは、COMPLETED にする前に agent_status を
+            # PROCESSING にする。検証は次の Step Functions ステップ（AgentKick）で走るため、
+            # ここで先に立てておくことで「完了」と「検証中」の間の空白状態を無くす。
+            if should_run_agent(get_app_schema(app_name)):
+                update_agent_status(self.image_id, AgentStatus.PROCESSING)
+
             update_image_status(self.image_id, ImageStatus.COMPLETED)
 
             logger.info(f"情報抽出完了: {self.image_id}")

@@ -16,6 +16,7 @@ import { ImageListFilterTabs } from "../../components/shared/ImageListFilterTabs
 import {
   applyFilter,
   getTopLevelFiles,
+  isParentDocument,
   normalizeDeletionTargets,
   normalizeOcrTargets,
   type FilterKey,
@@ -105,11 +106,11 @@ function Upload() {
     }
   };
 
-  // 選択された pending Image だけを順次開始する。
-  // 途中でエンドポイント起動待ちになった場合は、未開始分だけを再開する。
+  // 選択された pending Image を app 単位のバッチ API で一括開始する。
+  // Step Functions の Map(maxConcurrency) が同時実行を絞るため、対象 ID をまとめて渡す。
+  // エンドポイント起動待ちのときは、同じバッチを丸ごと再送する。
   const startOcrTargets = async (
     targetIds: string[],
-    totalCount = targetIds.length,
     requestGeneration = ocrRequestGenerationRef.current
   ) => {
     if (
@@ -119,64 +120,51 @@ function Upload() {
 
     try {
       setIsProcessing(true);
-      for (let index = 0; index < targetIds.length; index += 1) {
-        if (requestGeneration !== ocrRequestGenerationRef.current) return;
-
-        try {
-          await api.post(`/images/${targetIds[index]}/process`, { skip_ocr: false });
-        } catch (error: any) {
-          if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
-            const remainingTargetIds = targetIds.slice(index);
-            setIsEndpointWarming(true);
-
-            if (warmingPollRef.current) clearInterval(warmingPollRef.current);
-            warmingPollRef.current = setInterval(async () => {
-              if (requestGeneration !== ocrRequestGenerationRef.current) {
-                if (warmingPollRef.current) {
-                  clearInterval(warmingPollRef.current);
-                  warmingPollRef.current = null;
-                }
-                return;
-              }
-
-              try {
-                const statusResponse = await api.get('/system/ocr-endpoint-status');
-
-                if (statusResponse.data.ready) {
-                  if (warmingPollRef.current) {
-                    clearInterval(warmingPollRef.current);
-                    warmingPollRef.current = null;
-                  }
-                  setIsEndpointWarming(false);
-                  void startOcrTargets(
-                    remainingTargetIds,
-                    totalCount,
-                    requestGeneration
-                  );
-                }
-              } catch (pollError) {
-                console.error('ポーリングエラー:', pollError);
-              }
-            }, 10000);
-
-            return;
-          }
-
-          throw error;
-        }
-      }
+      await api.post(`/apps/${appName}/jobs`, { image_ids: targetIds, skip_ocr: false });
 
       if (requestGeneration !== ocrRequestGenerationRef.current) return;
 
       setToast({
         show: true,
-        message: `${totalCount} 件のOCR処理を開始しました`,
+        message: `${targetIds.length} 件のOCR処理を開始しました`,
         type: 'success',
       });
       setSelectedIds(new Set());
       await fetchFiles();
     } catch (error: any) {
       if (requestGeneration !== ocrRequestGenerationRef.current) return;
+
+      if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
+        setIsEndpointWarming(true);
+
+        if (warmingPollRef.current) clearInterval(warmingPollRef.current);
+        warmingPollRef.current = setInterval(async () => {
+          if (requestGeneration !== ocrRequestGenerationRef.current) {
+            if (warmingPollRef.current) {
+              clearInterval(warmingPollRef.current);
+              warmingPollRef.current = null;
+            }
+            return;
+          }
+
+          try {
+            const statusResponse = await api.get('/system/ocr-endpoint-status');
+
+            if (statusResponse.data.ready) {
+              if (warmingPollRef.current) {
+                clearInterval(warmingPollRef.current);
+                warmingPollRef.current = null;
+              }
+              setIsEndpointWarming(false);
+              void startOcrTargets(targetIds, requestGeneration);
+            }
+          } catch (pollError) {
+            console.error('ポーリングエラー:', pollError);
+          }
+        }, 10000);
+
+        return;
+      }
 
       console.error('OCR処理の開始に失敗しました:', error);
       setToast({
@@ -195,7 +183,7 @@ function Upload() {
   const startOcr = () => {
     const requestGeneration = ocrRequestGenerationRef.current + 1;
     ocrRequestGenerationRef.current = requestGeneration;
-    return startOcrTargets(ocrTargetIds, ocrTargetIds.length, requestGeneration);
+    return startOcrTargets(ocrTargetIds, requestGeneration);
   };
 
   // 一覧を更新
@@ -408,17 +396,24 @@ function Upload() {
     else if (total > 0 && page >= total) setPage(total - 1);
   }, [page, setPage, total]);
 
+  // 選択された leaf（親コンテナを除く子ページ / standalone）。カウント表示は全アクションで
+  // この粒度に統一する（親は表示用グルーピングなので数えない）。
+  const selectedLeaves = useMemo(
+    () => files.filter((file) => selectedIds.has(file.id) && !isParentDocument(file)),
+    [files, selectedIds]
+  );
+
   const confirmableSelectedIds = useMemo(
-    () => files
+    () => selectedLeaves
       .filter((file) =>
-        selectedIds.has(file.id) &&
         file.status === 'completed' &&
         !file.verificationCompleted
       )
       .map((file) => file.id),
-    [files, selectedIds]
+    [selectedLeaves]
   );
 
+  // 削除 API の呼び出し単位。親を指定すると子ページもカスケード削除される。
   const deletionTargetIds = useMemo(
     () => normalizeDeletionTargets(files, selectedIds),
     [files, selectedIds]
@@ -458,10 +453,10 @@ function Upload() {
     if (selectedIds.size === 0 || deletionTargetIds.length === 0) return;
     setBulkDeleteConfirmOpen(false);
     setBulkDeleting(true);
-    setToast({ show: true, message: `${selectedIds.size} 件を削除中...`, type: 'info' });
+    setToast({ show: true, message: `${selectedLeaves.length} 件を削除中...`, type: 'info' });
     try {
       await Promise.all(deletionTargetIds.map((id) => deleteImage(id)));
-      setToast({ show: true, message: `${selectedIds.size} 件のファイルを削除しました`, type: 'success' });
+      setToast({ show: true, message: `${selectedLeaves.length} 件のファイルを削除しました`, type: 'success' });
       setSelectedIds(new Set());
       fetchFiles();
     } catch (err) {
@@ -723,7 +718,7 @@ function Upload() {
                         : `${confirmableSelectedIds.length} 件を確認済みにする`}
                     </Button>
                   )}
-                  {selectedIds.size > 0 && (
+                  {selectedLeaves.length > 0 && (
                     <Button
                       variant="danger"
                       size="sm"
@@ -731,7 +726,7 @@ function Upload() {
                       disabled={bulkDeleting || bulkConfirming || isProcessing || isEndpointWarming}
                     >
                       <Trash2 size={14} className="mr-1" />
-                      {selectedIds.size} 件を削除
+                      {selectedLeaves.length} 件を削除
                     </Button>
                   )}
                 </div>
@@ -821,7 +816,7 @@ function Upload() {
         onClose={() => setBulkDeleteConfirmOpen(false)}
         onConfirm={executeBulkDelete}
         title="ファイルの削除"
-        message={`選択した ${selectedIds.size} 件のファイルを削除します。\nこの操作は取り消せません。`}
+        message={`選択した ${selectedLeaves.length} 件のファイルを削除します。\nこの操作は取り消せません。`}
         confirmText="削除"
         cancelText="キャンセル"
       />

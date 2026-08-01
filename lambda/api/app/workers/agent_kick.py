@@ -16,6 +16,7 @@ from repositories.schema_repository import get_app_schema
 from services.agent_service import AgentService
 from services.pdf_conversion_service import sync_parent_agent_status
 from domains.image_status import AgentStatus
+from domains.schema_fields import should_run_agent
 from repositories.job_repository import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -69,9 +70,7 @@ def agent_kick_handler(event, context):
     # 自動実行（Step Functions 経由）は agent_enabled かつ agent_auto_run のときのみ。
     is_manual = event.get("manual", False)
     schema = get_app_schema(app_name)
-    enabled = bool(schema and schema.get("agent_enabled", False))
-    allowed = enabled if is_manual else (enabled and bool(schema.get("agent_auto_run", False)))
-    if not allowed:
+    if not should_run_agent(schema, manual=is_manual):
         reason = "agent_enabled=false" if is_manual else "agent_auto_run=false"
         logger.info(f"Agent skipped for app {app_name} (manual={is_manual}): {reason}")
         # 検証対象外のユースケースは「検証していない」状態＝idle にする。

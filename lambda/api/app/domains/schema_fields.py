@@ -1,6 +1,25 @@
 """スキーマフィールドのドメインロジック"""
 
 
+def should_run_agent(schema: dict | None, manual: bool = False) -> bool:
+    """このユースケースで Agent 検証を実行すべきか判定する。
+
+    手動実行は `agent_enabled` のみ要求する。自動実行（抽出後の連動）は
+    `agent_enabled` かつ `agent_auto_run` の両方が必要。
+
+    Args:
+        schema: app スキーマ（None 可）
+        manual: 手動実行なら True
+
+    Returns:
+        検証を実行すべきなら True
+    """
+    enabled = bool(schema and schema.get("agent_enabled", False))
+    if manual:
+        return enabled
+    return enabled and bool(schema and schema.get("agent_auto_run", False))
+
+
 def extract_field_names(fields: list[dict], prefix: str = "") -> list[str]:
     """フィールド定義から階層構造を考慮したフィールド名リストを生成する。
 

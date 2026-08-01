@@ -131,12 +131,16 @@ async def get_app_schema_generation_status(job_id: str, user=Depends(RequireRole
 @router.post("/apps/{app_name}/jobs", response_model=JobStartResponse)
 async def start_batch_job(
     app_name: str,
+    body: OcrStartRequest = OcrStartRequest(),
     user=Depends(RequirePermission("viewer")),
     service: OcrService = Depends(get_ocr_service),
 ):
-    """バッチ一括パイプライン起動（OCR→抽出→Agent）"""
-    request = OcrStartRequest(app_name=app_name)
-    result = await service.start_step_functions_job(request)
+    """バッチ一括パイプライン起動（OCR→抽出→Agent）。
+
+    body.image_ids 省略時はその app の PENDING 画像全件、指定時はその画像群を対象にする。
+    """
+    body.app_name = app_name  # パスを正とし、body の app_name は上書きする（cross-app 防止）
+    result = await service.start_step_functions_job(body)
     return JobStartResponse(jobId=result["jobId"])
 
 

@@ -110,7 +110,9 @@ function NavButton({ children, ...props }: React.ButtonHTMLAttributes<HTMLButton
       {...props}
       className={`p-1.5 rounded border border-default transition-colors
         ${props.disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-neutral-50'}`}
-    />
+    >
+      {children}
+    </button>
   );
 }
 

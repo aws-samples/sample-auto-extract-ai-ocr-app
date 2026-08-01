@@ -2,7 +2,7 @@ import uuid
 import logging
 import json
 import base64
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 from exceptions import EndpointNotReadyError, NotFoundError, BadRequestError
 from repositories import (
@@ -275,105 +275,113 @@ class OcrService:
     # Step Functions 起動
     # ========================================
 
-    async def start_step_functions_job(self, request) -> Dict[str, Any]:
-        """Step FunctionsでOCRジョブを開始する"""
-        try:
-            # OCR有効時のみエンドポイント状態確認
-            if self.enable_ocr:
-                status = self.get_endpoint_status()
+    def _check_endpoint_ready(self, skip_ocr: bool) -> None:
+        """OCR エンドポイントが処理可能か確認する。未起動なら wakeup を促し例外を投げる。"""
+        if skip_ocr or not self.enable_ocr:
+            return
+        status = self.get_endpoint_status()
+        if not status['ready']:
+            if settings.OCR_ENGINE != "yomitoku-mp":
+                trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
+            raise EndpointNotReadyError('OCR エンドポイントが起動中です。しばらくお待ちください。')
 
-                if not status['ready']:
-                    if settings.OCR_ENGINE != "yomitoku-mp":
-                        trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
-                    raise EndpointNotReadyError('OCR エンドポイントが起動中です。しばらくお待ちください。')
+    async def _start_pipeline(
+        self, image_ids: List[str], skip_ocr: bool, job_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """指定画像群の OCR→抽出パイプラインを 1 つの Step Functions 実行で開始する。
 
-            job_id = str(uuid.uuid4())
-            app_name = request.app_name
+        バッチ起動・単一起動の共通実体。エンドポイント確認 → ステータス更新 → SFn 起動を
+        この順で行う。SFn 起動に失敗したら各画像を元のステータスへ戻す。
+        """
+        job_id = job_id or str(uuid.uuid4())
 
-            # pending画像を取得
-            images = get_images(app_name)
-            pending_images = [img for img in images if img.get('status') == ImageStatus.PENDING]
-
-            logger.info(f"Found {len(pending_images)} pending images for app: {app_name}")
-
-            if not pending_images:
-                logger.warning(f"No pending images found for app: {app_name}")
-                return {"jobId": job_id}
-
-            # Step Functions の StartExecution 入力は 256KB 制限がある。
-            # 1 実行あたりの画像数を上限で切り、超過分は pending のまま残して
-            # 次回実行で処理させる（入力ペイロード超過による起動失敗を防ぐ）。
-            if len(pending_images) > MAX_IMAGES_PER_EXECUTION:
-                logger.warning(
-                    f"Pending images ({len(pending_images)}) exceed per-execution limit "
-                    f"({MAX_IMAGES_PER_EXECUTION}) for app: {app_name}. "
-                    f"Processing first {MAX_IMAGES_PER_EXECUTION}; remainder stays pending for the next run."
-                )
-                pending_images = pending_images[:MAX_IMAGES_PER_EXECUTION]
-
-            # ステータスを更新
-            for img in pending_images:
-                update_image_status(img['id'], ImageStatus.PROCESSING, job_id)
-
-            # Step Functions起動
-            try:
-                execution_response = sfn_client.start_execution(
-                    stateMachineArn=settings.STATE_MACHINE_ARN,
-                    name=f"ocr-job-{job_id}",
-                    input=json.dumps({
-                        'job_id': job_id,
-                        'images': [{'image_id': img['id'], 'skip_ocr': False} for img in pending_images]
-                    })
-                )
-            except Exception as sfn_error:
-                logger.error(f"Step Functions start failed, reverting image statuses: {sfn_error}")
-                for img in pending_images:
-                    update_image_status(img['id'], ImageStatus.PENDING)
-                raise
-
-            logger.info(f"Started Step Functions execution: {execution_response['executionArn']}")
-
+        # 重複除去（順序は保持）
+        unique_ids = list(dict.fromkeys(image_ids))
+        if not unique_ids:
             return {"jobId": job_id}
 
-        except Exception as e:
-            logger.error(f"OCR job start error: {str(e)}")
-            raise
+        # エンドポイント確認はステータスを触る前に行う（未起動なら何も変更せず例外）。
+        self._check_endpoint_ready(skip_ocr)
 
-    async def start_step_functions_for_image(self, image_id: str, skip_ocr: bool = False) -> Dict[str, Any]:
-        """指定画像のStep Functions OCR処理を開始する"""
+        # Step Functions の StartExecution 入力は 256KB 制限があるため上限で切る。
+        if len(unique_ids) > MAX_IMAGES_PER_EXECUTION:
+            logger.warning(
+                f"Image count ({len(unique_ids)}) exceeds per-execution limit "
+                f"({MAX_IMAGES_PER_EXECUTION}). Processing first {MAX_IMAGES_PER_EXECUTION}."
+            )
+            unique_ids = unique_ids[:MAX_IMAGES_PER_EXECUTION]
+
+        # ロールバック用に各画像の現ステータスを控える。
+        prior_statuses = {img_id: self._get_image_status(img_id) for img_id in unique_ids}
+
         try:
-            # OCRをスキップしない場合かつOCR有効時のみエンドポイント状態確認
-            if not skip_ocr and self.enable_ocr:
-                status = self.get_endpoint_status()
+            for img_id in unique_ids:
+                # 再処理の起点。抽出フェーズへの遷移は extract() 冒頭が担う。
+                update_image_status(img_id, ImageStatus.OCR, job_id)
+                # 過去の agent 結果を破棄する意味で idle に戻す。AgentKick が実行時に更新する。
+                update_agent_status(img_id, AgentStatus.IDLE, suggestions_count=0)
 
-                if not status['ready']:
-                    if settings.OCR_ENGINE != "yomitoku-mp":
-                        trigger_endpoint_wakeup(settings.SAGEMAKER_ENDPOINT_NAME, settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
-                    raise EndpointNotReadyError('OCR エンドポイントが起動中です。しばらくお待ちください。')
-
-            job_id = str(uuid.uuid4())
-
-            # 再処理の起点。抽出フェーズへの遷移は extract() 冒頭が担う。
-            update_image_status(image_id, ImageStatus.OCR, job_id)
-
-            # agent 検証は AgentKick が実行時に PROCESSING へ更新する。ここでは過去結果を
-            # 破棄する意味で idle に戻す（auto_run 無効なら idle のまま＝抽出で完結）。
-            update_agent_status(image_id, AgentStatus.IDLE, suggestions_count=0)
-
-            # Step Functions起動（単一画像）
             execution_response = sfn_client.start_execution(
                 stateMachineArn=settings.STATE_MACHINE_ARN,
-                name=f"ocr-single-{image_id}-{job_id[:8]}",
+                name=f"ocr-job-{job_id}",
                 input=json.dumps({
                     'job_id': job_id,
-                    'images': [{'image_id': image_id, 'skip_ocr': skip_ocr}]
+                    'images': [{'image_id': img_id, 'skip_ocr': skip_ocr} for img_id in unique_ids]
                 })
             )
-
-            logger.info(f"Started Step Functions execution for image {image_id}: {execution_response['executionArn']}")
-
-            return {"status": "processing", "image_id": image_id, "job_id": job_id}
-
-        except Exception as e:
-            logger.error(f"Error starting OCR for image: {str(e)}")
+        except Exception as start_error:
+            logger.error(f"Step Functions start failed, reverting image statuses: {start_error}")
+            for img_id, prior in prior_statuses.items():
+                if prior:
+                    update_image_status(img_id, prior)
             raise
+
+        logger.info(f"Started Step Functions execution: {execution_response['executionArn']}")
+        return {"jobId": job_id}
+
+    @staticmethod
+    def _get_image_status(image_id: str) -> Optional[str]:
+        """ロールバック用に画像の現ステータスを取得する（取得失敗時は None）。"""
+        image = get_image(image_id)
+        return image.get('status') if image else None
+
+    async def start_step_functions_job(self, request) -> Dict[str, Any]:
+        """app 単位で OCR パイプラインを開始する。
+
+        request.image_ids 省略時はその app の PENDING 画像全件、指定時はその画像群
+        （app に属することを検証）を対象にする。
+        """
+        app_name = request.app_name
+        image_ids = getattr(request, "image_ids", None)
+        skip_ocr = getattr(request, "skip_ocr", False)
+
+        app_images = get_images(app_name)
+
+        if image_ids:
+            # 指定 ID が app に属することを検証（属さない ID があれば弾く）。
+            known_ids = {img['id'] for img in app_images}
+            invalid = [i for i in image_ids if i not in known_ids]
+            if invalid:
+                raise BadRequestError(f"指定された画像がアプリ '{app_name}' に存在しません: {invalid}")
+            target_ids = image_ids
+        else:
+            # 省略時は PENDING 全件。individual モードの親コンテナ（子を束ねる表示用・
+            # parent_document_id を持たない親）は OCR 対象でないため除外する。
+            target_ids = [
+                img['id'] for img in app_images
+                if img.get('status') == ImageStatus.PENDING and not self._is_parent_container(img, app_images)
+            ]
+            logger.info(f"Found {len(target_ids)} pending images for app: {app_name}")
+
+        return await self._start_pipeline(target_ids, skip_ocr)
+
+    @staticmethod
+    def _is_parent_container(image: Dict[str, Any], all_images: List[Dict[str, Any]]) -> bool:
+        """individual モードの親コンテナ（自身は子を持ち、親を持たない）か判定する。"""
+        if image.get('parent_document_id'):
+            return False
+        return any(other.get('parent_document_id') == image['id'] for other in all_images)
+
+    async def start_step_functions_for_image(self, image_id: str, skip_ocr: bool = False) -> Dict[str, Any]:
+        """指定画像 1 件の OCR パイプラインを開始する（再処理・再抽出用）。"""
+        return await self._start_pipeline([image_id], skip_ocr)

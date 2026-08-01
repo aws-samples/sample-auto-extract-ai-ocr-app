@@ -36,3 +36,5 @@ class OcrResultResponse(BaseModel):
 class OcrStartRequest(BaseModel):
     """OCR処理開始リクエスト"""
     app_name: Optional[str] = None
+    image_ids: Optional[List[str]] = None
+    skip_ocr: bool = False

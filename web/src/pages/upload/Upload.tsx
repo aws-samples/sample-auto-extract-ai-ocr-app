@@ -105,11 +105,11 @@ function Upload() {
     }
   };
 
-  // 選択された pending Image だけを順次開始する。
-  // 途中でエンドポイント起動待ちになった場合は、未開始分だけを再開する。
+  // 選択された pending Image を app 単位のバッチ API で一括開始する。
+  // Step Functions の Map(maxConcurrency) が同時実行を絞るため、対象 ID をまとめて渡す。
+  // エンドポイント起動待ちのときは、同じバッチを丸ごと再送する。
   const startOcrTargets = async (
     targetIds: string[],
-    totalCount = targetIds.length,
     requestGeneration = ocrRequestGenerationRef.current
   ) => {
     if (
@@ -119,64 +119,51 @@ function Upload() {
 
     try {
       setIsProcessing(true);
-      for (let index = 0; index < targetIds.length; index += 1) {
-        if (requestGeneration !== ocrRequestGenerationRef.current) return;
-
-        try {
-          await api.post(`/images/${targetIds[index]}/process`, { skip_ocr: false });
-        } catch (error: any) {
-          if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
-            const remainingTargetIds = targetIds.slice(index);
-            setIsEndpointWarming(true);
-
-            if (warmingPollRef.current) clearInterval(warmingPollRef.current);
-            warmingPollRef.current = setInterval(async () => {
-              if (requestGeneration !== ocrRequestGenerationRef.current) {
-                if (warmingPollRef.current) {
-                  clearInterval(warmingPollRef.current);
-                  warmingPollRef.current = null;
-                }
-                return;
-              }
-
-              try {
-                const statusResponse = await api.get('/system/ocr-endpoint-status');
-
-                if (statusResponse.data.ready) {
-                  if (warmingPollRef.current) {
-                    clearInterval(warmingPollRef.current);
-                    warmingPollRef.current = null;
-                  }
-                  setIsEndpointWarming(false);
-                  void startOcrTargets(
-                    remainingTargetIds,
-                    totalCount,
-                    requestGeneration
-                  );
-                }
-              } catch (pollError) {
-                console.error('ポーリングエラー:', pollError);
-              }
-            }, 10000);
-
-            return;
-          }
-
-          throw error;
-        }
-      }
+      await api.post(`/apps/${appName}/jobs`, { image_ids: targetIds, skip_ocr: false });
 
       if (requestGeneration !== ocrRequestGenerationRef.current) return;
 
       setToast({
         show: true,
-        message: `${totalCount} 件のOCR処理を開始しました`,
+        message: `${targetIds.length} 件のOCR処理を開始しました`,
         type: 'success',
       });
       setSelectedIds(new Set());
       await fetchFiles();
     } catch (error: any) {
       if (requestGeneration !== ocrRequestGenerationRef.current) return;
+
+      if (error.response?.status === 503 && error.apiErrorCode === 'endpoint_not_ready') {
+        setIsEndpointWarming(true);
+
+        if (warmingPollRef.current) clearInterval(warmingPollRef.current);
+        warmingPollRef.current = setInterval(async () => {
+          if (requestGeneration !== ocrRequestGenerationRef.current) {
+            if (warmingPollRef.current) {
+              clearInterval(warmingPollRef.current);
+              warmingPollRef.current = null;
+            }
+            return;
+          }
+
+          try {
+            const statusResponse = await api.get('/system/ocr-endpoint-status');
+
+            if (statusResponse.data.ready) {
+              if (warmingPollRef.current) {
+                clearInterval(warmingPollRef.current);
+                warmingPollRef.current = null;
+              }
+              setIsEndpointWarming(false);
+              void startOcrTargets(targetIds, requestGeneration);
+            }
+          } catch (pollError) {
+            console.error('ポーリングエラー:', pollError);
+          }
+        }, 10000);
+
+        return;
+      }
 
       console.error('OCR処理の開始に失敗しました:', error);
       setToast({
@@ -195,7 +182,7 @@ function Upload() {
   const startOcr = () => {
     const requestGeneration = ocrRequestGenerationRef.current + 1;
     ocrRequestGenerationRef.current = requestGeneration;
-    return startOcrTargets(ocrTargetIds, ocrTargetIds.length, requestGeneration);
+    return startOcrTargets(ocrTargetIds, requestGeneration);
   };
 
   // 一覧を更新

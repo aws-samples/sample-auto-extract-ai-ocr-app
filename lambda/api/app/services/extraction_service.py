@@ -24,10 +24,14 @@ from domains.extraction_engine import (
     build_single_image_without_ocr_request,
     parse_extraction_response,
     finalize_extraction_result,
+    ExtractionParseError,
 )
 from services.pdf_conversion_service import sync_parent_status
 
 logger = logging.getLogger(__name__)
+
+RETRYABLE_STOP_REASONS = ("end_turn", "stop_sequence")
+PARSE_FAILURE_ATTEMPTS = 2
 
 
 def get_multipage_ocr_results(image_id: str) -> list:
@@ -105,22 +109,17 @@ class InformationExtractor(ABC):
                 messages, system_prompts = self._build_ocr_request(
                     page_images, content_type, ocr_data, app_extraction_fields, custom_prompt
                 )
-                response = self._call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
-                result = finalize_extraction_result(extracted_info, mapping)
+                result = self._extract_with_retry(
+                    self._call_bedrock, self._parse_with_ocr, messages, system_prompts
+                )
             else:
                 logger.info("OCR無効: without_ocrモードで情報抽出を実行")
                 messages, system_prompts = self._build_no_ocr_request(
                     page_images, content_type, app_extraction_fields, field_names, custom_prompt
                 )
-                response = call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info = extract_json_from_response(ai_response)
-                if not extracted_info:
-                    extracted_info = {"error": "Failed to extract JSON from response"}
-                result = finalize_extraction_result(extracted_info)
-                result["mapping"] = {}
+                result = self._extract_with_retry(
+                    call_bedrock, self._parse_without_ocr, messages, system_prompts
+                )
 
             update_extracted_info(
                 self.image_id,
@@ -143,6 +142,40 @@ class InformationExtractor(ABC):
             logger.error(f"情報抽出エラー ({self.__class__.__name__}): {str(e)}")
             update_image_status(self.image_id, ImageStatus.FAILED)
             raise
+
+    def _extract_with_retry(self, call_bedrock_fn, parse_fn, messages, system_prompts) -> dict:
+        """抽出を実行し、応答のパースに失敗したら PARSE_FAILURE_ATTEMPTS 回まで試す。
+
+        モデルが応答を出し切った（RETRYABLE_STOP_REASONS）のにパースできない場合は
+        再実行で直る見込みがあるため再試行する。トークン上限などそれ以外の停止理由は
+        同じ入力なら同じ結果になるため再試行しない。
+        """
+        for attempt in range(PARSE_FAILURE_ATTEMPTS):
+            response = call_bedrock_fn(messages, system_prompts)
+            stop_reason = response.get("stopReason") if isinstance(response, dict) else None
+            ai_response = parse_converse_response(response)
+            try:
+                return parse_fn(ai_response)
+            except ExtractionParseError as e:
+                if stop_reason not in RETRYABLE_STOP_REASONS:
+                    raise ExtractionParseError(f"{e} (stopReason={stop_reason})") from e
+                if attempt == PARSE_FAILURE_ATTEMPTS - 1:
+                    raise
+                logger.warning(f"抽出応答のパースに失敗したため再試行します: {e}")
+
+    @staticmethod
+    def _parse_with_ocr(ai_response: str) -> dict:
+        extracted_info, mapping = parse_extraction_response(ai_response)
+        return finalize_extraction_result(extracted_info, mapping)
+
+    @staticmethod
+    def _parse_without_ocr(ai_response: str) -> dict:
+        extracted_info = extract_json_from_response(ai_response)
+        if not extracted_info:
+            raise ExtractionParseError("Failed to extract JSON from response")
+        result = finalize_extraction_result(extracted_info)
+        result["mapping"] = {}
+        return result
 
     @abstractmethod
     def _fetch_images(self, image_data: dict) -> tuple:

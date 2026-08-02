@@ -8,6 +8,7 @@ from .extraction_engine import (
     build_single_image_without_ocr_request,
     parse_extraction_response,
     finalize_extraction_result,
+    ExtractionParseError,
 )
 from .ocr_engine import (
     parse_ocr_response,
@@ -50,6 +51,7 @@ __all__ = [
     # Extraction — レスポンスパース
     "parse_extraction_response",
     "finalize_extraction_result",
+    "ExtractionParseError",
     # OCR
     "parse_ocr_response",
     # Schema

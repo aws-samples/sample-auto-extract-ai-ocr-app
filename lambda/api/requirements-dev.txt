@@ -1,4 +1,5 @@
-# テスト実行用。Lambda イメージには含めない（requirements.txt が本番の依存）
+# ローカルでテストを実行するための依存。Dockerfile は requirements.txt だけを
+# インストールするため、これらは Lambda イメージに入らない。
 -r requirements.txt
 pytest
-httpx
+httpx  # fastapi.testclient が必要とする

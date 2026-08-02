@@ -1,0 +1,4 @@
+# テスト実行用。Lambda イメージには含めない（requirements.txt が本番の依存）
+-r requirements.txt
+pytest
+httpx

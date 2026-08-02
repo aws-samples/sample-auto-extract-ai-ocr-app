@@ -42,7 +42,7 @@ npm run cdk:deploy -- dev --region us-east-1
 
 ## ドキュメント
 
-- [デプロイと設定ガイド](docs/DEPLOYMENT.md)：デプロイ方法、パラメータ設定、OCR エンジンの変更、初期ユーザーの投入、ローカル開発。
+- [デプロイと設定ガイド](docs/DEPLOYMENT.md)：デプロイ方法、パラメータ設定、OCR エンジンの変更、初期ユーザーの投入、ローカル開発、テストの実行。
 - [実装説明](docs/ARCHITECTURE.md)：全体構成、処理の流れ、データストアの使い分け、権限設計、エージェント検証。
 
 ## Security

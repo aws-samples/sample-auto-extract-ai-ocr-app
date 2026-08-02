@@ -266,6 +266,27 @@ npm run web:dev
 
 ブラウザで `http://localhost:3000` を開くと、アプリケーションにアクセスできます。
 
+## テストの実行
+
+テストは CDK / フロントエンド側（jest）と API 側（pytest）に分かれています。
+
+```sh
+# 両方を実行
+npm test
+
+# 個別に実行
+npm run test:cdk
+npm run test:api
+```
+
+API 側のテストには Python 3.11 以上と追加パッケージが必要です。
+
+```sh
+pip install -r lambda/api/requirements-dev.txt
+```
+
+Bedrock / SageMaker / DynamoDB への呼び出しはテスト内で差し替えているため、実 AWS リソースは不要です。
+
 ## リソースの削除
 
 以下のコマンドでリソースを削除できます。削除するとリソースとデータは完全に消去されるため、ご注意ください。

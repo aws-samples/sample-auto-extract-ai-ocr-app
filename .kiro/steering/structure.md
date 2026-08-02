@@ -43,3 +43,9 @@ workers/ → services(FastAPI DI 不使用、自前インスタンス化)
 ```
 
 外部 API 系の clients/ について: Clean Architecture では Gateway/Adapter 層を介した抽象化が推奨されるが、現時点ではプロジェクト規模に対してオーバーエンジニアリングとなるため、services/ から clients/ の薄いラッパーを直接呼び出す設計としている。
+
+## テストの配置
+
+- API 側は `lambda/api/app/tests/<対象と同じレイヤー名>/`、CDK とフロントエンドはリポジトリルートの `test/`。
+- ファイル名は `test_<対象関数名>.py` / `<対象>.test.ts`。
+- conftest.py は置かない。import パス解決は各ファイル冒頭の `sys.path.insert` 4 行ヘッダで行う（既存ファイルと同じ形にする）。

@@ -2,6 +2,7 @@ import type { ImageFile } from '../web/src/types/ocr';
 import {
   applyFilter,
   filterImageFamilies,
+  getConfirmationState,
   getTopLevelFiles,
   groupFiles,
   normalizeDeletionTargets,
@@ -195,5 +196,73 @@ describe('image list family helpers', () => {
     expect(toggleImageSelection([first, second], new Set([second.id]), first.id)).toEqual(
       new Set([first.id, second.id])
     );
+  });
+});
+
+/**
+ * getConfirmationState は一覧のフィルタタブ（要対応 / 確認済み / 処理待ち / 失敗）への
+ * 振り分けを決める。
+ *
+ * 想定している正しい挙動:
+ * - どこかで失敗していれば failed（OCR/抽出の失敗と AI 検証の失敗を区別しない）。
+ * - OCR/抽出が終わっていない間は processing。
+ * - OCR/抽出が終わっていても AI 検証が動いている間は processing（まだ結果が変わりうる）。
+ * - 全部終わって人が確認済みなら confirmed、未確認なら action_needed。
+ */
+describe('confirmation state', () => {
+  test('failed extraction is failed', () => {
+    expect(getConfirmationState(makeImage('a', { status: 'failed' }))).toBe('failed');
+  });
+
+  test('failed verification is failed even when extraction completed', () => {
+    expect(
+      getConfirmationState(makeImage('a', { status: 'completed', agentStatus: 'failed' }))
+    ).toBe('failed');
+  });
+
+  test('failure wins over being verified', () => {
+    expect(
+      getConfirmationState(
+        makeImage('a', { status: 'failed', verificationCompleted: true })
+      )
+    ).toBe('failed');
+  });
+
+  test.each(['pending', 'uploading', 'converting', 'ocr', 'extracting', 'processing'] as const)(
+    'unfinished status %s is processing',
+    (status) => {
+      expect(getConfirmationState(makeImage('a', { status }))).toBe('processing');
+    }
+  );
+
+  test('running verification keeps it processing', () => {
+    expect(
+      getConfirmationState(
+        makeImage('a', { status: 'completed', agentStatus: 'processing' })
+      )
+    ).toBe('processing');
+  });
+
+  test('completed and verified is confirmed', () => {
+    expect(
+      getConfirmationState(
+        makeImage('a', { status: 'completed', verificationCompleted: true })
+      )
+    ).toBe('confirmed');
+  });
+
+  test('completed but unverified needs action', () => {
+    expect(getConfirmationState(makeImage('a', { status: 'completed' }))).toBe(
+      'action_needed'
+    );
+  });
+
+  test('finished verification does not by itself confirm the file', () => {
+    // AI 検証が終わっても人の確認は別。要対応のまま残す
+    expect(
+      getConfirmationState(
+        makeImage('a', { status: 'completed', agentStatus: 'completed' })
+      )
+    ).toBe('action_needed');
   });
 });

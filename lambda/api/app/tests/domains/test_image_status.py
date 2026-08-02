@@ -7,6 +7,7 @@ import pytest
 
 from domains.image_status import (
     determine_parent_status,
+    determine_parent_agent_status,
     ImageStatus, AgentStatus, PageProcessingMode,
     validate_image_status, validate_agent_status, validate_page_processing_mode,
 )
@@ -65,3 +66,64 @@ class TestDetermineParentStatus:
     def test_no_progress_no_terminal_is_converting(self):
         children = [{"status": "pending"}, {"status": "pending"}]
         assert determine_parent_status(children) == "converting"
+
+
+class TestDetermineParentAgentStatus:
+    """子ページの AI 検証状態から親の表示状態を決める。
+
+    想定している正しい挙動: 検証が 1 つでも失敗していれば親は failed。
+    まだ動いている / これから動く子がいる間は processing。全部終わったら
+    completed（検証対象外の子が混じっていても、実行した子が完了なら完了扱い）。
+    まだ誰も検証を始めていない状態は idle。
+    """
+
+    def test_no_children_is_idle(self):
+        assert determine_parent_agent_status([]) == AgentStatus.IDLE
+
+    def test_all_idle_is_idle(self):
+        children = [{"agent_status": AgentStatus.IDLE}, {"agent_status": AgentStatus.IDLE}]
+        assert determine_parent_agent_status(children) == AgentStatus.IDLE
+
+    @pytest.mark.parametrize("missing", [{}, {"agent_status": None}, {"agent_status": ""}])
+    def test_missing_agent_status_counts_as_idle(self, missing):
+        assert determine_parent_agent_status([missing]) == AgentStatus.IDLE
+
+    def test_any_failed_wins(self):
+        children = [
+            {"agent_status": AgentStatus.COMPLETED},
+            {"agent_status": AgentStatus.FAILED},
+            {"agent_status": AgentStatus.PROCESSING},
+        ]
+        assert determine_parent_agent_status(children) == AgentStatus.FAILED
+
+    def test_any_processing_makes_parent_processing(self):
+        children = [
+            {"agent_status": AgentStatus.COMPLETED},
+            {"agent_status": AgentStatus.PROCESSING},
+        ]
+        assert determine_parent_agent_status(children) == AgentStatus.PROCESSING
+
+    def test_partially_idle_is_processing(self):
+        # 一部だけ未実行 = 残りが処理される見込みなので処理中として見せる
+        children = [
+            {"agent_status": AgentStatus.COMPLETED},
+            {"agent_status": AgentStatus.IDLE},
+        ]
+        assert determine_parent_agent_status(children) == AgentStatus.PROCESSING
+
+    def test_all_completed(self):
+        children = [{"agent_status": AgentStatus.COMPLETED}] * 2
+        assert determine_parent_agent_status(children) == AgentStatus.COMPLETED
+
+    def test_all_skipped(self):
+        children = [{"agent_status": AgentStatus.SKIPPED}] * 2
+        assert determine_parent_agent_status(children) == AgentStatus.SKIPPED
+
+    def test_completed_and_skipped_mix_is_completed(self):
+        # 抽出に失敗したページは skipped になる。成功ページと混在しても
+        # 親は完了として落ち着く（processing のまま止まらない）
+        children = [
+            {"agent_status": AgentStatus.COMPLETED},
+            {"agent_status": AgentStatus.SKIPPED},
+        ]
+        assert determine_parent_agent_status(children) == AgentStatus.COMPLETED

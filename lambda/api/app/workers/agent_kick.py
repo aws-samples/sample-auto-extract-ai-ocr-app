@@ -15,7 +15,7 @@ from repositories.job_repository import create_agent_job, update_agent_job, get_
 from repositories.schema_repository import get_app_schema
 from services.agent_service import AgentService
 from services.pdf_conversion_service import sync_parent_agent_status
-from domains.image_status import AgentStatus
+from domains.image_status import AgentStatus, ImageStatus
 from domains.schema_fields import should_run_agent
 from repositories.job_repository import JobStatus
 
@@ -31,7 +31,13 @@ def _update_agent_status(image_id: str, status: str):
 
 
 def _finalize_skipped_job(event: dict):
-    """If a pre-created job_id was passed, mark it as skipped so polling doesn't hang."""
+    """検証を実行せずに終わる場合、作成済みの検証ジョブを終端状態にする。
+
+    ジョブを先に作って job_id を渡すのは手動実行だけ（`AgentService.start_agent_correction`）。
+    自動実行では job_id が渡ってこないため対象外にする。
+    """
+    if not event.get("manual", False):
+        return
     job_id = event.get("job_id")
     if not job_id:
         return
@@ -42,10 +48,13 @@ def _finalize_skipped_job(event: dict):
 
 
 def agent_kick_handler(event, context):
-    """Step Functions 用: 1 枚の画像に対して Agent 検証を実行
+    """1 枚の画像に対して Agent 検証を実行
+
+    Step Functions の抽出ステップの後、および画面からの手動実行で呼ばれる。
 
     Args:
-        event: {"image_id": str, "job_id": str}
+        event: {"image_id": str, "manual": bool, "job_id": str}
+            manual / job_id は手動実行のみ。自動実行は image_id だけが渡る。
 
     Returns:
         {"image_id": str, "status": str, "job_id": str (optional)}
@@ -59,6 +68,14 @@ def agent_kick_handler(event, context):
     if not image_data:
         return {"status": "skipped", "reason": "image not found"}
 
+    is_manual = event.get("manual", False)
+
+    # OCR や抽出が失敗した画像は検証する中身が無いので自動実行では検証しない。
+    # 手動実行はユーザーが明示的に指示しているため通す。
+    if not is_manual and image_data.get("status") == ImageStatus.FAILED:
+        logger.info(f"Agent skipped for {image_id}: image status is failed")
+        return {"status": "skipped", "reason": "image failed"}
+
     app_name = image_data.get("app_name", "")
     if not app_name:
         _update_agent_status(image_id, AgentStatus.SKIPPED)
@@ -68,13 +85,11 @@ def agent_kick_handler(event, context):
 
     # 手動実行（manual=True）は agent_enabled のみ要求し、自動実行判定を通さない。
     # 自動実行（Step Functions 経由）は agent_enabled かつ agent_auto_run のときのみ。
-    is_manual = event.get("manual", False)
     schema = get_app_schema(app_name)
     if not should_run_agent(schema, manual=is_manual):
         reason = "agent_enabled=false" if is_manual else "agent_auto_run=false"
         logger.info(f"Agent skipped for app {app_name} (manual={is_manual}): {reason}")
         # 検証対象外のユースケースは「検証していない」状態＝idle にする。
-        # SKIPPED にすると GET /agent が過去ジョブを返し古い結果が復活するため。
         _update_agent_status(image_id, AgentStatus.IDLE)
         _finalize_skipped_job(event)
         sync_parent_agent_status(image_id)

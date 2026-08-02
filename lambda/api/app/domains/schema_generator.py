@@ -5,6 +5,8 @@ import re
 
 from PIL import Image
 
+from exceptions import ResponseParseError
+
 logger = logging.getLogger(__name__)
 
 
@@ -335,26 +337,22 @@ def parse_schema_generation_response(fields_text: str) -> dict:
 
     Returns:
         {"fields": [...]} 形式のスキーマ定義
+
+    Raises:
+        ResponseParseError: 応答が JSON でない、または fields を取り出せない場合
     """
+    json_match = re.search(r'```json\s*(.*?)\s*```', fields_text, re.DOTALL)
+    fields_json = json_match.group(1) if json_match else fields_text
+
     try:
-        # JSONテキストからフィールド定義を抽出
-        json_match = re.search(r'```json\s*(.*?)\s*```', fields_text, re.DOTALL)
-        if json_match:
-            fields_json = json_match.group(1)
-        else:
-            fields_json = fields_text
-
         schema = json.loads(fields_json)
-
-        # スキーマが {"fields": [...]} の形式になっているか確認
-        if "fields" not in schema:
-            # fieldsキーがない場合は、配列を受け取ったと仮定して包む
-            if isinstance(schema, list):
-                schema = {"fields": schema}
-            else:
-                raise ValueError("生成されたスキーマに 'fields' キーがありません")
-
-        return schema
     except json.JSONDecodeError as e:
-        logger.error(f"フィールド定義のJSONパースエラー: {str(e)}")
-        raise ValueError(f"生成されたフィールド定義が有効なJSONではありません: {fields_json}")
+        raise ResponseParseError(f"生成されたフィールド定義が有効なJSONではありません: {str(e)}") from e
+
+    # fields キーが無い場合は、配列を受け取ったと仮定して包む
+    if isinstance(schema, list):
+        return {"fields": schema}
+    if not isinstance(schema, dict) or "fields" not in schema:
+        raise ResponseParseError("生成されたスキーマに 'fields' キーがありません")
+
+    return schema

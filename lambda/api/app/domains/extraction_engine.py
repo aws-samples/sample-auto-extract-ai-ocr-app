@@ -7,53 +7,44 @@ from domains.prompts import (
     create_multi_with_ocr_prompt, create_multi_without_ocr_prompt
 )
 from domains.template import generate_unified_template
-import logging
+from exceptions import ResponseParseError
 import json
 import re
-
-logger = logging.getLogger(__name__)
 
 
 # ============================================================
 # レスポンスパース（純粋関数）
 # ============================================================
 
-def parse_extraction_response(ai_response, field_names):
-    """AI 応答から抽出結果を解析して extracted_info と mapping を分離"""
-    extracted_info = {}
-    mapping = {}
+def parse_extraction_response(ai_response):
+    """AI 応答から抽出結果を解析して extracted_info と mapping を分離
+
+    Raises:
+        ResponseParseError: 応答が期待する JSON 形式でない場合
+    """
+    cleaned_text = ai_response.strip()
+    if cleaned_text.startswith("```json"):
+        cleaned_text = cleaned_text[7:]
+    if cleaned_text.startswith("```"):
+        cleaned_text = cleaned_text[3:]
+    if cleaned_text.endswith("```"):
+        cleaned_text = cleaned_text[:-3]
+    cleaned_text = cleaned_text.strip()
+
+    json_match = re.search(r"\{[\s\S]*\}", cleaned_text)
+    if not json_match:
+        raise ResponseParseError("Failed to parse JSON from AI response")
 
     try:
-        cleaned_text = ai_response.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text[7:]
-        if cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text[3:]
-        if cleaned_text.endswith("```"):
-            cleaned_text = cleaned_text[:-3]
-        cleaned_text = cleaned_text.strip()
-
-        json_match = re.search(r"\{[\s\S]*\}", cleaned_text)
-        if json_match:
-            json_str = json_match.group(0)
-            response_data = json.loads(json_str)
-
-            if "extracted_data" in response_data and "indices" in response_data:
-                extracted_info = response_data["extracted_data"]
-                mapping = response_data["indices"]
-            else:
-                logger.error(f"期待される形式ではありません。キー: {list(response_data.keys())}")
-                extracted_info = {"error": "Invalid response format.", "raw_response": ai_response}
-                mapping = {field_name: [] for field_name in field_names}
-        else:
-            extracted_info = {"error": "Failed to parse JSON from AI response", "raw_response": ai_response}
-            mapping = {field_name: [] for field_name in field_names}
+        response_data = json.loads(json_match.group(0))
     except Exception as json_error:
-        logger.error(f"Error parsing JSON: {str(json_error)}")
-        extracted_info = {"error": f"JSON parsing error: {str(json_error)}", "raw_response": ai_response}
-        mapping = {field_name: [] for field_name in field_names}
+        raise ResponseParseError(f"JSON parsing error: {str(json_error)}") from json_error
 
-    return extracted_info, mapping
+    if "extracted_data" not in response_data or "indices" not in response_data:
+        raise ResponseParseError(
+            f"Invalid response format. keys: {list(response_data.keys())}")
+
+    return response_data["extracted_data"], response_data["indices"]
 
 
 def finalize_extraction_result(extracted_info, mapping=None):

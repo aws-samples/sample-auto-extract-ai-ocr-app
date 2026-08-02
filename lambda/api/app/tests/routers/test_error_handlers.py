@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from errors import register_error_handlers
 from exceptions import (
     NotFoundError, BadRequestError, ForbiddenError, ConflictError,
-    LastOwnerError, EndpointNotReadyError,
+    LastOwnerError, EndpointNotReadyError, ResponseParseError,
 )
 
 # main.py は import 時に全 service（AWS クライアント）を構築するため import せず、
@@ -88,6 +88,11 @@ def _err_endpoint_not_ready():
     raise EndpointNotReadyError("Endpoint warming up")
 
 
+@app.get("/err/response-parse")
+def _err_response_parse():
+    raise ResponseParseError("Failed to parse: secret raw response (stopReason=max_tokens)")
+
+
 @app.get("/err/value-error")
 def _err_value_error():
     # domain 例外でない素の ValueError は 500 になる（ValueError 専用ハンドラは無い）
@@ -133,6 +138,16 @@ def test_unhandled_exception_is_masked():
     body = r.json()
     assert body["code"] == "internal_error"
     assert "secret" not in body["detail"]
+
+
+def test_domain_5xx_without_code_hides_internal_detail():
+    # 調査用の情報を持つ 5xx は code を持たないので、詳細をクライアントに返さない
+    r = client.get("/err/response-parse")
+    assert r.status_code == 502
+    body = r.json()
+    assert body["code"] == "internal_error"
+    assert "secret" not in body["detail"]
+    assert "stopReason" not in body["detail"]
 
 
 def test_validation_error_becomes_string():

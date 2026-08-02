@@ -100,11 +100,6 @@ class OcrService:
         if not image_data:
             raise NotFoundError("画像が見つかりません")
 
-        ocr_result = image_data.get("ocr_result", {})
-        # OCR無効時はocr_resultが存在しない
-        if ocr_result is None:
-            ocr_result = {}
-
         image_url = f"{settings.API_BASE_URL}/image/{image_id}"
         s3_key = image_data.get("s3_key")
         if isinstance(s3_key, list):
@@ -115,10 +110,27 @@ class OcrService:
             s3_key=s3_key,
             uploadTime=image_data.get("upload_time"),
             status=image_data.get("status"),
-            ocrResult=OcrResult(**ocr_result) if ocr_result else OcrResult(words=[]),
+            ocrResult=self._to_ocr_result(image_data.get("ocr_result")),
             imageUrl=image_url,
             app_name=image_data.get("app_name")
         )
+
+    @staticmethod
+    def _to_ocr_result(ocr_result) -> OcrResult:
+        """保存済みの OCR 結果を OcrResult に変換する。
+
+        OCR 無効時は ocr_result 自体が無く、処理が失敗した画像には words を持たない
+        `{"error": ..., "timestamp": ...}` が保存されている。words が取れないときは
+        単語 0 件 + error として返す（必須項目不足で 500 にしない）。
+        """
+        if not isinstance(ocr_result, dict):
+            return OcrResult(words=[])
+
+        if not isinstance(ocr_result.get("words"), list):
+            error = ocr_result.get("error")
+            return OcrResult(words=[], error=str(error) if error is not None else None)
+
+        return OcrResult(**ocr_result)
 
     async def update_ocr_result(self, image_id: str, edited_ocr_data: dict) -> None:
         """OCR結果を更新する"""

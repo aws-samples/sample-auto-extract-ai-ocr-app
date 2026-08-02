@@ -10,13 +10,13 @@ from repositories import (
     get_app_schema, update_agent_status
 )
 from config import settings
-from exceptions import NotFoundError
+from exceptions import NotFoundError, ResponseParseError
 from utils import decimal_to_float
-from utils.bedrock import parse_converse_response, extract_json_from_response
+from utils.bedrock import extract_json_from_response
 from domains.schema_fields import extract_field_names, should_run_agent
 from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from clients import s3_client
-from clients.bedrock import call_bedrock, call_bedrock_with_retry
+from clients.bedrock import call_bedrock_and_parse
 from domains.extraction_engine import (
     build_single_image_with_ocr_request,
     build_multi_images_with_ocr_request,
@@ -105,22 +105,13 @@ class InformationExtractor(ABC):
                 messages, system_prompts = self._build_ocr_request(
                     page_images, content_type, ocr_data, app_extraction_fields, custom_prompt
                 )
-                response = self._call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info, mapping = parse_extraction_response(ai_response, field_names)
-                result = finalize_extraction_result(extracted_info, mapping)
+                result = call_bedrock_and_parse(messages, system_prompts, self._parse_with_ocr)
             else:
                 logger.info("OCR無効: without_ocrモードで情報抽出を実行")
                 messages, system_prompts = self._build_no_ocr_request(
                     page_images, content_type, app_extraction_fields, field_names, custom_prompt
                 )
-                response = call_bedrock(messages, system_prompts)
-                ai_response = parse_converse_response(response)
-                extracted_info = extract_json_from_response(ai_response)
-                if not extracted_info:
-                    extracted_info = {"error": "Failed to extract JSON from response"}
-                result = finalize_extraction_result(extracted_info)
-                result["mapping"] = {}
+                result = call_bedrock_and_parse(messages, system_prompts, self._parse_without_ocr)
 
             update_extracted_info(
                 self.image_id,
@@ -144,6 +135,20 @@ class InformationExtractor(ABC):
             update_image_status(self.image_id, ImageStatus.FAILED)
             raise
 
+    @staticmethod
+    def _parse_with_ocr(ai_response: str) -> dict:
+        extracted_info, mapping = parse_extraction_response(ai_response)
+        return finalize_extraction_result(extracted_info, mapping)
+
+    @staticmethod
+    def _parse_without_ocr(ai_response: str) -> dict:
+        extracted_info = extract_json_from_response(ai_response)
+        if not extracted_info:
+            raise ResponseParseError("Failed to extract JSON from response")
+        result = finalize_extraction_result(extracted_info)
+        result["mapping"] = {}
+        return result
+
     @abstractmethod
     def _fetch_images(self, image_data: dict) -> tuple:
         """S3から画像データを取得。returns (images, content_type)"""
@@ -162,11 +167,6 @@ class InformationExtractor(ABC):
     @abstractmethod
     def _build_no_ocr_request(self, images, content_type, fields, field_names, custom_prompt) -> tuple:
         """OCR無しのBedrockリクエストを構築"""
-        pass
-
-    @abstractmethod
-    def _call_bedrock(self, messages, system_prompts):
-        """Bedrockを呼び出す"""
         pass
 
 
@@ -221,9 +221,6 @@ class MultiImageExtractor(InformationExtractor):
             custom_prompt=custom_prompt
         )
 
-    def _call_bedrock(self, messages, system_prompts):
-        return call_bedrock(messages, system_prompts)
-
 
 class SingleImageExtractor(InformationExtractor):
     """単一画像情報抽出プロセッサー"""
@@ -261,9 +258,6 @@ class SingleImageExtractor(InformationExtractor):
             field_names=field_names,
             custom_prompt=custom_prompt
         )
-
-    def _call_bedrock(self, messages, system_prompts):
-        return call_bedrock_with_retry(messages, system_prompts)
 
 
 # ===== サービスクラス =====

@@ -25,8 +25,7 @@ from repositories.job_repository import (
 )
 from domains.schema_generator import build_schema_generation_request, parse_schema_generation_response
 from domains.schema_fields import extract_field_names
-from clients.bedrock import call_bedrock
-from utils.bedrock import parse_converse_response
+from clients.bedrock import call_bedrock_and_parse
 from utils.pdf import pdf_page_to_jpeg
 
 logger = logging.getLogger(__name__)
@@ -314,13 +313,9 @@ class SchemaService:
             messages, system_prompts = build_schema_generation_request(
                 file_data, request.instructions
             )
-            response = call_bedrock(messages, system_prompts)
-            fields_text = parse_converse_response(response)
-            schema = parse_schema_generation_response(fields_text)
-
-            # 常に {"fields": [...]} の形式で返す
-            if "fields" not in schema:
-                return {"fields": []}
+            schema = call_bedrock_and_parse(
+                messages, system_prompts, parse_schema_generation_response
+            )
 
             logger.info(f"Generated schema fields from {request.filename}")
             return schema

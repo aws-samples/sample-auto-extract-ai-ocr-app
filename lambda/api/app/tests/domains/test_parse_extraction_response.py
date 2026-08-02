@@ -3,7 +3,7 @@
 想定している正しい挙動:
 - `parse_extraction_response` は応答 JSON から `extracted_data`（抽出値）と
   `indices`（OCR 語との対応）を取り出す。両方揃っているときだけ成功。
-- 応答が期待形式でない場合は `ExtractionParseError` を投げる。
+- 応答が期待形式でない場合は `ResponseParseError` を投げる。
   「エラー内容を戻り値に入れて返す」ことはしない（呼び出し元が失敗を成功と誤認するため）。
 - 抽出値の中身は LLM が返したユースケース定義そのままなので、内容の検証はしない。
   `error` という名前のフィールドが含まれていても正常な抽出結果として扱う。
@@ -17,7 +17,8 @@ import json
 
 import pytest
 
-from domains.extraction_engine import parse_extraction_response, ExtractionParseError
+from domains.extraction_engine import parse_extraction_response
+from exceptions import ResponseParseError
 
 
 def _payload(extracted_data, indices):
@@ -47,18 +48,18 @@ class TestParseExtractionResponse:
         assert mapping == {"error": [7]}
 
     def test_missing_indices_raises(self):
-        with pytest.raises(ExtractionParseError):
+        with pytest.raises(ResponseParseError):
             parse_extraction_response(json.dumps({"extracted_data": {"a": "1"}}))
 
     def test_missing_extracted_data_raises(self):
-        with pytest.raises(ExtractionParseError):
+        with pytest.raises(ResponseParseError):
             parse_extraction_response(json.dumps({"indices": {"a": []}}))
 
     def test_no_json_raises(self):
-        with pytest.raises(ExtractionParseError):
+        with pytest.raises(ResponseParseError):
             parse_extraction_response("抽出できませんでした")
 
     def test_broken_json_raises(self):
         # 括弧は閉じているが JSON として不正（末尾カンマ）
-        with pytest.raises(ExtractionParseError):
+        with pytest.raises(ResponseParseError):
             parse_extraction_response('{"extracted_data": {"a": 1,}, "indices": {}}')

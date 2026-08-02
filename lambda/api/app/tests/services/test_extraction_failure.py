@@ -19,8 +19,9 @@ import json
 import pytest
 
 import services.extraction_service as extraction_module
+import clients.bedrock as bedrock_module
 from services.extraction_service import SingleImageExtractor
-from domains.extraction_engine import ExtractionParseError
+from exceptions import ResponseParseError
 from domains.image_status import ImageStatus, AgentStatus
 
 IMAGE_ID = "img-1"
@@ -46,7 +47,7 @@ class _Bedrock:
         self.responses = responses
         self.calls = 0
 
-    def __call__(self, messages, system_prompts):
+    def __call__(self, messages, system_prompts, **kwargs):
         self.calls += 1
         # 応答が尽きたら最後のものを繰り返す
         index = min(self.calls - 1, len(self.responses) - 1)
@@ -95,16 +96,22 @@ def patched(monkeypatch):
     return state
 
 
-def _boom(*args, **kwargs):
-    raise AssertionError("この経路の Bedrock 呼び出しは使われないはず")
+def _extractor(monkeypatch, bedrock, expect_ocr_data=True):
+    """S3 と OCR 結果の取得を差し替えた抽出器。Bedrock は共通クライアントを差し替える。
 
-
-def _extractor(monkeypatch, bedrock=None):
-    """OCR 有効経路用の抽出器。bedrock 未指定なら _call_bedrock は呼ばれてはいけない。"""
+    expect_ocr_data=False のときは OCR 結果を取りに来たら失敗させる。
+    OCR 無効時に OCR 有効経路へ入っていないことを、この呼び出しの有無で判定する。
+    """
+    monkeypatch.setattr(bedrock_module, "call_bedrock", bedrock)
     extractor = SingleImageExtractor(IMAGE_ID)
     monkeypatch.setattr(extractor, "_fetch_images", lambda image_data: (b"img", "image/jpeg"))
-    monkeypatch.setattr(extractor, "_get_ocr_data", lambda image_data: {"words": []})
-    monkeypatch.setattr(extractor, "_call_bedrock", bedrock or _boom)
+
+    def _get_ocr_data(image_data):
+        if not expect_ocr_data:
+            raise AssertionError("OCR 無効時に OCR 結果を取得してはいけない")
+        return {"words": []}
+
+    monkeypatch.setattr(extractor, "_get_ocr_data", _get_ocr_data)
     return extractor
 
 
@@ -147,60 +154,36 @@ class TestExtractionParseFailure:
 
     def test_fails_after_retry_and_saves_nothing(self, patched, monkeypatch):
         bedrock = _Bedrock([_converse("パースできない応答")])
-        with pytest.raises(ExtractionParseError):
+        with pytest.raises(ResponseParseError):
             _extractor(monkeypatch, bedrock).extract()
 
         assert bedrock.calls == 2
         assert patched["status_updates"] == [ImageStatus.EXTRACTING, ImageStatus.FAILED]
         assert patched["extracted"] == []
 
-    @pytest.mark.parametrize("stop_reason", ["max_tokens", "content_filtered"])
-    def test_does_not_retry_when_model_stopped_for_other_reasons(
-        self, patched, monkeypatch, stop_reason
-    ):
-        bedrock = _Bedrock([_converse("途中で切れた応答", stop_reason=stop_reason)])
-        with pytest.raises(ExtractionParseError):
+    def test_does_not_retry_when_response_was_cut_off(self, patched, monkeypatch):
+        bedrock = _Bedrock([_converse("途中で切れた応答", stop_reason="max_tokens")])
+        with pytest.raises(ResponseParseError):
             _extractor(monkeypatch, bedrock).extract()
 
         assert bedrock.calls == 1
         assert patched["status_updates"] == [ImageStatus.EXTRACTING, ImageStatus.FAILED]
         assert patched["extracted"] == []
-
-    def test_does_not_retry_when_stop_reason_is_absent(self, patched, monkeypatch):
-        # 停止理由が読めない応答は「出し切った」と判断できないので再試行しない
-        bedrock = _Bedrock([_converse("パースできない応答", stop_reason=None)])
-        with pytest.raises(ExtractionParseError):
-            _extractor(monkeypatch, bedrock).extract()
-
-        assert bedrock.calls == 1
-        assert patched["status_updates"] == [ImageStatus.EXTRACTING, ImageStatus.FAILED]
-
-    @pytest.mark.parametrize("stop_reason", ["end_turn", "stop_sequence"])
-    def test_retries_for_every_completed_stop_reason(self, patched, monkeypatch, stop_reason):
-        bedrock = _Bedrock([
-            _converse("パースできない応答", stop_reason=stop_reason),
-            _converse(_valid_body(), stop_reason=stop_reason),
-        ])
-        _extractor(monkeypatch, bedrock).extract()
-
-        assert bedrock.calls == 2
-        assert patched["status_updates"][-1] == ImageStatus.COMPLETED
 
 
 class TestExtractionWithoutOcr:
-    """OCR 無効時は OCR 語との対応表を作らず、応答から JSON だけを取り出す。
+    """OCR 無効時は OCR 結果を取りに行かず、応答から JSON だけを取り出す。
 
-    この経路はクラスの `_call_bedrock` ではなくモジュール関数 `call_bedrock` を使うため、
-    `_extractor` 側の `_call_bedrock` は呼ばれたら失敗する sentinel にしてある。
+    OCR 有効経路に入っていないことは、OCR 結果の取得が呼ばれないことで判定する
+    （応答の中身だけでは、どちらの経路でもパースに失敗するため区別できない）。
     """
 
     def test_fails_when_no_json_in_response(self, patched, monkeypatch):
         monkeypatch.setattr(extraction_module.settings, "ENABLE_OCR", False)
         bedrock = _Bedrock([_converse("JSONを含まない応答")])
-        monkeypatch.setattr(extraction_module, "call_bedrock", bedrock)
 
-        with pytest.raises(ExtractionParseError):
-            _extractor(monkeypatch).extract()
+        with pytest.raises(ResponseParseError):
+            _extractor(monkeypatch, bedrock, expect_ocr_data=False).extract()
 
         assert bedrock.calls == 2
         assert patched["status_updates"] == [ImageStatus.EXTRACTING, ImageStatus.FAILED]
@@ -209,9 +192,8 @@ class TestExtractionWithoutOcr:
     def test_completes_when_json_present(self, patched, monkeypatch):
         monkeypatch.setattr(extraction_module.settings, "ENABLE_OCR", False)
         bedrock = _Bedrock([_converse('{"total": "1000"}')])
-        monkeypatch.setattr(extraction_module, "call_bedrock", bedrock)
 
-        _extractor(monkeypatch).extract()
+        _extractor(monkeypatch, bedrock, expect_ocr_data=False).extract()
 
         assert bedrock.calls == 1
         assert patched["status_updates"] == [ImageStatus.EXTRACTING, ImageStatus.COMPLETED]

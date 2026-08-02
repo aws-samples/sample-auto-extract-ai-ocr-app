@@ -12,7 +12,7 @@ from .aws import (
     get_inference_component_status, get_endpoint_status_direct, trigger_endpoint_wakeup,
 )
 from .agent import AgentClient
-from .bedrock import call_bedrock, call_bedrock_with_retry
+from .bedrock import call_bedrock, call_bedrock_and_parse
 
 __all__ = [
     "create_s3_client", "create_bedrock_client", "create_dynamodb_client",
@@ -22,6 +22,6 @@ __all__ = [
     "sagemaker_runtime_client", "sagemaker_client", "bedrock_agentcore_client", "sfn_client",
     "lambda_client", "invoke_worker_async",
     "AgentClient",
-    "call_bedrock", "call_bedrock_with_retry",
+    "call_bedrock", "call_bedrock_and_parse",
     "get_inference_component_status", "get_endpoint_status_direct", "trigger_endpoint_wakeup",
 ]

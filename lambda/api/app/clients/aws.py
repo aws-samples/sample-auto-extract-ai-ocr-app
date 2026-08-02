@@ -28,7 +28,9 @@ def create_bedrock_client(region_name=None):
         region_name=region_name or settings.MODEL_REGION,
         config=Config(
             read_timeout=900,  # 15分のタイムアウト
-            retries={"max_attempts": 3},
+            # 同時実行が上限に当たったときに待って通すため、試行回数を増やす。
+            # standard モードは legacy より再試行対象のエラーが広く、待ち時間も長い。
+            retries={"max_attempts": 5, "mode": "standard"},
         ),
     )
 

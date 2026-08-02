@@ -1,6 +1,6 @@
 """アプリのドメイン例外。
 
-services / repositories はこれらを raise し、errors.py のハンドラが
+domains / services / repositories / clients はこれらを raise し、errors.py のハンドラが
 HTTP レスポンス（status / code / message）へマップする。
 HTTPException は routers / dependencies のみで使い、ここには持ち込まない。
 
@@ -51,3 +51,9 @@ class EndpointNotReadyError(AppError):
     """OCR エンドポイントが起動中。"""
     status_code = 503
     code = "endpoint_not_ready"
+
+
+class ResponseParseError(AppError):
+    """LLM 応答を期待する形式として読み取れなかった。"""
+    status_code = 502
+    code = "response_parse_error"

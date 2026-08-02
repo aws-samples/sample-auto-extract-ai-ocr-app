@@ -10,13 +10,13 @@ from repositories import (
     get_app_schema, update_agent_status
 )
 from config import settings
-from exceptions import NotFoundError
+from exceptions import NotFoundError, ResponseParseError
 from utils import decimal_to_float
-from utils.bedrock import parse_converse_response, extract_json_from_response
+from utils.bedrock import extract_json_from_response
 from domains.schema_fields import extract_field_names, should_run_agent
 from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from clients import s3_client
-from clients.bedrock import call_bedrock, call_bedrock_with_retry
+from clients.bedrock import call_bedrock_and_parse
 from domains.extraction_engine import (
     build_single_image_with_ocr_request,
     build_multi_images_with_ocr_request,
@@ -24,14 +24,10 @@ from domains.extraction_engine import (
     build_single_image_without_ocr_request,
     parse_extraction_response,
     finalize_extraction_result,
-    ExtractionParseError,
 )
 from services.pdf_conversion_service import sync_parent_status
 
 logger = logging.getLogger(__name__)
-
-RETRYABLE_STOP_REASONS = ("end_turn", "stop_sequence")
-PARSE_FAILURE_ATTEMPTS = 2
 
 
 def get_multipage_ocr_results(image_id: str) -> list:
@@ -109,17 +105,13 @@ class InformationExtractor(ABC):
                 messages, system_prompts = self._build_ocr_request(
                     page_images, content_type, ocr_data, app_extraction_fields, custom_prompt
                 )
-                result = self._extract_with_retry(
-                    self._call_bedrock, self._parse_with_ocr, messages, system_prompts
-                )
+                result = call_bedrock_and_parse(messages, system_prompts, self._parse_with_ocr)
             else:
                 logger.info("OCR無効: without_ocrモードで情報抽出を実行")
                 messages, system_prompts = self._build_no_ocr_request(
                     page_images, content_type, app_extraction_fields, field_names, custom_prompt
                 )
-                result = self._extract_with_retry(
-                    call_bedrock, self._parse_without_ocr, messages, system_prompts
-                )
+                result = call_bedrock_and_parse(messages, system_prompts, self._parse_without_ocr)
 
             update_extracted_info(
                 self.image_id,
@@ -143,26 +135,6 @@ class InformationExtractor(ABC):
             update_image_status(self.image_id, ImageStatus.FAILED)
             raise
 
-    def _extract_with_retry(self, call_bedrock_fn, parse_fn, messages, system_prompts) -> dict:
-        """抽出を実行し、応答のパースに失敗したら PARSE_FAILURE_ATTEMPTS 回まで試す。
-
-        モデルが応答を出し切った（RETRYABLE_STOP_REASONS）のにパースできない場合は
-        再実行で直る見込みがあるため再試行する。トークン上限などそれ以外の停止理由は
-        同じ入力なら同じ結果になるため再試行しない。
-        """
-        for attempt in range(PARSE_FAILURE_ATTEMPTS):
-            response = call_bedrock_fn(messages, system_prompts)
-            stop_reason = response.get("stopReason") if isinstance(response, dict) else None
-            ai_response = parse_converse_response(response)
-            try:
-                return parse_fn(ai_response)
-            except ExtractionParseError as e:
-                if stop_reason not in RETRYABLE_STOP_REASONS:
-                    raise ExtractionParseError(f"{e} (stopReason={stop_reason})") from e
-                if attempt == PARSE_FAILURE_ATTEMPTS - 1:
-                    raise
-                logger.warning(f"抽出応答のパースに失敗したため再試行します: {e}")
-
     @staticmethod
     def _parse_with_ocr(ai_response: str) -> dict:
         extracted_info, mapping = parse_extraction_response(ai_response)
@@ -172,7 +144,7 @@ class InformationExtractor(ABC):
     def _parse_without_ocr(ai_response: str) -> dict:
         extracted_info = extract_json_from_response(ai_response)
         if not extracted_info:
-            raise ExtractionParseError("Failed to extract JSON from response")
+            raise ResponseParseError("Failed to extract JSON from response")
         result = finalize_extraction_result(extracted_info)
         result["mapping"] = {}
         return result
@@ -195,11 +167,6 @@ class InformationExtractor(ABC):
     @abstractmethod
     def _build_no_ocr_request(self, images, content_type, fields, field_names, custom_prompt) -> tuple:
         """OCR無しのBedrockリクエストを構築"""
-        pass
-
-    @abstractmethod
-    def _call_bedrock(self, messages, system_prompts):
-        """Bedrockを呼び出す"""
         pass
 
 
@@ -254,9 +221,6 @@ class MultiImageExtractor(InformationExtractor):
             custom_prompt=custom_prompt
         )
 
-    def _call_bedrock(self, messages, system_prompts):
-        return call_bedrock(messages, system_prompts)
-
 
 class SingleImageExtractor(InformationExtractor):
     """単一画像情報抽出プロセッサー"""
@@ -294,9 +258,6 @@ class SingleImageExtractor(InformationExtractor):
             field_names=field_names,
             custom_prompt=custom_prompt
         )
-
-    def _call_bedrock(self, messages, system_prompts):
-        return call_bedrock_with_retry(messages, system_prompts)
 
 
 # ===== サービスクラス =====

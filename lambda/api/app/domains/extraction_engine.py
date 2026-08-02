@@ -7,6 +7,7 @@ from domains.prompts import (
     create_multi_with_ocr_prompt, create_multi_without_ocr_prompt
 )
 from domains.template import generate_unified_template
+from exceptions import ResponseParseError
 import json
 import re
 
@@ -15,15 +16,11 @@ import re
 # レスポンスパース（純粋関数）
 # ============================================================
 
-class ExtractionParseError(Exception):
-    """AI 応答から抽出結果を取り出せなかった"""
-
-
 def parse_extraction_response(ai_response):
     """AI 応答から抽出結果を解析して extracted_info と mapping を分離
 
     Raises:
-        ExtractionParseError: 応答が期待する JSON 形式でない場合
+        ResponseParseError: 応答が期待する JSON 形式でない場合
     """
     cleaned_text = ai_response.strip()
     if cleaned_text.startswith("```json"):
@@ -36,15 +33,15 @@ def parse_extraction_response(ai_response):
 
     json_match = re.search(r"\{[\s\S]*\}", cleaned_text)
     if not json_match:
-        raise ExtractionParseError("Failed to parse JSON from AI response")
+        raise ResponseParseError("Failed to parse JSON from AI response")
 
     try:
         response_data = json.loads(json_match.group(0))
     except Exception as json_error:
-        raise ExtractionParseError(f"JSON parsing error: {str(json_error)}") from json_error
+        raise ResponseParseError(f"JSON parsing error: {str(json_error)}") from json_error
 
     if "extracted_data" not in response_data or "indices" not in response_data:
-        raise ExtractionParseError(
+        raise ResponseParseError(
             f"Invalid response format. keys: {list(response_data.keys())}")
 
     return response_data["extracted_data"], response_data["indices"]

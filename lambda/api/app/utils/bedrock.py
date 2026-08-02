@@ -1,6 +1,6 @@
 """Bedrock レスポンスパース — 純粋関数のみ
 
-API 呼び出し（call_bedrock, call_bedrock_with_retry）は clients/bedrock.py に移動済み。
+API 呼び出しは clients/bedrock.py が担当する。
 """
 import logging
 import json

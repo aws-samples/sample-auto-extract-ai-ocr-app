@@ -31,7 +31,7 @@ def _update_agent_status(image_id: str, status: str):
 
 
 def _finalize_skipped_job(event: dict):
-    """検証ジョブを skipped にして、画面のポーリングが終わらなくなるのを防ぐ。
+    """検証を実行せずに終わる場合、作成済みの検証ジョブを終端状態にする。
 
     ジョブを先に作って job_id を渡すのは手動実行だけ（`AgentService.start_agent_correction`）。
     自動実行では job_id が渡ってこないため対象外にする。
@@ -74,9 +74,6 @@ def agent_kick_handler(event, context):
     # 手動実行はユーザーが明示的に指示しているため通す。
     if not is_manual and image_data.get("status") == ImageStatus.FAILED:
         logger.info(f"Agent skipped for {image_id}: image status is failed")
-        _update_agent_status(image_id, AgentStatus.SKIPPED)
-        _finalize_skipped_job(event)
-        sync_parent_agent_status(image_id)
         return {"status": "skipped", "reason": "image failed"}
 
     app_name = image_data.get("app_name", "")

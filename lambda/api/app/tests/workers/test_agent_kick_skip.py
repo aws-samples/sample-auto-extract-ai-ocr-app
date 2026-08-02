@@ -2,8 +2,7 @@
 
 想定している正しい挙動:
 - OCR や抽出が失敗した画像は検証する中身が無いので、自動実行では検証しない。
-  このとき agent_status は skipped にする（idle にすると、同じ PDF の他ページが
-  検証済みでも親が「処理中」のまま止まる）。
+  検証状態は書き換えない（検証を始めていないので、開始前の状態がそのまま正しい）。
 - 手動実行はユーザーが明示的に指示しているので、失敗した画像でも実行する。
 - ユースケースが検証を自動実行しない設定なら idle にする。設定を変えれば実行されうるので
   「まだ検証していない」状態として扱う。
@@ -62,15 +61,15 @@ def env(monkeypatch):
 
 
 class TestAgentKickSkip:
-    def test_failed_image_is_skipped_and_parent_synced(self, env):
+    def test_failed_image_is_not_verified(self, env):
         env["image"] = {"status": "failed", "app_name": "app"}
 
         result = agent_kick_handler({"image_id": IMAGE_ID}, None)
 
         assert result["status"] == "skipped"
-        assert env["agent_updates"] == [AgentStatus.SKIPPED]
-        assert env["parent_syncs"] == [IMAGE_ID]
         assert env["created_jobs"] == []
+        assert env["agent_updates"] == []
+        assert env["parent_syncs"] == []
 
     def test_manual_run_is_not_skipped_for_failed_image(self, env):
         env["image"] = {"status": "failed", "app_name": "app"}
@@ -102,8 +101,8 @@ class TestSkippedJobFinalization:
     """スキップ時に検証ジョブを閉じるのは手動実行だけ。
 
     想定している正しい挙動: 手動実行はジョブを先に作ってから呼ぶので、検証せずに
-    終わるならジョブを skipped にして画面のポーリングを止める。自動実行は job_id が
-    渡ってこないため、渡された値を触ってジョブでないレコードを作らない。
+    終わるならそのジョブを終端状態にする。自動実行は job_id が渡ってこないため、
+    渡された値を触ってジョブでないレコードを作らない。
     """
 
     def test_manual_run_closes_the_job(self, env):

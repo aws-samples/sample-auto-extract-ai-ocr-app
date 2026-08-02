@@ -212,10 +212,9 @@ async def get_agent_job_by_image(
     image = get_image(image_id)
     image_agent_status = image.get("agent_status") if image else None
 
-    # 抽出開始時に agent_status は idle にリセットされる。検証を実行していない状態
-    # （idle / 未設定 / skipped）なら過去ジョブは現在の抽出と無関係なので返さない
-    # （再抽出後に古い検証結果が復活するのを防ぐ）。
-    if image_agent_status in (None, AgentStatus.IDLE, AgentStatus.SKIPPED):
+    # 抽出開始時に agent_status は idle にリセットされる。idle/未設定なら過去ジョブは
+    # 現在の抽出と無関係なので返さない（再抽出後に古い検証結果が復活するのを防ぐ）。
+    if image_agent_status in (None, AgentStatus.IDLE):
         return {"status": "none", "suggestions": []}
 
     job = get_latest_agent_job_by_image_id(image_id)

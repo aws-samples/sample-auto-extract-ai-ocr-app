@@ -1,9 +1,9 @@
 """画像の最新 AI 検証ジョブ取得のテスト。
 
 想定している正しい挙動:
-- 検証を実行していない状態（未設定 / idle / skipped）では過去のジョブを返さない。
-  抽出をやり直すと agent_status はリセットされるため、返してしまうと**前回の修正提案が
-  画面に復活する**。
+- 検証を実行していない状態（未設定 / idle）では過去のジョブを返さない。
+  抽出をやり直すと agent_status は idle に戻るため、返してしまうと前回の修正提案が
+  画面に復活する。
 - 検証を実行した状態（processing / completed / failed）ならジョブを返す。
 - 画像側が processing なのにジョブがまだ無い / ジョブ側が追いついていない場合は、
   完了ではなく processing として返す（検証中の表示を保つ）。
@@ -45,9 +45,7 @@ PAST_JOB = {
 
 
 class TestNotVerifiedStates:
-    @pytest.mark.parametrize(
-        "agent_status", [None, AgentStatus.IDLE, AgentStatus.SKIPPED]
-    )
+    @pytest.mark.parametrize("agent_status", [None, AgentStatus.IDLE])
     def test_does_not_return_past_job(self, env, agent_status):
         env["image"] = {"agent_status": agent_status} if agent_status else {}
         env["job"] = PAST_JOB

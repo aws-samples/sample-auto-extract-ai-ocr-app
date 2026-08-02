@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 # モデルが応答を出し切ったことを示す停止理由。
 RETRYABLE_STOP_REASONS = ("end_turn", "stop_sequence")
 
-PARSE_FAILURE_ATTEMPTS = 2
+# 応答を読み取れなかったときの試行回数（初回 + 再試行）
+PARSE_ATTEMPTS = 2
 
 
 def call_bedrock(
@@ -64,7 +65,7 @@ def call_bedrock_and_parse(
     Raises:
         ResponseParseError: 再試行しても応答を読み取れなかった場合
     """
-    for attempt in range(PARSE_FAILURE_ATTEMPTS):
+    for attempt in range(PARSE_ATTEMPTS):
         response = call_bedrock(messages, system_prompts, **kwargs)
         stop_reason = response.get("stopReason") if isinstance(response, dict) else None
         try:
@@ -72,6 +73,6 @@ def call_bedrock_and_parse(
         except ResponseParseError as e:
             if stop_reason not in RETRYABLE_STOP_REASONS:
                 raise ResponseParseError(f"{e} (stopReason={stop_reason})") from e
-            if attempt == PARSE_FAILURE_ATTEMPTS - 1:
+            if attempt == PARSE_ATTEMPTS - 1:
                 raise
             logger.warning(f"応答のパースに失敗したため再試行します: {e}")

@@ -332,7 +332,7 @@ function OcrResult() {
       // 既存の agent job を取得
       try {
         const agentResult = await getAgentJobByImage(id);
-        if (agentResult.status === 'completed' || agentResult.status === 'failed' || agentResult.status === 'skipped') {
+        if (agentResult.status === 'completed' || agentResult.status === 'failed') {
           setAgentStatus('completed');
           setInitialAgentResult(agentResult);
           if ((agentResult.total_suggestions_count ?? 0) > 0) {
@@ -626,11 +626,6 @@ function OcrResult() {
     for (let attempt = 0; attempt < MAX_LOOKUP_ATTEMPTS; attempt++) {
       try {
         const agentResult = await getAgentJobByImage(id);
-
-        if (agentResult.status === 'skipped') {
-          setAgentStatus('completed');
-          return;
-        }
 
         if (agentResult.status === 'processing') {
           setAgentStatus('running');

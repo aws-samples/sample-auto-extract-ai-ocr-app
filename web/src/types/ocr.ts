@@ -3,7 +3,7 @@ export interface ImageFile {
   name: string;
   s3_key: string;
   uploadTime: string;
-  status: 'uploading' | 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'uploading' | 'converting' | 'pending' | 'ocr' | 'extracting' | 'processing' | 'completed' | 'failed';
   jobId?: string;
   appName?: string;
   pageProcessingMode?: 'combined' | 'individual';
@@ -11,12 +11,17 @@ export interface ImageFile {
   totalPages?: number;
   parentDocumentId?: string;
   verificationCompleted?: boolean;
+  uploaded_by?: string;
+  uploaded_by_email?: string;
+  verified_by?: string;
+  verified_by_email?: string;
+  agentStatus?: 'idle' | 'processing' | 'completed' | 'failed' | 'skipped';
+  agentSuggestionsCount?: number;
 }
 
 export interface OcrWord {
   content: string;
   rec_score?: number;
-  det_score?: number;
   points?: number[][];
   id?: number;
   page?: number;  // ページ番号を追加（マルチページ対応）
@@ -45,32 +50,6 @@ export interface OcrResponse {
   };
   imageUrl: string;
   app_name?: string;
-}
-
-export interface OcrStartResponse {
-  jobId: string;
-}
-
-export interface PresignedUrlResponse {
-  presigned_url: string;
-  s3_key: string;
-  image_id: string;
-}
-
-export interface UploadCompleteResponse {
-  status: string;
-  message: string;
-  image_id: string;
-  is_converting?: boolean;
-  page_processing_mode?: 'combined' | 'individual';
-}
-export interface OcrStatusResponse {
-  status: string;
-  images: {
-    id: string;
-    filename: string;
-    status: string;
-  }[];
 }
 
 export interface PresignedDownloadUrlResponse {

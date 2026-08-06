@@ -1,24 +1,33 @@
 """
-Domain logic layer - Pure business logic
+Domain logic layer - Pure business logic（外部サービス呼び出しなし）
 """
 from .extraction_engine import (
-    extract_information_from_single_image_with_ocr,
-    extract_information_from_multi_images_with_ocr,
-    extract_information_from_multi_images_without_ocr,
-    extract_information_from_single_image_without_ocr,
-    get_multipage_ocr_results,
-    get_s3_object_bytes,
+    build_single_image_with_ocr_request,
+    build_multi_images_with_ocr_request,
+    build_multi_images_without_ocr_request,
+    build_single_image_without_ocr_request,
+    parse_extraction_response,
+    finalize_extraction_result,
 )
 from .ocr_engine import (
-    perform_ocr,
-    perform_ocr_single_page,
-    perform_ocr_multipage,
-    perform_ocr_individual_page,
-    perform_ocr_single_image,
-    save_multipage_ocr_result,
+    parse_ocr_response,
 )
 from .schema_generator import (
-    generate_schema_fields_from_image,
+    build_schema_generation_request,
+    parse_schema_generation_response,
+)
+from .schema_fields import (
+    extract_field_names,
+)
+from .image_status import (
+    determine_parent_status,
+    determine_parent_agent_status,
+    ImageStatus,
+    AgentStatus,
+    PageProcessingMode,
+    validate_image_status,
+    validate_agent_status,
+    validate_page_processing_mode,
 )
 from .prompts import (
     create_single_with_ocr_prompt,
@@ -33,22 +42,29 @@ from .template import (
 )
 
 __all__ = [
-    # Extraction
-    "extract_information_from_single_image_with_ocr",
-    "extract_information_from_multi_images_with_ocr",
-    "extract_information_from_multi_images_without_ocr",
-    "extract_information_from_single_image_without_ocr",
-    "get_multipage_ocr_results",
-    "get_s3_object_bytes",
+    # Extraction — メッセージ構築
+    "build_single_image_with_ocr_request",
+    "build_multi_images_with_ocr_request",
+    "build_multi_images_without_ocr_request",
+    "build_single_image_without_ocr_request",
+    # Extraction — レスポンスパース
+    "parse_extraction_response",
+    "finalize_extraction_result",
     # OCR
-    "perform_ocr",
-    "perform_ocr_single_page",
-    "perform_ocr_multipage",
-    "perform_ocr_individual_page",
-    "perform_ocr_single_image",
-    "save_multipage_ocr_result",
+    "parse_ocr_response",
     # Schema
-    "generate_schema_fields_from_image",
+    "build_schema_generation_request",
+    "parse_schema_generation_response",
+    "extract_field_names",
+    # Image status
+    "determine_parent_status",
+    "determine_parent_agent_status",
+    "ImageStatus",
+    "AgentStatus",
+    "PageProcessingMode",
+    "validate_image_status",
+    "validate_agent_status",
+    "validate_page_processing_mode",
     # Prompts
     "create_single_with_ocr_prompt",
     "create_single_without_ocr_prompt",

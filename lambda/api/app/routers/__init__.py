@@ -4,17 +4,23 @@ Routers package
 
 # Import all routers to make them available
 from . import health
-from . import ocr
-from . import upload
-from . import extraction
-from . import schema
-from . import s3_sync
+from . import images
+from . import jobs
+from . import system
+from . import tools
+from . import apps
+from . import admin
+from . import user
+from . import sharing
 
 __all__ = [
     'health',
-    'ocr', 
-    'upload',
-    'extraction',
-    'schema',
-    's3_sync'
+    'images',
+    'jobs',
+    'system',
+    'tools',
+    'apps',
+    'admin',
+    'user',
+    'sharing',
 ]

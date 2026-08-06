@@ -2,163 +2,48 @@
 
 AutoExtract は OCR + Bedrock を活用した帳票読み取りの AI-OCR ソリューションです。帳票からの情報抽出を半自動化し、人間によるデータ入力チェックをサポートするツールです。
 
-デモ
-
 ![demo](docs/imgs/demo.gif)
+
+## 主な機能
+
+- **OCR と情報抽出**：SageMaker 上の OCR エンジン（PaddleOCR / Yomitoku / DeepSeek）で読み取り、Bedrock でスキーマに沿った情報を抽出します。
+- **ユースケース管理**：帳票の種類ごとにスキーマを定義し、そのスキーマに沿って OCR と情報抽出を行えます。スキーマは LLM で自動生成・編集でき、複数ページ PDF は全ページ統合とページ別個別を選べます。
+- **エージェント検証**：Bedrock AgentCore が、登録したツールを活用して抽出結果を検証し、修正候補を提案します。
+- **権限管理と共有**：複数ユーザーでの利用を前提に、ユースケースをユーザーやグループ単位で共有でき、管理画面から一元管理できます。同じ帳票を閲覧中のユーザーは、WebSocket でお互いにリアルタイムで表示されます。
 
 ## アーキテクチャ
 
-![architecture](docs/imgs/architecture.png)
+![architecture](docs/imgs/architecture.drawio.png)
 
-## デプロイ手順
+フロントエンドは React（CloudFront + S3）、バックエンドは FastAPI（Lambda）で構成し、これらを AWS CDK でデプロイします。OCR は SageMaker、情報抽出は Bedrock、エージェント検証は Bedrock AgentCore を利用し、権限管理を Aurora DSQL、帳票データを DynamoDB で管理します。詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照してください。
 
-デプロイの際は、事前に Node.js、Docker のインストールが必要です。
+## クイックスタート
 
-#### 使用するモデルの変更
-
-`cdk.json` にて、使用する Bedrock モデルの ID とリージョンを指定することができます。モデルの ID は [Amazon Bedrock でサポートされている基盤モデル](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/models-supported.html) を参照してください。また、使用するモデルを変更する場合は、上記のステップと同様にモデルアクセスを有効化する必要があります。
-
-```
-"model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-"model_region": "us-east-1",
-```
-
-#### OCR エンジンへの変更(PaddleOCR or DeepSeek OCR)
-
-`cdk.json` にて、使用する OCR エンジンを指定することができます。
-
-```
-"ocr_engine": "paddle",  // "paddle" または "deepseek"
-```
-
-- `paddle`: PaddleOCR（デフォルト）
-- `deepseek`: DeepSeek OCR
-
-### CDK による AWS リソースのデプロイ
-
-CDK デプロイの際に必要な依存パッケージのインストールします。
+デプロイには Node.js と Docker、設定済みの AWS 認証情報が必要です。
 
 ```sh
+# 1. 依存パッケージのインストール
 npm ci
-```
 
-新規の AWS アカウント/リージョンで初めて CDK を使用する場合は、以下のコマンドを実行してください。
-
-```sh
+# 2. (初回のみ) 対象アカウント / リージョンで CDK bootstrap
 cdk bootstrap
+
+# 3. デプロイ
+npm run cdk:deploy
 ```
 
-AWS リソースのデプロイを行います。リソースの変更を行った際は毎回このコマンドを実行してください。
+`npm run cdk:deploy` は、対話型のデプロイラッパー `scripts/cdk.sh` を起動します。引数なしで実行すると、コマンド、環境（base / dev / stg / prod）、リージョンを対話的に選択できます。引数で直接指定することもできます（npm 経由の場合は `--` が必須です）。
 
 ```sh
-cdk deploy
+npm run cdk:deploy -- dev --region us-east-1
 ```
 
-デプロイ後に出力される `OcrAppStack.WebConstructCloudFrontURL` の URL にアクセスすることで、Web サイトにアクセスできます。
+デプロイ後に出力される `WebConstructCloudFrontURL` の URL にアクセスすると Web サイトを開けます。管理画面を使うには少なくとも 1 人の管理者ユーザーが必要です（[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) の「初期ユーザーの投入」を参照）。
 
-### AWS リソースの削除
+## ドキュメント
 
-削除するとリソースとデータは完全に消去されるので注意してください。
-
-```sh
-cdk destroy
-```
-
-### SageMaker インスタンスのゼロスケーリング
-
-本アプリケーションでは、OCR 処理に使用する GPU インスタンスのコストを削減するため、一定時間アクセスがない場合に自動的にインスタンス数を 0 にスケールダウンする機能を実装しています。再度 OCR 処理が必要になった際は、インスタンスの起動に約 10 分程度の時間がかかるため注意してください。
-
-`cdk.json` にて、ゼロスケーリング機能の設定を変更することができます。
-
-```
-"sagemaker_zero_scale": true,
-"sagemaker_scale_in_cooldown_seconds": 3600
-```
-
-- `sagemaker_zero_scale`: ゼロスケーリング機能の有効/無効（デフォルト: `true`）
-- `sagemaker_scale_in_cooldown_seconds`: スケールダウンまでの待機時間（秒）（デフォルト: `3600` = 1時間）
-
-## 高精度日本語 OCR エンジンへの変更
-
-デフォルトでは OCR エンジンとして PaddleOCR を利用していますが、高精度の日本語 OCR エンジン「Yomitoku」に切り替えることも可能です。Yomitoku の場合は、[AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-64qkuwrqi4lhi) からサブスクライブした後、利用することが可能です。利用方法としては、[ocr.py](lambda/api/app/ocr.py#L36) における SageMaker Endpoint の呼び出しにおいて、Yomitoku の SageMaker Endpoint を指定します。また、[Inference Component](lambda/api/app/ocr.py#L40) の記述をコメントアウトする必要があります。DeepSeek OCR に切り替えたい場合は、[OCR エンジンへの変更(PaddleOCR or DeepSeek OCR)](#ocr-エンジンへの変更paddleocr-or-deepseek-ocr) をご参照ください。
-
-また、GitHub で公開されている [Yomitoku](https://github.com/kotaro-kinoshita/yomitoku) を利用して、本サンプルを動作させることも可能です。実装例については[こちら](https://github.com/gteu/sample-auto-extract-ai-ocr-app)を参照してください。
-
-> [!Warning]
->
-> GitHub 版の Yomitoku は CC BY-NC-SA 4.0 ライセンスが適用されます（[詳細](https://github.com/kotaro-kinoshita/yomitoku?tab=readme-ov-file#license)）。このライセンスでは商用利用が制限されているため、ご注意ください。
-
-## AI Agent による情報検証機能（Experimental）
-
-![Agent機能](docs/imgs/agent-screen.png)
-
-本システムでは、Amazon Bedrock AgentCore を活用した AI Agent による抽出結果の自動検証・補正機能を実験的に提供しています。例えば、Agent は抽出された情報を既存の顧客データベースと照合し、不整合や欠損を自動検出して修正候補を提案します。金額の計算ミスや必須項目の抜け漏れなども自動チェックし、従来の手作業による確認作業と比較して処理時間の短縮と精度向上を実現します。
-
-利用の際は、`cdk.json` にて、agent 機能を有効化することができます。デフォルトでは無効化されています。`enable_agent` を `true` にすることで、エージェント機能自体を有効化、`enable_agent_demo` を true にすることで、デモ用のユースケースとツールが自動的に登録されます。自動で作成された「(demo)請求書」というユースケースから、[サンプル帳票](demo/sample_invoice.pdf) をアップロードすることで、エージェント機能の挙動を確認することができます。
-
-```
-"enable_agent": true,
-"enable_agent_demo": true,
-```
-
-### 開発方法
-
-#### ローカルでの開発手順
-
-1. 環境変数の設定
-
-`cdk deploy` コマンドの実行後、出力されるリソース情報を利用してアプリケーションの環境変数を設定します。
-
-出力例:
-
-```
-Outputs:
-OcrAppStack.ApiApiEndpointE2C5D803 = https://XXXXXXXXXXXX.execute-api.us-east-2.amazonaws.com/prod/
-OcrAppStack.ApiDocumentBucketName14F33E89 = ocrappstack-apidocumentbucket1e0f08d4-XXXXXXXXXXXX
-OcrAppStack.ApiImagesTableName87FC28D3 = OcrAppStack-DatabaseImagesTable3098F792-XXXXXXXXXXXX
-OcrAppStack.ApiJobsTableName16618860 = OcrAppStack-DatabaseJobsTable7C20F61C-XXXXXXXXXXXX
-OcrAppStack.ApiOcrApiEndpoint94C64180 = https://XXXXXXXXXXXX.execute-api.us-east-2.amazonaws.com/prod/
-OcrAppStack.AuthUserPoolClientId8216BF9A = XXXXXXXXXXXX
-OcrAppStack.AuthUserPoolIdC0605E59 = us-east-2_XXXXXXXXXXXX
-OcrAppStack.DatabaseImagesTableName88591548 = OcrAppStack-DatabaseImagesTable3098F792-XXXXXXXXXXXX
-OcrAppStack.DatabaseJobsTableNameFCF442A2 = OcrAppStack-DatabaseJobsTable7C20F61C-XXXXXXXXXXXX
-OcrAppStack.DatabaseSchemasTableNameCF14F20C = OcrAppStack-DatabaseSchemasTable97CF304A-XXXXXXXXXXXX
-OcrAppStack.OcrEndpointDockerImageUriDFE2281D = XXXXXXXXXXXX.dkr.ecr.us-east-2.amazonaws.com/cdk-hnb659fds-container-assets-XXXXXXXXXXXX-us-east-2:XXXXXXXXXXXX
-OcrAppStack.OcrEndpointSageMakerEndpointName031E6036 = OcrEndpointEFA18CB8-XXXXXXXXXXXX
-OcrAppStack.OcrEndpointSageMakerInferenceComponentNameAD008265 = ocr-inference-component
-OcrAppStack.OcrEndpointSageMakerRoleArn4F9772E2 = arn:aws:iam::XXXXXXXXXXXX:role/OcrAppStack-OcrEndpointSageMakerExecutionRoleF2F0DF-XXXXXXXXXXXX
-OcrAppStack.WebConstructCloudFrontURL2550F65B = https://XXXXXXXXXXXX.cloudfront.net
-Stack ARN:
-arn:aws:cloudformation:us-east-2:XXXXXXXXXXXX:stack/OcrAppStack/XXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-```
-
-この出力情報を基に、プロジェクトルートの `web` ディレクトリにある `.env.sample` ファイルを参考にして、新規に `.env` ファイルを作成します。
-
-2. 環境変数ファイルの設定例
-
-`.env.sample` ファイルをコピーして `.env` ファイルを作成し、以下のように `cdk deploy` の出力値を使って設定します：
-
-```properties
-VITE_APP_USER_POOL_CLIENT_ID=XXXXXXXXXXXX                # AuthUserPoolClientId の値
-VITE_APP_USER_POOL_ID=us-east-2_XXXXXXXXXXXX            # AuthUserPoolId の値
-VITE_APP_REGION=us-east-2                               # リージョン名（デプロイしたリージョン）
-VITE_API_BASE_URL=https://XXXXXXXXXXXX.execute-api.us-east-2.amazonaws.com/prod/   # ApiOcrApiEndpoint の値
-VITE_ENABLE_OCR=true                                    # OCR機能の有効化
-VITE_ENABLE_AGENT=true                                  # Agent機能の有効化
-VITE_SYNC_BUCKET_NAME=XXXXXXXXXXXX                      # S3同期バケット名
-```
-
-3. ローカル開発サーバーの起動
-
-環境変数の設定が完了したら、以下のコマンドでローカル開発サーバーを起動できます：
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-ブラウザで `http://localhost:3000` を開くと、アプリケーションにアクセスできます。
+- [デプロイと設定ガイド](docs/DEPLOYMENT.md)：デプロイ方法、パラメータ設定、OCR エンジンの変更、初期ユーザーの投入、ローカル開発、テストの実行。
+- [実装説明](docs/ARCHITECTURE.md)：全体構成、処理の流れ、データストアの使い分け、権限設計、エージェント検証。
 
 ## Security
 

@@ -1,28 +1,31 @@
+import io
 import json
 import logging
 import re
-import imghdr
-from utils.bedrock import call_bedrock, parse_converse_response
+
+from PIL import Image
+
+from exceptions import ResponseParseError
 
 logger = logging.getLogger(__name__)
 
 
-def generate_schema_fields_from_image(image_data, instructions=None):
-    """
-    画像からスキーマのフィールド部分のみを生成する関数
+def build_schema_generation_request(image_data, instructions=None):
+    """画像からスキーマ生成用の Bedrock リクエストを構築する（純粋関数）
 
     Args:
         image_data (bytes): 画像データ
         instructions (str, optional): スキーマ生成の指示
 
     Returns:
-        dict: 生成されたフィールド定義 {"fields": [...]} の形式
+        tuple: (messages, system_prompts)
     """
     try:
-        # 画像のMIMEタイプを判定
-        image_type = imghdr.what(None, h=image_data)
-        if not image_type:
-            image_type = 'jpeg'  # デフォルト
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            image_type = (img.format or 'JPEG').lower()
+        except Exception:
+            image_type = 'jpeg'
         content_type = f"image/{image_type}"
 
         # システムプロンプト
@@ -35,14 +38,19 @@ def generate_schema_fields_from_image(image_data, instructions=None):
 
         # フィールド定義の説明
         fields_explanation = """
-        フィールド型は主に以下の3種類があります：
-        
-        1. string型: 単一の文字列値を格納するフィールド（日付、番号、名前など）
-        2. map型: 複数の関連フィールドをグループ化するための階層構造（会社情報、住所情報など）
-        3. list型: 表形式のデータなど、同じ構造を持つ複数の項目を格納するためのフィールド（明細行、商品リストなど）
-        
+        フィールド型は以下の4種類があります：
+
+        1. string型: 単一の文字列値を格納するフィールド（日付、名前など）
+        2. number型: 数字のみで構成される値（数量・件数など、単位を別に持つ純粋な数）
+        3. map型: 複数の関連フィールドをグループ化するための階層構造（会社情報、住所情報など）
+        4. list型: 表形式のデータなど、同じ構造を持つ複数の項目を格納するためのフィールド（明細行、商品リストなど）
+
         基本的には、単一の値は string 型、関連する複数の値をグループ化する場合は map 型、
         表形式のデータ（明細行など）は list 型を使用してください。
+
+        number 型は「数量」「個数」など数字だけで意味が完結する値にのみ使ってください。
+        金額（479,520円）・割合（8%）・電話番号・郵便番号・ID や伝票番号（先頭ゼロや区切り・
+        構造を持ちうる値）は、桁以外の情報が失われないよう number ではなく string を使ってください。
         """
 
         # フィールド定義の例
@@ -54,7 +62,7 @@ def generate_schema_fields_from_image(image_data, instructions=None):
             {
               "name": "フィールド名（英数字、アンダースコア）",
               "display_name": "フィールド表示名（日本語可）",
-              "type": "string | map | list"  // フィールドの型
+              "type": "string | number | map | list"  // フィールドの型
             },
             // map型の場合は子フィールドを定義
             {
@@ -90,7 +98,7 @@ def generate_schema_fields_from_image(image_data, instructions=None):
                   {
                     "name": "quantity",
                     "display_name": "数量",
-                    "type": "string"
+                    "type": "number"
                   }
                 ]
               }
@@ -153,7 +161,7 @@ def generate_schema_fields_from_image(image_data, instructions=None):
                   {
                     "name": "quantity",
                     "display_name": "数量",
-                    "type": "string"
+                    "type": "number"
                   },
                   {
                     "name": "unit_price",
@@ -253,7 +261,7 @@ def generate_schema_fields_from_image(image_data, instructions=None):
                   {
                     "name": "quantity",
                     "display_name": "数量",
-                    "type": "string"
+                    "type": "number"
                   },
                   {
                     "name": "weight",
@@ -314,38 +322,37 @@ def generate_schema_fields_from_image(image_data, instructions=None):
 
         messages = [user_message]
 
-        # Bedrock APIを呼び出し
-        response = call_bedrock(messages, system_prompts)
-
-        # レスポンスからテキストを抽出
-        fields_text = parse_converse_response(response)
-
-        # JSONテキストからフィールド定義を抽出
-        json_match = re.search(r'```json\s*(.*?)\s*```',
-                               fields_text, re.DOTALL)
-        if json_match:
-            fields_json = json_match.group(1)
-        else:
-            fields_json = fields_text
-
-        # JSONをパース
-        try:
-            schema = json.loads(fields_json)
-
-            # スキーマが {"fields": [...]} の形式になっているか確認
-            if "fields" not in schema:
-                # fieldsキーがない場合は、配列を受け取ったと仮定して包む
-                if isinstance(schema, list):
-                    schema = {"fields": schema}
-                else:
-                    # それ以外の場合はエラー
-                    raise ValueError("生成されたスキーマに 'fields' キーがありません")
-
-            return schema
-        except json.JSONDecodeError as e:
-            logger.error(f"フィールド定義のJSONパースエラー: {str(e)}")
-            raise ValueError(f"生成されたフィールド定義が有効なJSONではありません: {fields_json}")
+        return messages, system_prompts
 
     except Exception as e:
-        logger.error(f"フィールド生成エラー: {str(e)}")
+        logger.error(f"スキーマ生成リクエスト構築エラー: {str(e)}")
         raise
+
+
+def parse_schema_generation_response(fields_text: str) -> dict:
+    """Bedrock レスポンスからスキーマフィールド定義をパースする（純粋関数）
+
+    Args:
+        fields_text: Bedrock からのレスポンステキスト
+
+    Returns:
+        {"fields": [...]} 形式のスキーマ定義
+
+    Raises:
+        ResponseParseError: 応答が JSON でない、または fields を取り出せない場合
+    """
+    json_match = re.search(r'```json\s*(.*?)\s*```', fields_text, re.DOTALL)
+    fields_json = json_match.group(1) if json_match else fields_text
+
+    try:
+        schema = json.loads(fields_json)
+    except json.JSONDecodeError as e:
+        raise ResponseParseError(f"生成されたフィールド定義が有効なJSONではありません: {str(e)}") from e
+
+    # fields キーが無い場合は、配列を受け取ったと仮定して包む
+    if isinstance(schema, list):
+        return {"fields": schema}
+    if not isinstance(schema, dict) or "fields" not in schema:
+        raise ResponseParseError("生成されたスキーマに 'fields' キーがありません")
+
+    return schema

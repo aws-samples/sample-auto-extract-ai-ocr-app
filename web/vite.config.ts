@@ -13,5 +13,20 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Allow all hosts for remote development environments accessed via proxy
+    allowedHosts: true,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // 変更頻度の低い大きめの依存を分離し、アプリ更新時の再ダウンロードを避ける。
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('aws-amplify') || id.includes('@aws-amplify')) return 'amplify-vendor';
+            if (id.includes('react-dom') || id.includes('react-router') || id.includes('/react/')) return 'react-vendor';
+          }
+        },
+      },
+    },
   },
 })

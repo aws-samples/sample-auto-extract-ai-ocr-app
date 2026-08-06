@@ -1,12 +1,21 @@
 import logging
 import os
+from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
+from clients import dynamodb_resource
+from exceptions import ConflictError
 
 logger = logging.getLogger(__name__)
 
-# DynamoDB クライアント
-dynamodb = boto3.resource('dynamodb')
+
+def _get_schemas_table():
+    """SchemasTable のリソースを取得"""
+    table_name = os.environ.get('SCHEMAS_TABLE_NAME')
+    if not table_name:
+        logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
+        raise RuntimeError("SCHEMAS_TABLE_NAME environment variable is not set")
+    return dynamodb_resource.Table(table_name)
 
 
 def load_app_schemas():
@@ -16,14 +25,8 @@ def load_app_schemas():
     取得できない場合はエラーを返す
     """
     try:
-        # DynamoDB からスキーマを取得
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            raise ValueError("SCHEMAS_TABLE_NAME environment variable is not set")
-            
-        logger.info(f"DynamoDB からスキーマを取得します: {schemas_table_name}")
-        schemas_table = dynamodb.Table(schemas_table_name)
+        logger.info("DynamoDB からスキーマを取得します")
+        schemas_table = _get_schemas_table()
         
         # schema_type='app' の全てのレコードを取得
         response = schemas_table.query(
@@ -41,7 +44,12 @@ def load_app_schemas():
                     'description': item.get('description', ''),
                     'fields': item.get('fields', []),
                     'input_methods': item.get('input_methods', {'file_upload': True, 's3_sync': False}),
-                    'custom_prompt': item.get('custom_prompt', '')
+                    'custom_prompt': item.get('custom_prompt', ''),
+                    'agent_enabled': item.get('agent_enabled', False),
+                    'agent_auto_run': item.get('agent_auto_run', False),
+                    'sample_image_s3_key': item.get('sample_image_s3_key'),
+                    'sample_image_filename': item.get('sample_image_filename'),
+                    'schema_instructions': item.get('schema_instructions', ''),
                 }
                 apps.append(app_data)
             
@@ -92,33 +100,6 @@ def get_extraction_fields_for_app(app_name):
     return {"fields": []}
 
 
-def get_field_names_for_app(app_name):
-    """指定されたアプリの抽出フィールド名リストを取得（階層構造対応）"""
-    fields = get_extraction_fields_for_app(app_name)["fields"]
-    field_names = []
-    
-    def extract_field_names(fields, prefix=""):
-        for field in fields:
-            field_name = field["name"]
-            full_name = f"{prefix}{field_name}" if prefix else field_name
-            field_names.append(full_name)
-            
-            # map型の場合は再帰的に処理
-            if field.get("type") == "map" and "fields" in field:
-                extract_field_names(field["fields"], f"{full_name}.")
-            
-            # list型の場合、itemsがmap型なら再帰的に処理
-            if field.get("type") == "list" and "items" in field:
-                items = field["items"]
-                if items.get("type") == "map" and "fields" in items:
-                    # リスト内の各項目のフィールド名を取得
-                    for item_field in items["fields"]:
-                        field_names.append(f"{full_name}.{item_field['name']}")
-    
-    extract_field_names(fields)
-    return field_names
-
-
 def get_app_display_name(app_name):
     """アプリの表示名を取得"""
     app_schemas = get_app_schemas()
@@ -148,23 +129,71 @@ def get_custom_prompt_for_app(app_name):
     return ""
 
 
+
+
+def create_app_schema(app_name, app_data):
+    """
+    アプリケーションスキーマを新規作成する（同名が既に存在する場合は ClientError を raise）
+    """
+    try:
+        schemas_table = _get_schemas_table()
+        current_time = datetime.now().isoformat()
+
+        item = {
+            'schema_type': 'app',
+            'name': app_name,
+            'display_name': app_data.get('display_name', app_name),
+            'description': app_data.get('description', ''),
+            'fields': app_data.get('fields', []),
+            'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
+            'agent_enabled': app_data.get('agent_enabled', False),
+            'agent_auto_run': app_data.get('agent_auto_run', False),
+            'created_at': current_time,
+            'updated_at': current_time
+        }
+
+        if 'custom_prompt' in app_data and app_data['custom_prompt']:
+            item['custom_prompt'] = app_data['custom_prompt']
+
+        # サンプル画像 (スキーマ生成に使った画像) の紐付け
+        if app_data.get('sample_image_s3_key'):
+            item['sample_image_s3_key'] = app_data['sample_image_s3_key']
+            item['sample_image_filename'] = app_data.get('sample_image_filename', '')
+
+        # スキーマ生成に使った指示プロンプト
+        if app_data.get('schema_instructions') is not None:
+            item['schema_instructions'] = app_data['schema_instructions']
+
+        schemas_table.put_item(
+            Item=item,
+            ConditionExpression='attribute_not_exists(schema_type) AND attribute_not_exists(#n)',
+            ExpressionAttributeNames={'#n': 'name'}
+        )
+
+        logger.info(f"スキーマを新規作成しました: {app_name}")
+        return True
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            raise ConflictError(f"アプリ名 '{app_name}' は既に使用されています")
+        raise
+    except Exception as e:
+        logger.error(f"スキーマ作成エラー: {str(e)}")
+        raise
+
+
 def update_app_schema(app_name, app_data):
     """
     アプリケーションスキーマを更新する
     """
     try:
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            return False
-            
-        schemas_table = dynamodb.Table(schemas_table_name)
+        schemas_table = _get_schemas_table()
         
         # 現在の日時を取得
-        from datetime import datetime
         current_time = datetime.now().isoformat()
         
-        # 既存のレコードを取得して created_at を保持
+        # 既存のレコードを取得して created_at, custom_prompt を保持
+        existing_item = {}
         try:
             existing_response = schemas_table.get_item(
                 Key={
@@ -172,9 +201,10 @@ def update_app_schema(app_name, app_data):
                     'name': app_name
                 }
             )
-            created_at = existing_response.get('Item', {}).get('created_at', current_time)
-        except:
-            created_at = current_time
+            existing_item = existing_response.get('Item', {})
+        except Exception:
+            pass
+        created_at = existing_item.get('created_at', current_time)
         
         # 新しい構造でスキーマを保存
         item = {
@@ -184,13 +214,32 @@ def update_app_schema(app_name, app_data):
             'description': app_data.get('description', ''),
             'fields': app_data.get('fields', []),
             'input_methods': app_data.get('input_methods', {'file_upload': True, 's3_sync': False}),
+            'agent_enabled': app_data.get('agent_enabled', False),
+            'agent_auto_run': app_data.get('agent_auto_run', False),
             'created_at': created_at,
             'updated_at': current_time
         }
-        
-        # custom_prompt がある場合のみ追加
+
+        # custom_prompt: リクエストに含まれていればそれを使い、なければ既存値を保持
         if 'custom_prompt' in app_data and app_data['custom_prompt']:
             item['custom_prompt'] = app_data['custom_prompt']
+        elif existing_item.get('custom_prompt'):
+            item['custom_prompt'] = existing_item['custom_prompt']
+
+        # sample_image: リクエストに含まれていれば差し替え、なければ既存値を保持
+        # (画像を変更しない編集で紐付けが消えないようにするため)
+        if app_data.get('sample_image_s3_key'):
+            item['sample_image_s3_key'] = app_data['sample_image_s3_key']
+            item['sample_image_filename'] = app_data.get('sample_image_filename', '')
+        elif existing_item.get('sample_image_s3_key'):
+            item['sample_image_s3_key'] = existing_item['sample_image_s3_key']
+            item['sample_image_filename'] = existing_item.get('sample_image_filename', '')
+
+        # schema_instructions: None でなければ差し替え (空文字はクリア扱い)、None なら既存値保持
+        if app_data.get('schema_instructions') is not None:
+            item['schema_instructions'] = app_data['schema_instructions']
+        elif existing_item.get('schema_instructions'):
+            item['schema_instructions'] = existing_item['schema_instructions']
         
         schemas_table.put_item(Item=item)
         
@@ -207,12 +256,7 @@ def delete_app_schema(app_name):
     アプリケーションスキーマを削除する
     """
     try:
-        schemas_table_name = os.environ.get('SCHEMAS_TABLE_NAME')
-        if not schemas_table_name:
-            logger.error("SCHEMAS_TABLE_NAME 環境変数が設定されていません")
-            return False
-            
-        schemas_table = dynamodb.Table(schemas_table_name)
+        schemas_table = _get_schemas_table()
         
         # スキーマを削除
         schemas_table.delete_item(

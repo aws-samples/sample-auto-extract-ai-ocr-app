@@ -1,7 +1,14 @@
 import boto3
 import json
 import os
+import uuid
 from datetime import datetime, timezone
+
+import psycopg2
+import psycopg2.extras
+
+DSQL_ENDPOINT = os.environ.get("DSQL_ENDPOINT", "")
+DSQL_REGION = os.environ.get("DSQL_REGION", "")
 
 
 def handler(event, context):
@@ -24,8 +31,12 @@ def handler(event, context):
         # Insert demo customers
         insert_demo_customers(dynamodb, customers_table_name)
 
-        # Insert demo usecase
+        # Insert demo usecase (DynamoDB)
         insert_demo_usecase(dynamodb, schemas_table_name)
+
+        # Insert demo usecase + tool bindings (DSQL)
+        if DSQL_ENDPOINT:
+            insert_demo_usecase_dsql()
 
         return {'PhysicalResourceId': 'demo-data'}
 
@@ -92,9 +103,84 @@ def insert_demo_usecase(dynamodb, table_name):
             'file_upload': True,
             's3_sync': False
         },
+        'agent_enabled': True,
+        'agent_auto_run': True,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'updated_at': datetime.now(timezone.utc).isoformat()
     }
 
     table.put_item(Item=demo_usecase)
     print(f"Inserted demo usecase: {demo_usecase['name']}")
+
+
+def _get_dsql_connection():
+    """Get DSQL connection with IAM auth"""
+    client = boto3.client("dsql", region_name=DSQL_REGION)
+    token = client.generate_db_connect_admin_auth_token(DSQL_ENDPOINT, DSQL_REGION)
+    return psycopg2.connect(
+        host=DSQL_ENDPOINT,
+        port=5432,
+        user="admin",
+        password=token,
+        dbname="postgres",
+        sslmode="require",
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
+
+
+def insert_demo_usecase_dsql():
+    """Insert demo usecase and bind all available tools in DSQL"""
+    conn = _get_dsql_connection()
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            # Check if demo usecase already exists
+            cur.execute("SELECT id FROM usecases WHERE app_name = %s", ("demo_invoice",))
+            existing = cur.fetchone()
+            if existing:
+                usecase_id = str(existing["id"])
+                print(f"Demo usecase already exists: {usecase_id}")
+            else:
+                # Insert usecase (created_by uses a system placeholder UUID)
+                usecase_id = str(uuid.uuid4())
+                cur.execute(
+                    "INSERT INTO usecases (id, app_name, created_by) VALUES (%s, %s, %s)",
+                    (usecase_id, "demo_invoice", "00000000-0000-0000-0000-000000000000"),
+                )
+                print(f"Inserted demo usecase in DSQL: {usecase_id}")
+
+            # Bind all active tools to this usecase
+            cur.execute("SELECT id, name FROM tools WHERE is_active = true")
+            tools = cur.fetchall()
+
+            for tool in tools:
+                tool_id = str(tool["id"])
+                cur.execute(
+                    """INSERT INTO usecase_tools (usecase_id, tool_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (usecase_id, tool_id) DO NOTHING""",
+                    (usecase_id, tool_id),
+                )
+
+            print(f"Bound {len(tools)} tools to demo usecase")
+
+            # Grant viewer permission to the 'all' group so every signed-up
+            # user can access the demo usecase. The 'all' group is created by
+            # dsql-admin seed; this resource is wired to depend on it so the
+            # group should always exist by the time this runs. If it does not,
+            # we log a warning and skip rather than failing the deployment.
+            cur.execute("SELECT id FROM groups WHERE name = 'all'")
+            all_group = cur.fetchone()
+            if all_group:
+                cur.execute(
+                    """INSERT INTO group_usecases (group_id, usecase_id, permission)
+                    VALUES (%s, %s, 'viewer')
+                    ON CONFLICT (group_id, usecase_id) DO NOTHING""",
+                    (str(all_group["id"]), usecase_id),
+                )
+                print(f"Granted 'all' group viewer permission on demo usecase")
+            else:
+                print("WARNING: 'all' group not found; skipping group_usecases grant")
+
+    finally:
+        conn.close()

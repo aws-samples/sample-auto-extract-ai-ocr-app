@@ -2,7 +2,7 @@
 プロンプト生成関数
 """
 import json
-from utils.helpers import decimal_to_float, safe_get_from_dynamo_data
+from utils.helpers import decimal_to_float
 from domains.template import generate_unified_template
 import logging
 
@@ -44,7 +44,9 @@ def create_multi_without_ocr_prompt(extraction_fields, field_names, custom_promp
 - 複数の画像から直接情報を読み取ってください
 - 複数ページにまたがる情報は適切に統合してください
 - 不明な項目は空文字列("")にしてください
-- 数値は文字列として出力してください
+- すべての値は文字列(JSON string)として出力してください
+- number型のフィールドは数字のみ（例: "12345", "-5", "3.14"）。カンマ区切り・単位・記号は付けないでください
+- 金額や割合など単位・区切りを含む値は string型のフィールドとしてそのまま（例: "479,520円", "8%"）出力してください
 - 日付は YYYY-MM-DD 形式で出力してください
 - JSONのみを出力し、余計な説明は不要です
 """
@@ -86,7 +88,9 @@ def create_single_without_ocr_prompt(extraction_fields, field_names, custom_prom
 注意事項:
 - 画像から直接情報を読み取ってください
 - 不明な項目は空文字列("")にしてください
-- 数値は文字列として出力してください
+- すべての値は文字列(JSON string)として出力してください
+- number型のフィールドは数字のみ（例: "12345", "-5", "3.14"）。カンマ区切り・単位・記号は付けないでください
+- 金額や割合など単位・区切りを含む値は string型のフィールドとしてそのまま（例: "479,520円", "8%"）出力してください
 - 日付は YYYY-MM-DD 形式で出力してください
 - JSONのみを出力し、余計な説明は不要です
 """
@@ -103,6 +107,7 @@ def create_single_with_ocr_prompt(extraction_targets, unified_template, example_
     
     抽出対象情報には以下の型があります：
     - string型: 単一の文字列値
+    - number型: 数字のみの文字列（数量・件数など）。カンマ・単位・記号は含めない
     - map型: 複数のフィールドを持つオブジェクト
     - list型: 複数の項目を持つ配列
     
@@ -158,8 +163,8 @@ def create_multi_with_ocr_prompt(ocr_results: list, schema: dict, instructions: 
                 f"ページ結果が辞書形式ではありません: {type(page_result)} - {page_result}")
             continue
 
-        page_num = safe_get_from_dynamo_data(page_result, "page", 1)
-        page_words = safe_get_from_dynamo_data(page_result, "words", [])
+        page_num = page_result.get("page", 1)
+        page_words = page_result.get("words", [])
 
         # page_wordsがリストでない場合は空リストに
         if not isinstance(page_words, list):
@@ -175,15 +180,15 @@ def create_multi_with_ocr_prompt(ocr_results: list, schema: dict, instructions: 
                 logger.warning(f"単語が辞書形式ではありません: {type(word)} - {word}")
                 continue
 
-            word_content = safe_get_from_dynamo_data(
-                word, "content", "").strip()
+            word_content = word.get(
+                "content", "").strip()
             if word_content:
                 page_text_parts.append(f"[ID:{word_id}] {word_content}")
                 all_words_with_ids.append({
                     "id": word_id,
                     "content": word_content,
                     "page": page_num,
-                    "points": safe_get_from_dynamo_data(word, "points", [])
+                    "points": word.get("points", [])
                 })
                 word_id += 1
 

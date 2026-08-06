@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Literal
 
 
 class PresignedUrlRequest(BaseModel):
@@ -6,7 +7,7 @@ class PresignedUrlRequest(BaseModel):
     filename: str
     content_type: str
     app_name: str = "default"
-    page_processing_mode: str = "combined"
+    page_processing_mode: Literal["combined", "individual"] = "combined"
 
 
 class PresignedUrlResponse(BaseModel):
@@ -18,8 +19,7 @@ class PresignedUrlResponse(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     """アップロード完了通知リクエスト"""
-    image_id: str
     filename: str
     s3_key: str
     app_name: str = "default"
-    page_processing_mode: str = "combined"
+    page_processing_mode: Literal["combined", "individual"] = "combined"

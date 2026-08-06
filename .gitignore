@@ -1,13 +1,29 @@
 # Node.js
 node_modules
 
-# TypeScript
-lib/**/*.d.ts
-dist/**/*.d.ts
-
 # CDK
 .cdk.staging
 cdk.out
+cdk.context.json
+
+# CDK TypeScript build output
+bin/**/*.js
+bin/**/*.d.ts
+lib/**/*.js
+lib/**/*.d.ts
+
+# tsc 生成物 (scripts / lambda / web)。
+# web/ 直下の *.config.js (eslint / postcss / tailwind) と web/src/aws-exports.js は
+# 実ファイルとして git 管理下にあるため、パターンで巻き込まないよう web は限定的に指定する。
+scripts/**/*.js
+scripts/**/*.d.ts
+lambda/**/*.js
+lambda/**/*.d.ts
+test/**/*.js
+test/**/*.d.ts
+web/**/*.d.ts
+web/src/**/*.js
+web/vite.config.js
 
 # Python
 __pycache__/
@@ -15,5 +31,24 @@ __pycache__/
 # Environment
 .env
 
+# Seed users CSV (contains temporary passwords; keep local only)
+users.csv
+
 # macOS
 .DS_Store
+
+# VSCode
+.vscode/
+
+# Web build
+web/dist
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Kiro
+.kiro/*
+!.kiro/steering/
+.kiro/steering/*
+!.kiro/steering/structure.md
+!.kiro/steering/coding-rules.md

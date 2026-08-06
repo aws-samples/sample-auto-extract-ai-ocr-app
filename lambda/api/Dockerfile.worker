@@ -1,0 +1,11 @@
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY app/ ${LAMBDA_TASK_ROOT}/app/
+
+# 各 worker Lambda の handler は CDK 側の cmd で上書きする。
+# ここでは単体実行できるようデフォルトを1つ置くだけ。
+CMD ["app.workers.step_functions.process_image_handler"]

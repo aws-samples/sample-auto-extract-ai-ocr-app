@@ -1,103 +1,152 @@
 import * as cdk from "aws-cdk-lib";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 import { Auth } from "./constructs/auth";
 import { Api } from "./constructs/api";
 import { Web } from "./constructs/web";
 import { Database } from "./constructs/database";
+import { Dsql } from "./constructs/dsql";
 import { Ocr } from "./constructs/ocr";
 import { Agent } from "./constructs/agent";
 import { StepFunctions } from "./constructs/step-functions";
+import { WebSocket } from "./constructs/websocket";
+import { AppParameters } from "./parameters";
+
+export interface OcrAppStackProps extends cdk.StackProps {
+  params: AppParameters;
+  webAclArn?: string;
+  /** 環境名（base/dev/stg/prod）。リソース名の env suffix に使う。 */
+  envName?: string;
+}
 
 export class OcrAppStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: OcrAppStackProps) {
     super(scope, id, props);
 
-    // OCR有効フラグを取得（デフォルトはtrue）
-    const enableOcr = this.node.tryGetContext("enable_ocr") ?? true;
-
-    // OCRエンジンを取得（デフォルトはpaddle）
-    const ocrEngine = this.node.tryGetContext("ocr_engine") ?? "paddle";
-
-    // Agent有効フラグを取得（デフォルトはfalse）
-    const enableAgent = this.node.tryGetContext("enable_agent") ?? false;
-    const enableAgentDemo =
-      this.node.tryGetContext("enable_agent_demo") ?? false;
-
-    const auth = new Auth(this, "Auth");
+    const p = props.params;
 
     const database = new Database(this, "Database");
 
-    // OCRが有効な場合のみSageMakerエンドポイントを作成
-    let ocrEndpoint = undefined;
-    if (enableOcr) {
-      const enableZeroScale =
-        this.node.tryGetContext("sagemaker_zero_scale") ?? true;
-      const scaleInCooldownSeconds =
-        this.node.tryGetContext("sagemaker_scale_in_cooldown_seconds") ?? 3600;
+    const auth = new Auth(this, "Auth", {
+      selfSignUpEnabled: p.selfSignUpEnabled,
+      allowedSignUpEmailDomains: p.allowedSignUpEmailDomains,
+    });
 
+    const dsql = new Dsql(this, "Dsql", {
+      userPoolId: auth.userPool.userPoolId,
+      schemasTable: database.schemasTable,
+    });
+
+    // Post Auth Trigger に DSQL 接続情報を注入
+    auth.postAuthFunction.addEnvironment("DSQL_ENDPOINT", dsql.clusterEndpoint);
+    auth.postAuthFunction.addEnvironment("DSQL_REGION", this.region);
+    auth.postAuthFunction.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["dsql:DbConnectAdmin"],
+        resources: [dsql.clusterArn],
+      })
+    );
+
+    let ocrEndpoint = undefined;
+    if (p.enableOcr) {
       const ocr = new Ocr(this, "OcrEndpoint", {
-        enableZeroScale: enableZeroScale,
-        scaleInCooldownSeconds: scaleInCooldownSeconds,
-        ocrEngine: ocrEngine as "paddle" | "deepseek",
+        enableZeroScale: p.sagemakerZeroScale,
+        scaleInCooldownSeconds: p.sagemakerScaleInCooldownSeconds,
+        ocrEngine: p.ocrEngine,
+        marketplaceModelPackageArn: p.marketplaceModelPackageArn,
+        envName: props.envName,
       });
       ocrEndpoint = ocr;
     }
 
-    // Agentが有効な場合のみAgentを作成
-    let agent = undefined;
-    if (enableAgent) {
-      agent = new Agent(this, "Agent", {
-        region: this.region,
-        enableDemo: enableAgentDemo,
-        schemasTable: database.schemasTable,
-      });
-    }
+    const agent = new Agent(this, "Agent", {
+      region: this.region,
+      enableDemo: p.enableAgentDemo,
+      envName: props.envName,
+      schemasTable: database.schemasTable,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
+      dsqlDdlResource: dsql.ddlResource,
+      dsqlSeedResource: dsql.seedResource,
+    });
 
     const api = new Api(this, "Api", {
       imagesTable: database.imagesTable,
       jobsTable: database.jobsTable,
       schemasTable: database.schemasTable,
-      toolsTable: agent?.toolsTable,
+      userPreferencesTable: database.userPreferencesTable,
+      // toolsTable removed — tools are now managed via AgentCore Gateway + DSQL
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.client.userPoolClientId,
-      enableOcr: enableOcr,
+      enableOcr: p.enableOcr,
+      ocrEngine: p.ocrEngine,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
-      agentRuntimeArn: agent?.runtimeArn,
+      agentRuntimeArn: agent.runtimeArn,
+      modelId: p.modelId,
+      modelRegion: p.modelRegion,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
     });
 
-    // Step Functions追加
     const stepFunctions = new StepFunctions(this, "StepFunctions", {
       imagesTable: database.imagesTable,
       jobsTable: database.jobsTable,
       schemasTable: database.schemasTable,
       documentBucket: api.documentBucket,
-      enableOcr,
+      enableOcr: p.enableOcr,
+      ocrEngine: p.ocrEngine,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
+      modelId: p.modelId,
+      modelRegion: p.modelRegion,
+      agentRuntimeArn: agent.runtimeArn,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
     });
 
-    // API LambdaにStep Functions実行権限を付与
     stepFunctions.stateMachine.grantStartExecution(api.handler);
 
-    // 環境変数追加
     api.handler.addEnvironment(
       "STATE_MACHINE_ARN",
       stepFunctions.stateMachine.stateMachineArn
     );
+
+    // AgentKick Lambda invoke from API
+    if (stepFunctions.agentKickFunction) {
+      api.handler.addEnvironment(
+        "AGENT_KICK_FUNCTION_NAME",
+        stepFunctions.agentKickFunction.functionName
+      );
+      stepFunctions.agentKickFunction.grantInvoke(api.handler);
+    }
+
+    const websocket = new WebSocket(this, "WebSocket", {
+      userPool: auth.userPool,
+      userPoolClient: auth.client,
+      connectionsTable: database.connectionsTable,
+      imagesTable: database.imagesTable,
+      dsqlEndpoint: dsql.clusterEndpoint,
+      dsqlRegion: this.region,
+      dsqlClusterArn: dsql.clusterArn,
+    });
 
     new Web(this, "WebConstruct", {
       buildFolder: "/dist",
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.client.userPoolClientId,
       apiUrl: api.apiEndpoint,
-      enableOcr: enableOcr,
-      enableAgent: enableAgent,
+      enableOcr: p.enableOcr,
       syncBucketName: api.syncBucket.bucketName,
+      webAclArn: props.webAclArn,
+      websocketUrl: websocket.apiEndpoint,
+      selfSignUpEnabled: p.selfSignUpEnabled,
     });
 
-    // 出力
     new cdk.CfnOutput(this, "StateMachineArn", {
       value: stepFunctions.stateMachine.stateMachineArn,
       description: "OCR Step Functions State Machine ARN",

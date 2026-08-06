@@ -1,0 +1,1 @@
+"""Step Functions Lambda エントリポイント"""

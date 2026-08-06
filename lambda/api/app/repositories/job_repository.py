@@ -1,71 +1,100 @@
 from clients import dynamodb_resource
 import logging
+from enum import StrEnum
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-from fastapi import HTTPException
 from datetime import datetime
 import uuid
 from config import settings
+from exceptions import NotFoundError, BadRequestError
+from utils.helpers import float_to_decimal
 
 logger = logging.getLogger(__name__)
 
 
-def get_jobs_table():
-    """
-    ジョブテーブルのリソースを取得する
+class JobStatus(StrEnum):
+    """ジョブ（agent 検証 / スキーマ生成）のステータス値。"""
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
-    Returns:
-        boto3.resources.factory.dynamodb_resource.Table: DynamoDB テーブルリソース
-    """
+
+def validate_job_status(status: str) -> None:
+    """無効なジョブステータス値なら BadRequestError。"""
+    try:
+        JobStatus(status)
+    except ValueError:
+        raise BadRequestError(f"不正なジョブステータスです: {status}")
+
+
+class JobType(StrEnum):
+    """ジョブ種別。"""
+    AGENT_CORRECTION = "agent_correction"
+    SCHEMA_GENERATION = "schema_generation"
+
+
+class SuggestionStatus(StrEnum):
+    """エージェント提案の状態。"""
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+def validate_suggestion_status(status: str) -> None:
+    """無効な提案ステータス値なら BadRequestError。"""
+    try:
+        SuggestionStatus(status)
+    except ValueError:
+        raise BadRequestError(f"不正な提案ステータスです: {status}")
+
+
+def get_jobs_table():
+    """ジョブテーブルのリソースを取得する"""
     table_name = settings.JOBS_TABLE_NAME
     if not table_name:
         logger.error("JOBS_TABLE_NAME 環境変数が設定されていません")
-        raise HTTPException(
-            status_code=500, detail="Database configuration error")
-
+        raise RuntimeError("JOBS_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
 def get_images_table():
-    """
-    画像テーブルのリソースを取得する（job_repository内で使用）
-
-    Returns:
-        boto3.resources.factory.dynamodb_resource.Table: DynamoDB テーブルリソース
-    """
+    """画像テーブルのリソースを取得する（job_repository内で使用）"""
     table_name = settings.IMAGES_TABLE_NAME
     if not table_name:
         logger.error("IMAGES_TABLE_NAME 環境変数が設定されていません")
-        raise HTTPException(
-            status_code=500, detail="Database configuration error")
-
+        raise RuntimeError("IMAGES_TABLE_NAME environment variable is not set")
     return dynamodb_resource.Table(table_name)
 
 
 def get_job(job_id):
-    """
-    ジョブ情報を取得する
-
-    Args:
-        job_id (str): ジョブID
-
-    Returns:
-        dict: ジョブ情報
-    """
+    """ジョブ情報を取得する。見つからない場合は None を返す。"""
     table = get_jobs_table()
-
     try:
         response = table.get_item(Key={"id": job_id})
-        item = response.get("Item")
-
-        if not item:
-            raise HTTPException(status_code=404, detail="Job not found")
-
-        return item
+        return response.get("Item")
     except ClientError as e:
         logger.error(f"ジョブ取得エラー: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
+
+
+def get_latest_agent_job_by_image_id(image_id: str) -> dict | None:
+    """image_id から最新のエージェントジョブを取得"""
+    from boto3.dynamodb.conditions import Attr
+    table = get_jobs_table()
+    try:
+        response = table.query(
+            IndexName="ImageIdIndex",
+            KeyConditionExpression=Key("image_id").eq(image_id),
+            FilterExpression=Attr("job_type").eq(JobType.AGENT_CORRECTION),
+            ScanIndexForward=False,
+            Limit=10,
+        )
+        items = response.get("Items", [])
+        return items[0] if items else None
+    except ClientError as e:
+        logger.error(f"image_id によるジョブ取得エラー: {str(e)}")
+        raise
 
 
 def create_agent_job(image_id: str):
@@ -85,8 +114,8 @@ def create_agent_job(image_id: str):
         item = {
             "id": job_id,
             "image_id": image_id,
-            "job_type": "agent_correction",
-            "status": "processing",
+            "job_type": JobType.AGENT_CORRECTION,
+            "status": JobStatus.PROCESSING,
             "created_at": current_time,
             "updated_at": current_time
         }
@@ -94,8 +123,55 @@ def create_agent_job(image_id: str):
         return job_id
     except Exception as e:
         logger.error(f"Error creating agent job: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
+
+
+def update_suggestion_status(image_id: str, suggestion_index: int, status: str) -> int:
+    """Update a specific suggestion's status (accepted/rejected) and return pending count.
+
+    Args:
+        image_id: Image ID to find the latest agent job
+        suggestion_index: Index of suggestion in the suggestions array
+        status: New status ('accepted' or 'rejected')
+
+    Returns:
+        int: Number of remaining pending suggestions
+    """
+    validate_suggestion_status(status)
+    job = get_latest_agent_job_by_image_id(image_id)
+    if not job:
+        raise NotFoundError("この画像のエージェントジョブが見つかりません")
+
+    suggestions = job.get("suggestions", [])
+    if suggestion_index < 0 or suggestion_index >= len(suggestions):
+        raise BadRequestError(f"提案のインデックスが不正です: {suggestion_index}")
+
+    # Atomically update single element using DynamoDB path expression
+    table = get_jobs_table()
+    current_time = datetime.now().isoformat()
+    table.update_item(
+        Key={"id": job["id"]},
+        UpdateExpression=f"SET suggestions[{suggestion_index}].#st = :status, updated_at = :u",
+        ExpressionAttributeNames={"#st": "status"},
+        ExpressionAttributeValues={
+            ":status": status,
+            ":u": current_time,
+        },
+    )
+
+    # Count pending suggestions (after our update applied locally)
+    suggestions[suggestion_index]["status"] = status
+    pending_count = sum(1 for s in suggestions if s.get("status", SuggestionStatus.PENDING) == SuggestionStatus.PENDING)
+
+    # Update image record with new pending count
+    images_table = get_images_table()
+    images_table.update_item(
+        Key={"id": image_id},
+        UpdateExpression="SET agent_suggestions_count = :c",
+        ExpressionAttributeValues={":c": pending_count},
+    )
+
+    return pending_count
 
 
 def update_agent_job(job_id: str, status: str, suggestions: list = None, error: str = None):
@@ -107,6 +183,7 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
         suggestions: Correction suggestions
         error: Error message if failed
     """
+    validate_job_status(status)
     table = get_jobs_table()
     current_time = datetime.now().isoformat()
 
@@ -118,13 +195,13 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
             ":updated_at": current_time
         }
 
-        if status == "completed":
+        if status == JobStatus.COMPLETED:
             update_expr += ", completed_at = :completed_at"
             expr_attr_values[":completed_at"] = current_time
 
             if suggestions is not None:
                 update_expr += ", suggestions = :suggestions"
-                expr_attr_values[":suggestions"] = suggestions
+                expr_attr_values[":suggestions"] = float_to_decimal(suggestions)
 
         if error:
             update_expr += ", #error = :error"
@@ -139,5 +216,90 @@ def update_agent_job(job_id: str, status: str, suggestions: list = None, error: 
         )
     except Exception as e:
         logger.error(f"Error updating agent job: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Database error: {str(e)}")
+        raise
+
+
+# === Schema Generation Jobs ===
+# 非同期スキーマ生成 (Bedrock 呼び出しが 40-50 秒かかり API Gateway 29 秒制限を超えるため)
+# のジョブ管理。既存 JobsTable の PK=id をそのまま流用し、job_type="schema_generation" で識別する。
+# image_id は使わない (ImageIdIndex GSI にはヒットしない)。
+
+def create_schema_generation_job(s3_key: str, filename: str, instructions: str = "") -> str:
+    """Create schema generation job
+
+    Args:
+        s3_key: S3 key of the uploaded sample file
+        filename: Original filename (used for extension detection)
+        instructions: Optional user instructions
+
+    Returns:
+        str: Job ID
+    """
+    job_id = str(uuid.uuid4())
+    table = get_jobs_table()
+    current_time = datetime.now().isoformat()
+
+    try:
+        item = {
+            "id": job_id,
+            "job_type": JobType.SCHEMA_GENERATION,
+            "status": JobStatus.PROCESSING,
+            "created_at": current_time,
+            "updated_at": current_time,
+            "input": {
+                "s3_key": s3_key,
+                "filename": filename,
+                "instructions": instructions or "",
+            },
+        }
+        table.put_item(Item=item)
+        return job_id
+    except Exception as e:
+        logger.error(f"Error creating schema generation job: {str(e)}")
+        raise
+
+
+def update_schema_generation_job(job_id: str, status: str, result: dict = None, error: str = None):
+    """Update schema generation job
+
+    Args:
+        job_id: Job ID
+        status: Job status (processing, completed, failed)
+        result: Generated schema dict (e.g. {"fields": [...]})
+        error: Error message if failed
+    """
+    validate_job_status(status)
+    table = get_jobs_table()
+    current_time = datetime.now().isoformat()
+
+    try:
+        update_expr = "SET #status = :status, updated_at = :updated_at"
+        expr_attr_names = {"#status": "status"}
+        expr_attr_values = {
+            ":status": status,
+            ":updated_at": current_time,
+        }
+
+        if status == JobStatus.COMPLETED:
+            update_expr += ", completed_at = :completed_at"
+            expr_attr_values[":completed_at"] = current_time
+
+            if result is not None:
+                update_expr += ", #result = :result"
+                expr_attr_names["#result"] = "result"
+                expr_attr_values[":result"] = float_to_decimal(result)
+
+        if error:
+            update_expr += ", #error = :error"
+            expr_attr_names["#error"] = "error"
+            expr_attr_values[":error"] = error
+
+        table.update_item(
+            Key={"id": job_id},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_attr_names,
+            ExpressionAttributeValues=expr_attr_values,
+        )
+    except Exception as e:
+        logger.error(f"Error updating schema generation job: {str(e)}")
+        raise

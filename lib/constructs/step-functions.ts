@@ -18,25 +18,30 @@ export interface StepFunctionsProps {
   schemasTable: cdk.aws_dynamodb.Table;
   documentBucket: cdk.aws_s3.Bucket;
   enableOcr: boolean;
+  ocrEngine?: string;
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
+  modelId: string;
+  modelRegion: string;
+  agentRuntimeArn?: string;
+  dsqlEndpoint?: string;
+  dsqlRegion?: string;
+  dsqlClusterArn?: string;
 }
 
 export class StepFunctions extends Construct {
   public readonly stateMachine: StateMachine;
+  public readonly agentKickFunction?: DockerImageFunction;
 
   constructor(scope: Construct, id: string, props: StepFunctionsProps) {
     super(scope, id);
 
-    // cdk.jsonからモデルIDとリージョンを取得
-    const modelId =
-      this.node.tryGetContext("model_id") ||
-      "us.anthropic.claude-sonnet-4-20250514-v1:0";
-    const modelRegion = this.node.tryGetContext("model_region") || "us-east-1";
+    const { modelId, modelRegion } = props;
 
     const processImage = new DockerImageFunction(this, 'ProcessImage', {
       code: DockerImageCode.fromImageAsset('lambda/api', {
-        file: 'Dockerfile.stepfunctions',
+        file: 'Dockerfile.worker',
+        cmd: ['app.workers.step_functions.process_image_handler'],
         platform: Platform.LINUX_AMD64,
       }),
       timeout: cdk.Duration.minutes(15),
@@ -51,6 +56,7 @@ export class StepFunctions extends Construct {
         ENABLE_OCR: props.enableOcr.toString(),
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || '',
         SAGEMAKER_INFERENCE_COMPONENT_NAME: props.sagemakerInferenceComponentName || '',
+        OCR_ENGINE: props.ocrEngine || 'paddle',
       },
     });
     
@@ -76,15 +82,69 @@ export class StepFunctions extends Construct {
       outputPath: '$.Payload',
     });
 
+    // AgentKick Lambda (runs after ProcessImage, checks agent_enabled internally)
+    let chainedDefinition: cdk.aws_stepfunctions.IChainable = processImageTask;
+
+    if (props.agentRuntimeArn) {
+      const agentKick = new DockerImageFunction(this, 'AgentKick', {
+        code: DockerImageCode.fromImageAsset('lambda/api', {
+          file: 'Dockerfile.worker',
+          cmd: ['app.workers.agent_kick.agent_kick_handler'],
+          platform: Platform.LINUX_AMD64,
+        }),
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 512,
+        environment: {
+          SCHEMAS_TABLE_NAME: props.schemasTable.tableName,
+          IMAGES_TABLE_NAME: props.imagesTable.tableName,
+          JOBS_TABLE_NAME: props.jobsTable.tableName,
+          BUCKET_NAME: props.documentBucket.bucketName,
+          AGENT_RUNTIME_ARN: props.agentRuntimeArn,
+          DSQL_ENDPOINT: props.dsqlEndpoint || '',
+          DSQL_REGION: props.dsqlRegion || '',
+          MODEL_ID: props.modelId,
+          MODEL_REGION: props.modelRegion,
+        },
+      });
+
+      props.imagesTable.grantReadWriteData(agentKick);
+      props.schemasTable.grantReadData(agentKick);
+      props.jobsTable.grantReadWriteData(agentKick);
+      props.documentBucket.grantRead(agentKick);
+
+      // AgentCore Runtime invoke
+      agentKick.addToRolePolicy(new PolicyStatement({
+        actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+        resources: [props.agentRuntimeArn, `${props.agentRuntimeArn}/*`],
+      }));
+
+      // DSQL access for resolving usecase tools
+      if (props.dsqlClusterArn) {
+        agentKick.addToRolePolicy(new PolicyStatement({
+          actions: ['dsql:DbConnectAdmin'],
+          resources: [props.dsqlClusterArn],
+        }));
+      }
+
+      const agentKickTask = new LambdaInvoke(this, 'AgentKickTask', {
+        lambdaFunction: agentKick,
+        outputPath: '$.Payload',
+      });
+
+      chainedDefinition = processImageTask.next(agentKickTask);
+      this.agentKickFunction = agentKick;
+    }
+
     const processImagesMap = new Map(this, 'ProcessImagesMap', {
       maxConcurrency: 5,
       itemsPath: '$.images',
       parameters: {
         'image_id.$': '$$.Map.Item.Value.image_id',
+        'skip_ocr.$': '$$.Map.Item.Value.skip_ocr',
         'job_id.$': '$.job_id',
       },
     });
-    processImagesMap.itemProcessor(processImageTask);
+    processImagesMap.itemProcessor(chainedDefinition);
 
     this.stateMachine = new StateMachine(this, 'StateMachine', {
       definitionBody: DefinitionBody.fromChainable(processImagesMap),

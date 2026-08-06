@@ -1,25 +1,22 @@
-from clients import s3_client
+from clients import s3_client, invoke_worker_async
 import uuid
 import logging
 from datetime import datetime
 from typing import Dict, Any
-from fastapi.responses import StreamingResponse
-import io
 
+from exceptions import NotFoundError, BadRequestError
 from repositories import (
-    create_image_record, get_image, get_images, update_image_status, update_converted_image,
-    get_children_by_parent_id, delete_image as repo_delete_image
+    create_image_record, get_image, update_image_status, update_converted_image,
 )
 from schemas import (
     PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest
 )
 from config import settings
-from utils import resize_image, convert_pdf_to_image
+from domains.image_status import ImageStatus
+from utils import resize_image
 from repositories import get_app_schemas, get_app_input_methods
 
 logger = logging.getLogger(__name__)
-
-# 共通のS3クライアントを使用
 
 
 class UploadService:
@@ -28,7 +25,7 @@ class UploadService:
     def __init__(self):
         self.bucket_name = settings.BUCKET_NAME
 
-    async def generate_presigned_url(self, request: PresignedUrlRequest) -> PresignedUrlResponse:
+    async def generate_presigned_url(self, request: PresignedUrlRequest, uploaded_by: str = None) -> PresignedUrlResponse:
         """署名付きURLを生成する"""
         try:
             # app_nameのバリデーション
@@ -41,14 +38,14 @@ class UploadService:
 
             if not valid_app:
                 logger.error(f"Invalid app name: {request.app_name}")
-                raise ValueError(f"Invalid app name: {request.app_name}")
+                raise BadRequestError(f"無効なアプリ名です: {request.app_name}")
 
             # アプリケーションの入力方法設定を取得
             input_methods = get_app_input_methods(request.app_name)
 
             # ファイルアップロードが有効かチェック
             if not input_methods.get("file_upload", True):
-                raise ValueError(
+                raise BadRequestError(
                     f"ファイルアップロードはこのアプリケーションでは無効です: {request.app_name}")
 
             # 一意のS3キーを生成
@@ -72,8 +69,9 @@ class UploadService:
                 filename=request.filename,
                 s3_key=s3_key,
                 app_name=request.app_name,
-                status="uploading",  # アップロード中ステータスを設定
-                page_processing_mode=request.page_processing_mode  # 追加
+                status=ImageStatus.UPLOADING,
+                page_processing_mode=request.page_processing_mode,
+                uploaded_by=uploaded_by
             )
 
             logger.info(
@@ -89,7 +87,7 @@ class UploadService:
             logger.error(f"Error generating presigned URL: {str(e)}")
             raise
 
-    async def handle_upload_complete(self, request: UploadCompleteRequest) -> Dict[str, Any]:
+    async def handle_upload_complete(self, image_id: str, request: UploadCompleteRequest) -> Dict[str, Any]:
         """アップロード完了を処理する"""
         try:
             # S3オブジェクトの存在確認
@@ -102,7 +100,7 @@ class UploadService:
                     'ContentType', 'application/octet-stream')
             except Exception as e:
                 logger.error(f"S3 object not found: {str(e)}")
-                raise ValueError("File not found in S3")
+                raise NotFoundError("S3 にファイルが見つかりません")
 
             # ファイル種別を判定
             is_image = content_type.startswith('image/')
@@ -110,26 +108,25 @@ class UploadService:
 
             if is_image:
                 # 画像ファイルの場合はリサイズ処理
-                await self._handle_image_resize(request, content_type)
+                await self._handle_image_resize(image_id, request, content_type)
 
             # PDFファイルの場合は変換処理を開始
             if is_pdf:
-                return await self._handle_pdf_conversion(request)
+                return await self._handle_pdf_conversion(image_id, request)
             else:
                 # 画像ファイルの場合はそのまま処理待ちに
-                update_image_status(request.image_id, "pending")
+                update_image_status(image_id, ImageStatus.PENDING)
                 return {
                     "status": "success",
                     "message": "Upload completed successfully",
-                    "image_id": request.image_id,
-                    "is_converting": False
+                    "image_id": image_id,
                 }
 
         except Exception as e:
             logger.error(f"Error handling upload complete: {str(e)}")
             raise
 
-    async def _handle_image_resize(self, request: UploadCompleteRequest, content_type: str) -> None:
+    async def _handle_image_resize(self, image_id: str, request: UploadCompleteRequest, content_type: str) -> None:
         """画像のリサイズ処理"""
         try:
             # S3から画像を取得
@@ -157,9 +154,9 @@ class UploadService:
 
                     # DynamoDBを更新
                     update_converted_image(
-                        request.image_id,
+                        image_id,
                         converted_s3_key,
-                        "pending",
+                        ImageStatus.PENDING,
                         orig_size,
                         new_size
                     )
@@ -167,9 +164,9 @@ class UploadService:
                     logger.info("リサイズは不要です。元の画像を使用します。")
                     # リサイズ不要でも元の画像をconverted_s3_keyとして設定
                     update_converted_image(
-                        request.image_id,
+                        image_id,
                         request.s3_key,
-                        "pending",
+                        ImageStatus.PENDING,
                         orig_size,
                         orig_size
                     )
@@ -178,65 +175,28 @@ class UploadService:
                     "resize_image function not available, skipping resize")
         except Exception as e:
             logger.error(f"画像リサイズエラー: {str(e)}")
-            # リサイズに失敗しても処理を続行
 
-    async def _handle_pdf_conversion(self, request: UploadCompleteRequest) -> Dict[str, Any]:
+    async def _handle_pdf_conversion(self, image_id: str, request: UploadCompleteRequest) -> Dict[str, Any]:
         """PDF変換処理"""
         try:
             # ステータスを変換中に更新
-            update_image_status(request.image_id, "converting")
+            update_image_status(image_id, ImageStatus.CONVERTING)
 
-            # バックグラウンドタスクとして変換処理を実行
-            from main import background_task
-            task_id = background_task.add_task(
-                convert_pdf_to_image,
-                request.image_id,
-                request.s3_key
-            )
-            logger.info(
-                f"Started PDF conversion task {task_id} for image {request.image_id}")
+            # 変換は Worker Lambda に async invoke で委譲する。
+            # HTTP 応答後の実行環境回収で変換が失われないよう API 内スレッドでは行わない。
+            invoke_worker_async(settings.PDF_CONVERT_FUNCTION_NAME, {
+                "image_id": image_id,
+                "s3_key": request.s3_key,
+            })
+            logger.info(f"Invoked PdfConvert Lambda for image {image_id}")
 
             return {
                 "status": "success",
                 "message": "Upload completed, PDF conversion started",
-                "image_id": request.image_id,
-                "is_converting": True
+                "image_id": image_id,
             }
         except Exception as e:
             logger.error(f"PDF conversion setup error: {str(e)}")
-            raise
-
-    async def get_image_stream(self, image_id: str) -> StreamingResponse:
-        """画像をストリーミングで返す"""
-        try:
-            # 画像情報を取得
-            image_data = get_image(image_id)
-            if not image_data:
-                raise ValueError("Image not found")
-
-            s3_key = image_data.get("s3_key")
-            if isinstance(s3_key, list):
-                s3_key = s3_key[0]  # リストの場合は最初の要素
-
-            # S3から画像を取得
-            s3_response = s3_client.get_object(
-                Bucket=self.bucket_name, Key=s3_key)
-            image_data_bytes = s3_response['Body'].read()
-
-            # Content-Typeを推定
-            content_type = s3_response.get(
-                'ContentType', 'application/octet-stream')
-
-            # ストリーミングレスポンスを作成
-            return StreamingResponse(
-                io.BytesIO(image_data_bytes),
-                media_type=content_type,
-                headers={
-                    "Content-Disposition": f"inline; filename={image_data.get('filename', 'image')}"}
-            )
-
-        except Exception as e:
-            logger.error(f"Error getting image stream: {str(e)}")
             raise
 
     async def generate_download_url(self, image_id: str) -> Dict[str, Any]:
@@ -245,7 +205,7 @@ class UploadService:
             # 画像情報を取得
             image_data = get_image(image_id)
             if not image_data:
-                raise ValueError("Image not found")
+                raise NotFoundError("画像が見つかりません")
 
             # S3キーを抽出（リスト・文字列両対応）
             def extract_s3_keys_from_dynamo_data(dynamo_data):
@@ -262,17 +222,15 @@ class UploadService:
 
             # 使用するS3キーを決定
             if converted_s3_keys:
-                # 変換後の画像がある場合
                 target_s3_keys = converted_s3_keys
                 bucket_name = self.bucket_name
                 logger.info(f"変換後の画像のダウンロードURLを生成します: {bucket_name}")
             elif s3_keys:
-                # 元画像を使用
                 target_s3_keys = s3_keys
                 bucket_name = self.bucket_name
                 logger.info(f"元画像のダウンロードURLを生成します: {bucket_name}")
             else:
-                raise ValueError("Image file not found")
+                raise NotFoundError("画像ファイルが見つかりません")
 
             # 複数ページの署名付きURLを生成
             presigned_urls = []
@@ -319,12 +277,12 @@ class UploadService:
                     main_content_type = content_type
 
             if not presigned_urls:
-                raise ValueError("No valid S3 keys found")
+                raise NotFoundError("有効な S3 キーが見つかりません")
 
             logger.info(f"Generated download URL for image {image_id}")
 
             return {
-                "presigned_url": main_presigned_url,  # 単一画像用のメインURL
+                "presigned_url": main_presigned_url,
                 "presigned_urls": presigned_urls,
                 "total_pages": len(presigned_urls),
                 "is_multipage": len(presigned_urls) > 1,
@@ -335,72 +293,4 @@ class UploadService:
 
         except Exception as e:
             logger.error(f"Error generating download URL: {str(e)}")
-            raise
-
-    async def get_images_list(self, app_name: str = None) -> Dict[str, Any]:
-        """画像一覧を取得する"""
-        try:
-            # app_nameでフィルタリングして画像を取得
-            images = get_images(app_name)
-
-            # レスポンス形式に変換
-            result = {
-                "images": images,
-                "total": len(images)
-            }
-
-            logger.info(f"Retrieved {len(images)} images")
-            return result
-
-        except Exception as e:
-            logger.error(f"Error getting images list: {str(e)}")
-            raise
-
-    async def delete_image(self, image_id: str) -> Dict[str, Any]:
-        """画像を削除する"""
-        try:
-            from fastapi import HTTPException
-            
-            image = get_image(image_id)
-            if not image:
-                raise HTTPException(status_code=404, detail="Image not found")
-            
-            parent_document_id = image.get("parent_document_id")
-            page_processing_mode = image.get("page_processing_mode")
-            total_pages = image.get("total_pages", 0)
-            
-            # 親ファイルの場合（個別処理で2ページ以上、parent_document_idなし）
-            is_parent = (not parent_document_id and 
-                        page_processing_mode == "individual" and 
-                        total_pages > 1)
-            
-            if is_parent:
-                # 親ファイルの場合、全ての子ファイルも削除
-                children = get_children_by_parent_id(image_id)
-                for child in children:
-                    repo_delete_image(child['id'])
-                    logger.info(f"Deleted child image: {child['id']}")
-            
-            # 子ファイルの場合、削除前に残りの子ファイル数をチェック
-            remaining_count = 0
-            if parent_document_id:
-                all_children = get_children_by_parent_id(parent_document_id)
-                # 削除前の子ファイル数をカウント（自分自身を除く）
-                remaining_count = len([c for c in all_children if c['id'] != image_id])
-                logger.info(f"Remaining children count (before deletion): {remaining_count}")
-            
-            # 対象ファイルを削除
-            repo_delete_image(image_id)
-            logger.info(f"Deleted image: {image_id}")
-            
-            # 子ファイルの場合、残りが0なら親も削除
-            if parent_document_id and remaining_count == 0:
-                # 子ファイルが全て削除されたら親も削除
-                repo_delete_image(parent_document_id)
-                logger.info(f"Deleted parent image: {parent_document_id}")
-            
-            return {"status": "success", "message": "Image deleted successfully"}
-
-        except Exception as e:
-            logger.error(f"Error deleting image: {str(e)}")
             raise

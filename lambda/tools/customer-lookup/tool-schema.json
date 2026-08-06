@@ -1,0 +1,32 @@
+{
+  "tools": [
+    {
+      "name": "search_customer_by_id",
+      "description": "顧客IDで顧客情報を検索",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "description": "顧客ID"
+          }
+        },
+        "required": ["customer_id"]
+      }
+    },
+    {
+      "name": "search_customer_by_name",
+      "description": "顧客名で顧客情報を検索（部分一致）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customer_name": {
+            "type": "string",
+            "description": "顧客名"
+          }
+        },
+        "required": ["customer_name"]
+      }
+    }
+  ]
+}

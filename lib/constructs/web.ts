@@ -13,14 +13,18 @@ export interface WebProps {
   userPoolClientId: string;
   apiUrl: string;
   enableOcr: boolean;
-  enableAgent: boolean;
   syncBucketName: string;
+  webAclArn?: string;
+  /** WebSocket プレゼンス機能のエンドポイント URL */
+  websocketUrl: string;
+  /** Cognito のセルフサインアップ許可（Authenticator UI 側の hideSignUp と連動させる） */
+  selfSignUpEnabled: boolean;
 }
 export class Web extends Construct {
   constructor(scope: Construct, id: string, props: WebProps) {
     super(scope, id);
 
-    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, enableAgent, syncBucketName } = props;
+    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, syncBucketName, webAclArn, websocketUrl, selfSignUpEnabled } = props;
 
     const bucketProps: s3.BucketProps = {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -59,7 +63,7 @@ export class Web extends Construct {
       cloudFrontDistributionProps: {
         minimumProtocolVersion:
           aws_cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
-        geoRestriction: aws_cloudfront.GeoRestriction.allowlist("JP"),
+        webAclId: webAclArn,
         errorResponses: [
           {
             httpStatus: 403,
@@ -108,8 +112,9 @@ export class Web extends Construct {
         VITE_APP_REGION: Stack.of(this).region,
         VITE_API_BASE_URL: apiUrl,
         VITE_ENABLE_OCR: enableOcr.toString(),
-        VITE_ENABLE_AGENT: enableAgent.toString(),
         VITE_SYNC_BUCKET_NAME: syncBucketName,
+        VITE_WEBSOCKET_URL: websocketUrl,
+        VITE_SELF_SIGN_UP_ENABLED: selfSignUpEnabled.toString(),
       },
     });
 

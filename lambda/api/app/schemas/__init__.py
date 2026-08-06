@@ -3,12 +3,18 @@ Pydantic schemas for API request/response validation
 """
 from .ocr import OcrWord, OcrResult, OcrResultResponse, OcrStartRequest
 from .upload import PresignedUrlRequest, PresignedUrlResponse, UploadCompleteRequest
-from .extraction import ExtractionRequest, ExtractionResult
-from .schema import SchemaField, SchemaGenerateRequest, SchemaSaveRequest
-from .job import JobStatus, JobStartResponse
-from .image import ImageInfo, ImageListResponse
-from .app import AppCreateRequest, AppUpdateRequest, CustomPromptRequest
-from .common import ErrorResponse, SuccessResponse
+from .schema import (
+    SchemaGenerateRequest,
+    SchemaSaveRequest,
+    SchemaGenerateStartResponse,
+    SchemaGenerateStatusResponse,
+    NAME_PATTERN,
+)
+from .job import JobStartResponse
+from .image import ImageInfo
+from .app import CustomPromptRequest
+from .image_operations import ProcessRequest, VerificationRequest, SuggestionStatusUpdate, S3ImportItem, S3ImportBatchRequest
+from .usecase import UsecaseToolsUpdate
 
 __all__ = [
     # OCR
@@ -20,24 +26,24 @@ __all__ = [
     "PresignedUrlRequest",
     "PresignedUrlResponse",
     "UploadCompleteRequest",
-    # Extraction
-    "ExtractionRequest",
-    "ExtractionResult",
     # Schema
-    "SchemaField",
     "SchemaGenerateRequest",
     "SchemaSaveRequest",
+    "SchemaGenerateStartResponse",
+    "SchemaGenerateStatusResponse",
+    "NAME_PATTERN",
     # Job
-    "JobStatus",
     "JobStartResponse",
     # Image
     "ImageInfo",
-    "ImageListResponse",
     # App
-    "AppCreateRequest",
-    "AppUpdateRequest",
     "CustomPromptRequest",
-    # Common
-    "ErrorResponse",
-    "SuccessResponse",
+    # Image Operations
+    "ProcessRequest",
+    "VerificationRequest",
+    "SuggestionStatusUpdate",
+    "S3ImportItem",
+    "S3ImportBatchRequest",
+    # Usecase
+    "UsecaseToolsUpdate",
 ]

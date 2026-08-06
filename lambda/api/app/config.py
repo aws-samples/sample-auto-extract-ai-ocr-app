@@ -12,7 +12,6 @@ class Settings:
     # DynamoDB設定
     IMAGES_TABLE_NAME: str = os.getenv("IMAGES_TABLE_NAME", "")
     JOBS_TABLE_NAME: str = os.getenv("JOBS_TABLE_NAME", "")
-    TOOLS_TABLE_NAME: str = os.getenv("TOOLS_TABLE_NAME", "")
 
     # 機能フラグ
     ENABLE_OCR: bool = os.getenv("ENABLE_OCR", "true").lower() == "true"
@@ -27,13 +26,24 @@ class Settings:
         "SAGEMAKER_ENDPOINT_NAME", "")
     SAGEMAKER_INFERENCE_COMPONENT_NAME: str = os.getenv(
         "SAGEMAKER_INFERENCE_COMPONENT_NAME", "")
+    OCR_ENGINE: str = os.getenv("OCR_ENGINE", "paddle")
 
     # API設定
     API_BASE_URL: str = os.getenv("API_BASE_URL", "")
     
     # Agent設定
     AGENT_RUNTIME_ARN: str = os.getenv("AGENT_RUNTIME_ARN", "")
-    
+    AGENT_KICK_FUNCTION_NAME: str = os.getenv("AGENT_KICK_FUNCTION_NAME", "")
+
+    # Schema Generation Worker Lambda
+    SCHEMA_GENERATE_FUNCTION_NAME: str = os.getenv("SCHEMA_GENERATE_FUNCTION_NAME", "")
+
+    # PDF Convert Worker Lambda
+    PDF_CONVERT_FUNCTION_NAME: str = os.getenv("PDF_CONVERT_FUNCTION_NAME", "")
+
+    # S3 Sync Import Worker Lambda
+    S3_SYNC_IMPORT_FUNCTION_NAME: str = os.getenv("S3_SYNC_IMPORT_FUNCTION_NAME", "")
+
     # Step Functions設定
     STATE_MACHINE_ARN: str = os.getenv("STATE_MACHINE_ARN", "")
 

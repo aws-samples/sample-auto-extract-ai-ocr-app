@@ -7,6 +7,7 @@ export interface ExtractionResponse {
   app_name: string;
   app_display_name: string;
   fields: Field[];
+  schema_changed?: boolean;
   verification_completed?: boolean;
   verification_completed_at?: string;
 }

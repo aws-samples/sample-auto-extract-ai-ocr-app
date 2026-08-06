@@ -3,7 +3,6 @@
 OCRとExtractionで共通して使用されるテンプレート生成機能を提供
 """
 
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,7 +51,11 @@ def generate_json_template(schema) -> str:
                 logger.warning(f"フィールドが辞書形式ではありません: {type(field)} - {field}")
                 continue
 
-            if field.get("type") == "string":
+            if field.get("type") == "number":
+                # number 型は「数字のみの文字列」。値は文字列で出力させる（記号・単位・カンマなし）。
+                items.append(
+                    f'{indent_str}"{field["name"]}": "{field["display_name"]}の値（数字のみ、記号・単位・カンマなし。例: 12345）"')
+            elif field.get("type") == "string":
                 items.append(
                     f'{indent_str}"{field["name"]}": "{field["display_name"]}の値"')
             elif field.get("type") == "map" and "fields" in field:
@@ -66,6 +69,9 @@ def generate_json_template(schema) -> str:
                         field["items"]["fields"], indent + 4)
                     items.append(
                         f'{indent_str}"{field["name"]}": [\n{indent_str}  {{\n{nested_template}\n{indent_str}  }}\n{indent_str}]')
+                elif field["items"].get("type") == "number":
+                    items.append(
+                        f'{indent_str}"{field["name"]}": ["{field["display_name"]}の値（数字のみ、記号・単位・カンマなし）"]')
                 else:
                     items.append(
                         f'{indent_str}"{field["name"]}": ["{field["display_name"]}の値"]')

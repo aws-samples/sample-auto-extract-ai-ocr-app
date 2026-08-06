@@ -1,66 +1,43 @@
-import { createBrowserRouter, Outlet } from 'react-router-dom';
-import { Authenticator } from '@aws-amplify/ui-react';
-import App from './App';
-import Home from './pages/Home';
-import Upload from './pages/Upload';
-import OCRResult from './pages/OCRResult';
-import SchemaGenerator from './pages/SchemaGenerator'; // 追加
-import { AppProvider } from './components/AppContext';
-import '@aws-amplify/ui-react/styles.css';
+import { createBrowserRouter } from 'react-router-dom';
+import { lazy } from 'react';
+import { AuthWrapper } from './components/layout/AuthWrapper';
+import { AppLayout } from './components/layout/AppLayout';
+import { AppProvider } from './contexts/AppContext';
 
-// Layout component that includes the App wrapper and authentication
-const AppLayout = () => {
-  return (
-    <Authenticator>
-      {() => (
-        <AppProvider>
-          <App>
-            <Outlet />
-          </App>
-        </AppProvider>
-      )}
-    </Authenticator>
-  );
-};
+// ルート単位でコード分割し、初回ロードの単一巨大チャンクを避ける。
+const Home = lazy(() => import('./pages/Home'));
+const Stars = lazy(() => import('./pages/Stars'));
+const History = lazy(() => import('./pages/History'));
+const Upload = lazy(() => import('./pages/upload/Upload'));
+const OCRResult = lazy(() => import('./pages/ocr-result/OCRResult'));
+const SchemaGenerator = lazy(() => import('./pages/schema/SchemaGenerator'));
+const Admin = lazy(() => import('./pages/Admin'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
-// Define routes
+const Root = () => (
+  <AuthWrapper>
+    <AppProvider>
+      <AppLayout />
+    </AppProvider>
+  </AuthWrapper>
+);
+
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <AppLayout />,
+    element: <Root />,
     children: [
-      {
-        index: true,
-        element: <Home />,
-      },
-      {
-        path: 'app/:appName',
-        element: <Upload />,
-      },
-      {
-        path: 'ocr-result/:id',
-        element: <OCRResult />,
-      },
-      {
-        // 新規作成・編集共通のルート
-        path: 'schema-generator',
-        element: <SchemaGenerator mode="create" />,
-      },
-      {
-        // 新規作成・編集共通のルート (appNameあり)
-        path: 'schema-generator/:appName',
-        element: <SchemaGenerator mode="edit" />,
-      },
-      {
-        // 確認用
-        path: 'apps/:appName/view',
-        element: <SchemaGenerator mode="view" />,
-      },
-      {
-        // 編集用 (schema-generatorにリダイレクト)
-        path: 'apps/:appName/edit',
-        element: <SchemaGenerator mode="edit" />,
-      },
+      { index: true, element: <Home /> },
+      { path: 'stars', element: <Stars /> },
+      { path: 'history', element: <History /> },
+      { path: 'app/:appName', element: <Upload /> },
+      { path: 'ocr-result/:id', element: <OCRResult /> },
+      { path: 'schema-generator', element: <SchemaGenerator mode="create" /> },
+      { path: 'schema-generator/:appName', element: <SchemaGenerator mode="edit" /> },
+      { path: 'apps/:appName/view', element: <SchemaGenerator mode="view" /> },
+      { path: 'apps/:appName/edit', element: <SchemaGenerator mode="edit" /> },
+      { path: 'admin', element: <Admin /> },
+      { path: '*', element: <NotFound /> },
     ],
   },
 ]);

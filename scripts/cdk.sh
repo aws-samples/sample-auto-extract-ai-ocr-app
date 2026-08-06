@@ -1,0 +1,370 @@
+#!/usr/bin/env bash
+# ────────────────────────────────────────────────────────────────────
+#  CDK ラッパースクリプト
+#
+#  使い方:
+#    ./scripts/cdk.sh <command> [<env>] [--env <env>] [--region <region>] [-y]
+#    ./scripts/cdk.sh                                            # 完全対話型
+#    npm run cdk:deploy                                          # 同上 (deploy 固定)
+#    npm run cdk:deploy -- dev --region us-east-1 -y             # 引数渡し
+#
+#  command: deploy | destroy | synth | diff (位置引数)
+#  env:     base | dev | stg | prod (位置引数 or --env フラグ)
+#  --region <region>: AWS リージョン (例: ap-northeast-1, us-east-1)
+#  -y / --yes:        ラッパー独自の確認プロンプトをスキップ
+#                     (CDK 本体の承認プロンプトは別途残る)
+#
+#  注: --env=dev / --region=us-east-1 のイコール形式も可
+#  注: npm 経由の場合は必ず "--" を入れないと npm に引数を奪われる
+#      OK: npm run cdk:deploy -- dev --region us-east-1
+#      NG: npm run cdk:deploy --region us-east-1   (npm が --region を奪う)
+# ────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+readonly VALID_COMMANDS=("deploy" "destroy" "synth" "diff")
+readonly VALID_ENVS=("base" "dev" "stg" "prod")
+readonly COMMON_REGIONS=("ap-northeast-1" "us-east-1")
+
+# ── 色定義 ─────────────────────────────────────────────────
+if [[ -t 1 ]]; then
+  readonly CYAN=$'\033[0;36m'
+  readonly GREEN=$'\033[0;32m'
+  readonly YELLOW=$'\033[0;33m'
+  readonly RED=$'\033[0;31m'
+  readonly BOLD=$'\033[1m'
+  readonly RESET=$'\033[0m'
+else
+  readonly CYAN="" GREEN="" YELLOW="" RED="" BOLD="" RESET=""
+fi
+
+die() {
+  echo "${RED}ERROR:${RESET} $*" >&2
+  exit 1
+}
+
+contains() {
+  local target="$1"; shift
+  local item
+  for item in "$@"; do
+    [[ "$item" == "$target" ]] && return 0
+  done
+  return 1
+}
+
+show_help() {
+  cat <<'USAGE'
+CDK ラッパースクリプト
+
+使い方:
+  ./scripts/cdk.sh <command> [<env>] [--env <env>] [--region <region>] [--seed-users <csv>] [-y]
+  ./scripts/cdk.sh                                            # 完全対話型
+  npm run cdk:deploy                                          # 同上 (deploy 固定)
+  npm run cdk:deploy -- dev --region us-east-1 -y             # 引数渡し
+  npm run cdk:deploy -- dev --region us-east-1 --seed-users users.csv -y
+
+引数:
+  command             deploy | destroy | synth | diff (位置引数)
+  env                 base | dev | stg | prod (位置引数 or --env フラグ)
+  --env <env>         env を flag で指定する場合
+  --region <region>   AWS リージョン (例: ap-northeast-1, us-east-1)
+  --seed-users <csv>  deploy 完了後に CSV から Cognito + DSQL にユーザーを一括投入する
+                      (deploy コマンドでのみ有効、CSV パスは事前に存在すること)
+  -y, --yes           ラッパー独自の確認プロンプトをスキップ
+  -h, --help          このヘルプを表示
+
+例:
+  ./scripts/cdk.sh deploy dev --region us-east-1
+  ./scripts/cdk.sh deploy --env=base --region=ap-northeast-1 -y
+  ./scripts/cdk.sh deploy base --region us-east-1 --seed-users users.csv
+  ./scripts/cdk.sh destroy prod --region us-east-1
+
+npm 経由の注意:
+  必ず "--" を入れないと npm に引数を奪われる:
+    OK: npm run cdk:deploy -- dev --region us-east-1
+    NG: npm run cdk:deploy --region us-east-1   (npm が --region を奪う)
+USAGE
+}
+
+# ── 引数パース (フラグ + 位置引数) ────────────────────────
+SKIP_CONFIRM=false
+CDK_COMMAND=""
+ENV_NAME=""
+REGION=""
+SEED_USERS_CSV=""
+
+require_value() {
+  # フラグに続く値があるか確認
+  [[ $# -ge 2 && -n "$2" && "$2" != -* ]] || die "$1 には値が必要です"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -y|--yes)        SKIP_CONFIRM=true; shift ;;
+    -h|--help)       show_help; exit 0 ;;
+    --env)           require_value "$@"; ENV_NAME="$2"; shift 2 ;;
+    --env=*)         ENV_NAME="${1#--env=}"; shift ;;
+    --region)        require_value "$@"; REGION="$2"; shift 2 ;;
+    --region=*)      REGION="${1#--region=}"; shift ;;
+    --seed-users)    require_value "$@"; SEED_USERS_CSV="$2"; shift 2 ;;
+    --seed-users=*)  SEED_USERS_CSV="${1#--seed-users=}"; shift ;;
+    --*)             die "未知のフラグ: $1" ;;
+    *)
+      # 位置引数を内容で判定:
+      # - 1番目 → command
+      # - VALID_ENVS に該当 → env
+      # - region 形式 (xx-xxxx-N) に該当 → region
+      if [[ -z "$CDK_COMMAND" ]]; then
+        CDK_COMMAND="$1"
+      elif [[ -z "$ENV_NAME" ]] && contains "$1" "${VALID_ENVS[@]}"; then
+        ENV_NAME="$1"
+      elif [[ -z "$REGION" ]] && [[ "$1" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]]; then
+        REGION="$1"
+      else
+        die "未知の引数: $1 (env / region として認識できません)"
+      fi
+      shift
+      ;;
+  esac
+done
+
+# ── npm run 経由で渡された --flag を補完 ─────────────────
+# npm は "--" を挟まずに渡された --foo bar を npm 自身のオプションとして
+# 解釈し、npm_config_foo=bar という環境変数に格納する。
+# script に直接届かないが、ここで拾えば npm run cdk:deploy --region X も動く。
+[[ -z "$ENV_NAME"  && -n "${npm_config_env:-}"    ]] && ENV_NAME="$npm_config_env"
+[[ -z "$REGION"    && -n "${npm_config_region:-}" ]] && REGION="$npm_config_region"
+[[ -z "$SEED_USERS_CSV" && -n "${npm_config_seed_users:-}" ]] && SEED_USERS_CSV="$npm_config_seed_users"
+[[ "$SKIP_CONFIRM" == "false" && -n "${npm_config_yes:-}" ]] && SKIP_CONFIRM=true
+
+# ── 対話型: メニュー選択 ─────────────────────────────────
+select_from_menu() {
+  local prompt="$1"; shift
+  local options=("$@")
+  local i=1
+  echo "${BOLD}${prompt}${RESET}" >&2
+  for opt in "${options[@]}"; do
+    echo "  $i) $opt" >&2
+    ((i++))
+  done
+  local choice
+  read -r -p "番号を選択: " choice
+  if ! [[ "$choice" =~ ^[1-9][0-9]*$ ]] || (( choice < 1 || choice > ${#options[@]} )); then
+    die "無効な選択: $choice"
+  fi
+  echo "${options[$((choice - 1))]}"
+}
+
+select_region() {
+  local options=("${COMMON_REGIONS[@]}" "その他 (手入力)")
+  local choice
+  choice=$(select_from_menu "リージョンを選択" "${options[@]}")
+  if [[ "$choice" == "その他 (手入力)" ]]; then
+    read -r -p "リージョン名を入力 (例: us-east-1): " choice
+    [[ -z "$choice" ]] && die "リージョンが空です"
+  fi
+  echo "$choice"
+}
+
+# ── 不足分を対話で補完 ──────────────────────────────────
+if [[ -z "$CDK_COMMAND" ]]; then
+  CDK_COMMAND=$(select_from_menu "実行するコマンドを選択" "${VALID_COMMANDS[@]}")
+fi
+if [[ -z "$ENV_NAME" ]]; then
+  ENV_NAME=$(select_from_menu "対象環境を選択" "${VALID_ENVS[@]}")
+fi
+if [[ -z "$REGION" ]]; then
+  REGION=$(select_region)
+fi
+
+# ── バリデーション ───────────────────────────────────────
+contains "$CDK_COMMAND" "${VALID_COMMANDS[@]}" \
+  || die "コマンドは ${VALID_COMMANDS[*]} のいずれかを指定してください (指定: ${CDK_COMMAND})"
+contains "$ENV_NAME" "${VALID_ENVS[@]}" \
+  || die "環境は ${VALID_ENVS[*]} のいずれかを指定してください (指定: ${ENV_NAME})"
+[[ "$REGION" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]] \
+  || die "リージョン形式が不正です (指定: ${REGION})"
+
+if [[ -n "$SEED_USERS_CSV" ]]; then
+  if [[ "$CDK_COMMAND" != "deploy" ]]; then
+    die "--seed-users は deploy コマンドでのみ利用できます (指定: ${CDK_COMMAND})"
+  fi
+  [[ -f "$SEED_USERS_CSV" ]] \
+    || die "--seed-users で指定された CSV ファイルが見つかりません: ${SEED_USERS_CSV}"
+fi
+
+# ── AWS 認証情報の確認 ───────────────────────────────────
+echo "${CYAN}[1/4]${RESET} AWS 認証情報を確認中..."
+CALLER_JSON=$(aws sts get-caller-identity --output json 2>/dev/null) \
+  || die "AWS credentials が未設定または無効です。aws sso login / aws configure などを実行してください。"
+
+ACCOUNT_ID=$(echo "$CALLER_JSON" | sed -n 's/.*"Account": *"\([^"]*\)".*/\1/p')
+ARN=$(echo "$CALLER_JSON" | sed -n 's/.*"Arn": *"\([^"]*\)".*/\1/p')
+
+# bin/ocr-app.ts と bin/stack-plan.ts は以下の環境変数を参照する:
+#   - ENV: 環境名 (base/dev/stg/prod) → parameters.ts でルックアップ
+#   - CDK_DEFAULT_REGION: Application Stack のデプロイ先リージョン
+#   - CDK_DEFAULT_ACCOUNT: デプロイ先 AWS アカウント
+# 加えて、CDK の bundling / asset publishing や、Docker 内で走る AWS SDK
+# (boto3 等) が region を必要とするため、AWS_REGION / AWS_DEFAULT_REGION
+# も同じ値で export する。片方だけだと SDK が ~/.aws/config の
+# default region にフォールバックしてしまう場合がある。
+export ENV="$ENV_NAME"
+export CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID"
+export CDK_DEFAULT_REGION="$REGION"
+export AWS_REGION="$REGION"
+export AWS_DEFAULT_REGION="$REGION"
+
+# ── デプロイ予定スタックの解決 ───────────────────────────
+echo "${CYAN}[2/4]${RESET} デプロイ予定スタックを解決中..."
+STACK_PLAN_TSV=""
+if ! STACK_PLAN_TSV=$(npx ts-node --prefer-ts-exts bin/stack-plan.ts); then
+  die "CDK のデプロイ予定スタックを解決できませんでした"
+fi
+
+STACK_KINDS=()
+STACK_NAMES=()
+STACK_REGIONS=()
+STACK_NAME=""
+while IFS=$'\t' read -r stack_kind stack_name stack_region; do
+  [[ -z "${stack_kind}${stack_name}${stack_region}" ]] && continue
+  if [[ -z "$stack_kind" || -z "$stack_name" || -z "$stack_region" ]]; then
+    die "stack-plan の出力形式が不正です: ${stack_kind:-<empty>} ${stack_name:-<empty>} ${stack_region:-<empty>}"
+  fi
+  if [[ "$stack_kind" != "waf" && "$stack_kind" != "application" ]]; then
+    die "stack-plan が未知の種別を返しました: $stack_kind"
+  fi
+  STACK_KINDS+=("$stack_kind")
+  STACK_NAMES+=("$stack_name")
+  STACK_REGIONS+=("$stack_region")
+  [[ "$stack_kind" == "application" ]] && STACK_NAME="$stack_name"
+done <<< "$STACK_PLAN_TSV"
+
+(( ${#STACK_NAMES[@]} > 0 )) || die "デプロイ予定スタックがありません"
+[[ -n "$STACK_NAME" ]] || die "Application Stack を解決できませんでした"
+
+# ── deploy時のCloudFormation存在確認 ─────────────────────
+STACK_ACTIONS=()
+STACK_STATUSES=()
+if [[ "$CDK_COMMAND" == "deploy" ]]; then
+  echo "${CYAN}[3/4]${RESET} CloudFormation の既存状態を確認中..."
+  for i in "${!STACK_NAMES[@]}"; do
+    stack_name="${STACK_NAMES[$i]}"
+    stack_region="${STACK_REGIONS[$i]}"
+    describe_result=""
+    if describe_result=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --region "$stack_region" \
+      --query 'Stacks[0].StackStatus' \
+      --output text 2>&1); then
+      if [[ -z "$describe_result" || "$describe_result" == "None" ]]; then
+        die "CloudFormation StackStatus が空です: $stack_name ($stack_region)"
+      fi
+      if [[ "$describe_result" == "DELETE_COMPLETE" ]]; then
+        STACK_ACTIONS+=("CREATE")
+      else
+        STACK_ACTIONS+=("UPDATE")
+      fi
+      STACK_STATUSES+=("$describe_result")
+    elif [[ "$describe_result" == *"ValidationError"* && "$describe_result" == *"Stack with id"* && "$describe_result" == *"does not exist"* ]]; then
+      STACK_ACTIONS+=("CREATE")
+      STACK_STATUSES+=("not found")
+    else
+      die "CloudFormation Stack の存在確認に失敗しました: $stack_name ($stack_region)\n$describe_result"
+    fi
+  done
+else
+  echo "${CYAN}[3/4]${RESET} CREATE / UPDATE 判定は deploy 時のみ実行します"
+fi
+
+# ── サマリー表示 ─────────────────────────────────────────
+echo "${CYAN}[4/4]${RESET} 設定サマリー"
+echo "  ${BOLD}Command:${RESET} $CDK_COMMAND"
+echo "  ${BOLD}Env:    ${RESET} ${GREEN}$ENV_NAME${RESET}"
+echo "  ${BOLD}Region: ${RESET} ${GREEN}$REGION${RESET}"
+echo "  ${BOLD}Account:${RESET} $ACCOUNT_ID"
+echo "  ${BOLD}Role:   ${RESET} $ARN"
+echo "  ${BOLD}Planned stacks:${RESET}"
+for i in "${!STACK_NAMES[@]}"; do
+  stack_kind="${STACK_KINDS[$i]}"
+  stack_name="${STACK_NAMES[$i]}"
+  stack_region="${STACK_REGIONS[$i]}"
+  if [[ "$CDK_COMMAND" == "deploy" ]]; then
+    stack_action="${STACK_ACTIONS[$i]}"
+    stack_status="${STACK_STATUSES[$i]}"
+    if [[ "$stack_action" == "CREATE" ]]; then
+      action_color="$GREEN"
+    else
+      action_color="$YELLOW"
+    fi
+    printf "    ${action_color}%-6s${RESET} %-30s (%s) [%s]\n" \
+      "$stack_action" "$stack_name" "$stack_region" "$stack_status"
+  else
+    printf "    %-11s %-30s (%s)\n" "$stack_kind" "$stack_name" "$stack_region"
+  fi
+done
+if [[ "$CDK_COMMAND" == "deploy" ]]; then
+  echo "  ${YELLOW}Note:${RESET} UPDATE は既存Stackを示します。差分がなければCDKは更新を行いません。"
+fi
+[[ -n "$SEED_USERS_CSV" ]] && echo "  ${BOLD}Seed:   ${RESET} ${GREEN}$SEED_USERS_CSV${RESET} (deploy 完了後に seed-users を実行)"
+echo
+
+# ── 確認プロンプト ──────────────────────────────────────
+if [[ "$SKIP_CONFIRM" == "false" ]]; then
+  if [[ "$ENV_NAME" == "prod" ]]; then
+    echo "${RED}${BOLD}⚠ 本番環境への操作です。十分に注意してください。${RESET}"
+  fi
+  if [[ "$CDK_COMMAND" == "destroy" ]]; then
+    echo "${RED}${BOLD}⚠ destroy はリソースとデータを完全に削除します。${RESET}"
+  fi
+  case "$ENV_NAME" in
+    prod) marker="${RED}${BOLD}" ;;
+    stg)  marker="${YELLOW}${BOLD}" ;;
+    *)    marker="${GREEN}" ;;
+  esac
+  echo -n "${marker}[$ENV_NAME @ $REGION]${RESET} に対して ${BOLD}$CDK_COMMAND${RESET} を実行します。続行しますか？ [y/N]: "
+  read -r answer
+  [[ "$answer" == "y" || "$answer" == "Y" ]] || die "キャンセルしました"
+fi
+
+# ── CDK コマンド実行 ────────────────────────────────────
+echo "${CYAN}▶${RESET} ENV=$ENV_NAME CDK_DEFAULT_REGION=$REGION AWS_REGION=$REGION npx cdk ${CDK_COMMAND} --all"
+npx cdk "$CDK_COMMAND" --all
+CDK_EXIT=$?
+
+# deploy 成功時、--seed-users があればユーザー投入を自動実行する。
+# 独立コマンド `npm run settings:users -- ...` でも同じスクリプトを叩けるので、
+# ここでの自動連携はあくまで利便機能。CFN Outputs からキーの部分一致で
+# UserPoolId と Dsql ClusterEndpoint を取得して seed-users に渡す。
+if [[ "$CDK_COMMAND" == "deploy" ]] && [[ $CDK_EXIT -eq 0 ]] && [[ -n "$SEED_USERS_CSV" ]]; then
+  echo
+  echo "${CYAN}▶${RESET} Seeding users from ${GREEN}${SEED_USERS_CSV}${RESET}"
+
+  USER_POOL_ID=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --region "$REGION" \
+    --query "Stacks[0].Outputs[?contains(OutputKey, 'UserPoolId') && !contains(OutputKey, 'Client')] | [0].OutputValue" \
+    --output text 2>/dev/null)
+  DSQL_ENDPOINT=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --region "$REGION" \
+    --query "Stacks[0].Outputs[?contains(OutputKey, 'ClusterEndpoint')] | [0].OutputValue" \
+    --output text 2>/dev/null)
+
+  if [[ -z "$USER_POOL_ID" || "$USER_POOL_ID" == "None" ]]; then
+    die "seed-users: CFN Outputs から UserPoolId を解決できませんでした"
+  fi
+  if [[ -z "$DSQL_ENDPOINT" || "$DSQL_ENDPOINT" == "None" ]]; then
+    die "seed-users: CFN Outputs から Dsql ClusterEndpoint を解決できませんでした"
+  fi
+
+  echo "  UserPoolId:   $USER_POOL_ID"
+  echo "  DsqlEndpoint: $DSQL_ENDPOINT"
+
+  npx ts-node scripts/seed-users.ts \
+    --csv "$SEED_USERS_CSV" \
+    --user-pool-id "$USER_POOL_ID" \
+    --dsql-endpoint "$DSQL_ENDPOINT" \
+    --region "$REGION"
+fi
+
+exit $CDK_EXIT

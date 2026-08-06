@@ -1,6 +1,5 @@
 """Utility functions for agent runtime."""
 
-import json
 import logging
 from typing import Any
 
@@ -23,14 +22,3 @@ def process_prompt(prompt: str | list[dict[str, Any]]) -> str:
                 text_parts.append(item["text"])
         return "\n".join(text_parts)
     return ""
-
-
-def create_error_response(error_message: str) -> dict:
-    """Create error response"""
-    return {
-        "event": {
-            "internalServerException": {
-                "message": f"An error occurred: {error_message}"
-            }
-        }
-    }

@@ -33,28 +33,6 @@ def float_to_decimal(obj):
         return obj
 
 
-def safe_get_from_dynamo_data(data, key, default=None):
-    """
-    DynamoDBのデータを安全に取得
-
-    Args:
-        data: DynamoDBから取得したデータ
-        key: 取得したいキー
-        default: デフォルト値
-
-    Returns:
-        取得した値またはデフォルト値
-    """
-    try:
-        if isinstance(data, dict):
-            return data.get(key, default)
-        else:
-            return default
-    except Exception as e:
-        logger.warning(f"DynamoDBデータ取得エラー: {str(e)}")
-        return default
-
-
 def resize_image(image_data, max_dimension=1568, min_dimension=200):
     """
     画像をリサイズする関数
@@ -102,3 +80,47 @@ def resize_image(image_data, max_dimension=1568, min_dimension=200):
         logger.error(f"画像リサイズエラー: {str(e)}")
         # エラーの場合は元の画像を返す
         return image_data, False, None, None
+
+
+MAX_PAYLOAD_IMAGE_BYTES = 4 * 1024 * 1024  # 4MB (base64で~5.3MB、6MB制限内に収まる)
+
+
+def compress_image_for_payload(image_data: bytes, max_bytes: int = MAX_PAYLOAD_IMAGE_BYTES) -> bytes:
+    """SageMaker invoke_endpoint の 6MB ペイロード制限に収まるよう画像を圧縮する"""
+    if len(image_data) <= max_bytes:
+        return image_data
+
+    logger.info(f"画像サイズ超過: {len(image_data)} bytes → {max_bytes} bytes 以下に圧縮")
+
+    try:
+        img = Image.open(BytesIO(image_data))
+        img_format = img.format or 'JPEG'
+
+        if img_format != 'JPEG':
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            img_format = 'JPEG'
+
+        for quality in [85, 75, 60, 45, 30]:
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=quality, optimize=True)
+            if output.tell() <= max_bytes:
+                logger.info(f"圧縮完了: quality={quality}, size={output.tell()} bytes")
+                return output.getvalue()
+
+        width, height = img.size
+        for scale in [0.75, 0.5, 0.35]:
+            new_size = (int(width * scale), int(height * scale))
+            resized = img.resize(new_size, Image.LANCZOS)
+            output = BytesIO()
+            resized.save(output, format='JPEG', quality=45, optimize=True)
+            if output.tell() <= max_bytes:
+                logger.info(f"圧縮完了: scale={scale}, size={output.tell()} bytes")
+                return output.getvalue()
+
+        logger.warning(f"最大圧縮でも目標サイズ未達: {output.tell()} bytes")
+        return output.getvalue()
+
+    except Exception as e:
+        logger.error(f"画像圧縮エラー: {str(e)}")
+        return image_data

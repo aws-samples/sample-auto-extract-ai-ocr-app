@@ -1,4 +1,4 @@
-from clients import s3_client
+from clients import s3_client, invoke_worker_async
 import logging
 import uuid
 from datetime import datetime
@@ -6,10 +6,10 @@ from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError
 
 from config import settings
+from exceptions import NotFoundError, BadRequestError
+from domains.image_status import ImageStatus
 from repositories.schema_repository import get_app_schema
-from repositories.image_repository import create_image_record, get_images_by_sync_source
-from schemas import UploadCompleteRequest
-from services.upload_service import UploadService
+from repositories.image_repository import create_image_record, get_existing_sync_sources, update_image_status
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,13 @@ class S3SyncService:
             # アプリケーションの入力方法設定を取得
             app_schema = get_app_schema(app_name)
             if not app_schema:
-                raise ValueError(f"アプリが見つかりません: {app_name}")
+                raise NotFoundError(f"アプリが見つかりません: {app_name}")
 
             input_methods = app_schema.get("input_methods", {})
 
             # S3同期が有効かチェック
             if not input_methods.get("s3_sync", False):
-                raise ValueError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
+                raise BadRequestError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
 
             # 同期バケットからファイル一覧を取得
             s3_path = f"{app_name}/"
@@ -58,78 +58,87 @@ class S3SyncService:
             logger.error(f"Error syncing S3 files: {str(e)}")
             raise
 
-    async def import_s3_file(self, app_name: str, file_data: dict) -> Dict[str, str]:
-        """S3バケットからファイルをインポートしてOCR処理を開始する"""
-        try:
-            # アプリケーションの入力方法設定を取得
-            app_schema = get_app_schema(app_name)
-            if not app_schema:
-                raise ValueError(f"アプリが見つかりません: {app_name}")
+    async def import_s3_files_batch(
+        self, app_name: str, files: List[dict], page_processing_mode: str, uploaded_by: str = None
+    ) -> Dict[str, Any]:
+        """複数の S3 ファイルをまとめてインポートする。
 
-            input_methods = app_schema.get("input_methods", {})
+        レコード作成だけを同期で行い、S3 コピー・変換は S3SyncImport worker に委譲する。
+        """
+        app_schema = get_app_schema(app_name)
+        if not app_schema:
+            raise NotFoundError(f"アプリが見つかりません: {app_name}")
+        if not app_schema.get("input_methods", {}).get("s3_sync", False):
+            raise BadRequestError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
 
-            # S3同期が有効かチェック
-            if not input_methods.get("s3_sync", False):
-                raise ValueError(f"S3同期はこのアプリケーションでは有効になっていません: {app_name}")
+        if not settings.S3_SYNC_IMPORT_FUNCTION_NAME:
+            raise RuntimeError("S3_SYNC_IMPORT_FUNCTION_NAME is not configured")
 
-            # ファイル情報を取得
+        existing_sources = get_existing_sync_sources(app_name)
+
+        items = []
+        skipped = []
+        created_image_ids = []
+        for file_data in files:
             source_bucket = file_data.get("bucket")
             source_key = file_data.get("key")
             filename = file_data.get("filename")
-            page_processing_mode = file_data.get("page_processing_mode", "combined")
 
             if not all([source_bucket, source_key, filename]):
-                raise ValueError("bucket, key, filename are required")
+                skipped.append({"key": source_key, "reason": "bucket/key/filename が不足"})
+                continue
+            if source_bucket != self.sync_bucket_name:
+                skipped.append({"key": source_key, "reason": "無効なソースバケット"})
+                continue
+            if source_key in existing_sources:
+                skipped.append({"key": source_key, "reason": "インポート済み"})
+                continue
 
-            # 重複チェック
-            existing_files = get_images_by_sync_source(filename, source_key, app_name)
-            if existing_files:
-                raise ValueError(f"ファイル '{filename}' は既にインポート済みです")
-
-            # 新しい画像IDを生成
             image_id = str(uuid.uuid4())
-
-            # コピー先のS3キーを生成
             destination_key = f"s3-imports/{datetime.now().isoformat()}_{filename}"
-
-            # ファイルを自分のバケットにコピー
-            await self._copy_s3_file(source_bucket, source_key, destination_key)
-
-            # DynamoDBにレコードを作成
             create_image_record(
                 image_id=image_id,
                 filename=filename,
                 s3_key=destination_key,
                 app_name=app_name,
-                status="uploading",
+                status=ImageStatus.UPLOADING,
                 page_processing_mode=page_processing_mode,
-                sync_source_path=source_key
+                sync_source_path=source_key,
+                uploaded_by=uploaded_by,
             )
-
-            # アップロード完了処理を実行（OCR処理開始）
-            upload_service = UploadService()
-            upload_request = UploadCompleteRequest(
-                image_id=image_id,
-                filename=filename,
-                s3_key=destination_key,
-                app_name=app_name,
-                page_processing_mode=page_processing_mode
-            )
-            
-            # 直接アップロードと同じOCR処理フローを実行
-            processing_result = await upload_service.handle_upload_complete(upload_request)
-
-            logger.info(f"Imported S3 file {source_key} as image {image_id} and started processing")
-
-            return {
-                "status": "success",
+            created_image_ids.append(image_id)
+            items.append({
                 "image_id": image_id,
-                "message": f"File {filename} imported successfully"
-            }
+                "source_bucket": source_bucket,
+                "source_key": source_key,
+                "destination_key": destination_key,
+                "filename": filename,
+            })
 
-        except Exception as e:
-            logger.error(f"Error importing S3 file: {str(e)}")
-            raise
+        if items:
+            try:
+                invoke_worker_async(settings.S3_SYNC_IMPORT_FUNCTION_NAME, {
+                    "app_name": app_name,
+                    "page_processing_mode": page_processing_mode,
+                    "items": items,
+                })
+            except Exception:
+                # invoke 失敗時は作成済みレコードを FAILED にし、UPLOADING のまま残さない
+                for image_id in created_image_ids:
+                    try:
+                        update_image_status(image_id, ImageStatus.FAILED)
+                    except Exception as update_err:
+                        logger.error(f"Failed to mark image {image_id} FAILED: {update_err}")
+                logger.error("Failed to invoke S3SyncImport worker")
+                raise
+
+        logger.info(f"Accepted S3 import batch for {app_name}: {len(items)} queued, {len(skipped)} skipped")
+        return {
+            "status": "accepted",
+            "imported_count": len(items),
+            "image_ids": created_image_ids,
+            "skipped": skipped,
+        }
 
     async def get_files_with_duplicate_check(self, app_name: str, prefix: Optional[str] = None) -> Dict[str, Any]:
         """S3ファイル一覧を重複チェック付きで取得する"""
@@ -162,17 +171,10 @@ class S3SyncService:
             raise
 
     async def check_existing_files(self, app_name: str, s3_keys: List[str]) -> Dict[str, bool]:
-        """既存ファイルをチェックする"""
+        """既存ファイルをバッチチェックする（1 回の scan で全件取得）"""
         try:
-            existing_files = {}
-            
-            for s3_key in s3_keys:
-                filename = s3_key.split('/')[-1]
-                existing = get_images_by_sync_source(filename, s3_key, app_name)
-                existing_files[s3_key] = len(existing) > 0
-            
-            return existing_files
-            
+            existing_sources = get_existing_sync_sources(app_name)
+            return {s3_key: s3_key in existing_sources for s3_key in s3_keys}
         except Exception as e:
             logger.error(f"既存ファイルチェックエラー: {str(e)}")
             raise
@@ -238,24 +240,4 @@ class S3SyncService:
 
         except ClientError as e:
             logger.error(f"Error listing S3 files: {str(e)}")
-            raise ValueError(f"S3バケットへのアクセスに失敗しました: {str(e)}")
-
-    async def _copy_s3_file(self, source_bucket: str, source_key: str, destination_key: str) -> None:
-        """S3ファイルを自分のバケットにコピーする"""
-        try:
-            copy_source = {
-                'Bucket': source_bucket,
-                'Key': source_key
-            }
-
-            s3_client.copy_object(
-                CopySource=copy_source,
-                Bucket=self.bucket_name,
-                Key=destination_key
-            )
-
-            logger.info(f"Copied S3 file from {source_bucket}/{source_key} to {self.bucket_name}/{destination_key}")
-
-        except ClientError as e:
-            logger.error(f"Error copying S3 file: {str(e)}")
-            raise ValueError(f"S3ファイルのコピーに失敗しました: {str(e)}")
+            raise RuntimeError(f"S3バケットへのアクセスに失敗しました: {str(e)}")

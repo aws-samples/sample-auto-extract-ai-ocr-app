@@ -1,16 +1,10 @@
-export interface Column {
-  name: string;
-  display_name: string;
-  type: string;
-}
-
 export interface Field {
   name: string;
   display_name: string;
-  type: string;
+  type: 'string' | 'number' | 'map' | 'list';
   fields?: Field[];    // map型のフィールド用
   items?: {           // list型のフィールド用
-    type: string;
+    type: 'string' | 'number' | 'map' | 'list';
     fields?: Field[];
   };
 }
@@ -27,10 +21,11 @@ export interface AppSchema {
   description?: string;
   fields: Field[];
   input_methods?: InputMethods;
-}
-
-export interface AppSchemaResponse {
-  apps: AppSchema[];
+  permission?: string;
+  sample_image_s3_key?: string;
+  sample_image_filename?: string;
+  agent_enabled?: boolean;
+  agent_auto_run?: boolean;
 }
 
 export interface S3SyncFile {
@@ -42,25 +37,9 @@ export interface S3SyncFile {
   is_existing?: boolean;
 }
 
-export interface S3SyncResponse {
-  app_name: string;
-  bucket: string;
-  prefix: string;
-  structure: FolderTree;
-  files: S3SyncFile[];
-}
-
-export interface FolderTree {
-  [key: string]: {
-    type: "folder" | "file";
-    children?: FolderTree;
-    data?: S3SyncFile & { relative_path: string };
-  };
-}
-
-export interface S3ImportResponse {
+export interface S3ImportBatchResponse {
   status: string;
-  message: string;
-  image_id: string;
-  is_converting: boolean;
+  imported_count: number;
+  image_ids: string[];
+  skipped?: { key: string; reason: string }[];
 }

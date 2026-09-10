@@ -23,6 +23,8 @@ export interface StepFunctionsProps {
   sagemakerInferenceComponentName?: string;
   modelId: string;
   modelRegion: string;
+  agentModelId?: string;
+  agentModelRegion?: string;
   agentRuntimeArn?: string;
   dsqlEndpoint?: string;
   dsqlRegion?: string;
@@ -104,6 +106,8 @@ export class StepFunctions extends Construct {
           DSQL_REGION: props.dsqlRegion || '',
           MODEL_ID: props.modelId,
           MODEL_REGION: props.modelRegion,
+          AGENT_MODEL_ID: props.agentModelId || '',
+          AGENT_MODEL_REGION: props.agentModelRegion || '',
         },
       });
 

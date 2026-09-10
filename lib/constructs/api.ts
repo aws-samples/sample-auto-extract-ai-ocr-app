@@ -41,6 +41,8 @@ export interface ApiProps {
   agentRuntimeArn?: string;
   modelId: string;
   modelRegion: string;
+  agentModelId?: string;
+  agentModelRegion?: string;
   dsqlEndpoint: string;
   dsqlRegion: string;
   dsqlClusterArn: string;
@@ -181,6 +183,8 @@ export class Api extends Construct {
         OCR_ENGINE: props.ocrEngine || "paddle",
         MODEL_ID: modelId,
         MODEL_REGION: modelRegion,
+        AGENT_MODEL_ID: props.agentModelId || "",
+        AGENT_MODEL_REGION: props.agentModelRegion || "",
         AGENT_RUNTIME_ARN: props.agentRuntimeArn || "",
         DSQL_ENDPOINT: props.dsqlEndpoint,
         DSQL_REGION: props.dsqlRegion,

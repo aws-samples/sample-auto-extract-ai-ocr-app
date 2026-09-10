@@ -16,13 +16,20 @@ export interface AppParameters {
 
   // OCR
   enableOcr: boolean;
-  ocrEngine: "paddle" | "deepseek" | "yomitoku-mp";
+  /**
+   * "bedrock" は Bedrock 上の LLM（modelId のモデル）で OCR を行う。
+   * SageMaker エンドポイントは作成されず、sagemakerZeroScale 等は無視される。
+   */
+  ocrEngine: "paddle" | "deepseek" | "yomitoku-mp" | "bedrock";
   sagemakerZeroScale: boolean;
   sagemakerScaleInCooldownSeconds: number;
   marketplaceModelPackageArn?: string;
 
   // Agent
   enableAgentDemo: boolean;
+  /** エージェント検証用モデル。未指定時は modelId / modelRegion を使う。 */
+  agentModelId?: string;
+  agentModelRegion?: string;
 
   // Cognito
   selfSignUpEnabled: boolean;

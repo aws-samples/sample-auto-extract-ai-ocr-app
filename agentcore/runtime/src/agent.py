@@ -10,7 +10,7 @@ from strands.models import BedrockModel
 from .config import extract_model_info, get_max_iterations, get_system_prompt
 from .tools import create_gateway_mcp_client
 from .types import Message, ModelInfo
-from .utils import process_messages, process_prompt
+from .utils import process_messages, process_prompt, sanitize_message
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class AgentManager:
             result = agent(final_prompt)
 
             return {
-                "message": result.message if hasattr(result, 'message') else str(result),
+                "message": sanitize_message(result.message) if hasattr(result, 'message') else str(result),
                 "status": "success"
             }
 

@@ -2,9 +2,12 @@ import uuid
 import logging
 import json
 import base64
+from io import BytesIO
 from typing import Dict, Any, List, Optional
 
-from exceptions import EndpointNotReadyError, NotFoundError, BadRequestError
+from PIL import Image
+
+from exceptions import EndpointNotReadyError, NotFoundError, BadRequestError, ResponseParseError
 from repositories import (
     get_images,
     get_image, update_ocr_result as db_update_ocr_result,
@@ -12,13 +15,15 @@ from repositories import (
     update_agent_status,
 )
 from clients import get_inference_component_status, get_endpoint_status_direct, trigger_endpoint_wakeup
+from clients.bedrock import call_bedrock_and_parse
 from schemas import OcrResult, OcrResultResponse
 from config import settings
 from clients import s3_client, sagemaker_runtime_client, sfn_client
-from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response
+from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response, parse_llm_ocr_response
+from domains.prompts import LLM_OCR_SYSTEM_PROMPT, create_llm_ocr_prompt
 from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from services.pdf_conversion_service import sync_parent_status
-from utils.helpers import compress_image_for_payload
+from utils.helpers import compress_image_for_payload, detect_image_format
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,12 @@ logger = logging.getLogger(__name__)
 # 1 画像あたり {"image_id": "<uuid>"} ≒ 55-60 バイトのため、余裕をもって
 # 1 実行あたりの画像数を制限する（2000 件で約 120KB 相当）。
 MAX_IMAGES_PER_EXECUTION = 2000
+
+# Bedrock Converse API の画像上限は 1 枚あたり 3.75MB。余裕をもって 3.5MB に収める。
+BEDROCK_IMAGE_MAX_BYTES = int(3.5 * 1024 * 1024)
+
+# Converse API の image ブロックが受け付けるフォーマット
+CONVERSE_IMAGE_FORMATS = ("jpeg", "png", "gif", "webp")
 
 
 def _guess_image_content_type(image_data: bytes) -> str:
@@ -49,14 +60,21 @@ class OcrService:
         """OCR エンドポイントの状態を返す"""
         if not self.enable_ocr:
             return {"ready": True, "status": "ocr_disabled"}
+        # bedrock エンジンは SageMaker エンドポイントを使わないため常に ready
+        if settings.OCR_ENGINE == "bedrock":
+            return {"ready": True, "status": "llm_ocr"}
         if settings.OCR_ENGINE == "yomitoku-mp":
             return get_endpoint_status_direct(settings.SAGEMAKER_ENDPOINT_NAME)
         return get_inference_component_status(settings.SAGEMAKER_INFERENCE_COMPONENT_NAME)
 
     def _invoke_ocr(self, image_data: bytes) -> dict:
-        """SageMaker OCR エンドポイントを呼び出し、整形済み結果を返す"""
+        """OCR エンジンを呼び出し、整形済み結果を返す"""
         if not self.enable_ocr:
             raise BadRequestError("この環境では OCR が無効です")
+
+        if settings.OCR_ENGINE == "bedrock":
+            return self._invoke_bedrock_ocr(image_data)
+
         if not settings.SAGEMAKER_ENDPOINT_NAME:
             raise RuntimeError("SageMaker endpoint not configured")
 
@@ -77,6 +95,70 @@ class OcrService:
         except Exception as e:
             logger.error(f"SageMaker OCR 呼び出しエラー: {str(e)}")
             return {"error": f"SageMaker endpoint error: {str(e)}", "text": "", "words": [], "word_count": 0}
+
+    def _invoke_bedrock_ocr(self, image_data: bytes) -> dict:
+        """Bedrock 上の LLM で OCR（テキスト+座標の読み取り）を実行する"""
+        try:
+            # Converse API の画像サイズ上限に収める（プロンプトの寸法は送信画像に合わせる）
+            image_data = compress_image_for_payload(image_data, max_bytes=BEDROCK_IMAGE_MAX_BYTES)
+
+            # Converse が受け付けないフォーマット（TIFF 等）は JPEG に変換する
+            image_format = detect_image_format(image_data)
+            if image_format not in CONVERSE_IMAGE_FORMATS:
+                image_data = self._convert_to_jpeg(image_data)
+                image_format = "jpeg"
+
+            with Image.open(BytesIO(image_data)) as img:
+                image_width, image_height = img.size
+
+            messages = [{
+                "role": "user",
+                "content": [
+                    {"image": {"format": image_format, "source": {"bytes": image_data}}},
+                    {"text": create_llm_ocr_prompt(image_width, image_height)},
+                ],
+            }]
+            system_prompts = [{"text": LLM_OCR_SYSTEM_PROMPT}]
+
+            # フォールバック（改行分割）用に、最後に受け取った応答テキストを控える
+            last_response_text = ""
+
+            def parse_fn(response_text: str) -> dict:
+                nonlocal last_response_text
+                last_response_text = response_text
+                return parse_llm_ocr_response(response_text, image_width, image_height)
+
+            try:
+                return call_bedrock_and_parse(messages, system_prompts, parse_fn)
+            except ResponseParseError:
+                stripped_text = last_response_text.strip()
+                # 壊れた JSON（トークン上限での切断等）を転記テキストとして誤保存しない
+                if not stripped_text or stripped_text.startswith(("{", "```")):
+                    raise
+                # JSON でない転記テキスト自体は有用なため、改行分割で回復する（座標なし）
+                logger.warning("LLM OCR 応答の JSON 解析に失敗したため、改行分割で処理します")
+                words = [
+                    {"id": i, "content": line.strip()}
+                    for i, line in enumerate(
+                        line for line in stripped_text.splitlines() if line.strip()
+                    )
+                ]
+                full_text = " ".join(word["content"] for word in words)
+                return {"text": full_text, "words": words, "word_count": len(words)}
+
+        except Exception as e:
+            logger.error(f"LLM OCR 呼び出しエラー: {str(e)}")
+            return {"error": f"Bedrock LLM OCR error: {str(e)}", "text": "", "words": [], "word_count": 0}
+
+    @staticmethod
+    def _convert_to_jpeg(image_data: bytes) -> bytes:
+        """画像を JPEG に変換する"""
+        with Image.open(BytesIO(image_data)) as img:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            output = BytesIO()
+            img.save(output, format="JPEG")
+            return output.getvalue()
 
     def _invoke_yomitoku_mp(self, image_data: bytes) -> dict:
         """Yomitoku Marketplace エンドポイントを呼び出す"""
@@ -254,24 +336,13 @@ class OcrService:
                     global_word_id += 1
                 all_words.extend(page_words)
 
-            # ページ別結果のIDも更新（参照用）
-            updated_pages = []
-            for page_result in ocr_results:
-                updated_page = page_result.copy()
-                page_words = []
-                for word in page_result.get("words", []):
-                    for updated_word in all_words:
-                        if (updated_word.get("page") == page_result["page"]
-                                and updated_word.get("content") == word.get("content")
-                                and updated_word.get("points") == word.get("points")):
-                            page_words.append(updated_word)
-                            break
-                updated_page["words"] = page_words
-                updated_pages.append(updated_page)
-
+            # 各 word dict は all_words と同一オブジェクトのため、ページ別結果にも
+            # 更新済みの ID / page が反映されている。照合による再構築は行わない
+            # （content と points による照合は、points を持たない word 同士や
+            # 同一テキスト行があると誤マッチする）。
             combined_result = {
                 "words": all_words,
-                "pages": updated_pages,
+                "pages": ocr_results,
                 "total_pages": len(ocr_results)
             }
 
@@ -290,6 +361,9 @@ class OcrService:
     def _check_endpoint_ready(self, skip_ocr: bool) -> None:
         """OCR エンドポイントが処理可能か確認する。未起動なら wakeup を促し例外を投げる。"""
         if skip_ocr or not self.enable_ocr:
+            return
+        # bedrock エンジンは SageMaker エンドポイントを使わないため確認不要
+        if settings.OCR_ENGINE == "bedrock":
             return
         status = self.get_endpoint_status()
         if not status['ready']:

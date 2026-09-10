@@ -92,8 +92,8 @@ class AgentService:
                 system_prompt=system_prompt,
                 prompt="添付画像はOCR対象の原本です。抽出結果と照合し、利用可能なツールで検証してください。",
                 model_info={
-                    "modelId": settings.MODEL_ID,
-                    "region": settings.MODEL_REGION
+                    "modelId": settings.AGENT_MODEL_ID,
+                    "region": settings.AGENT_MODEL_REGION
                 },
                 allowed_tool_names=allowed_tool_names,
                 image_content=image_content or None,

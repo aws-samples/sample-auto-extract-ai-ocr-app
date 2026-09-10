@@ -9,6 +9,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+LLM_OCR_SYSTEM_PROMPT = "あなたは高精度なOCRエンジンです。画像内のすべてのテキストとその位置を読み取り、指定されたJSON形式のみで出力してください。"
+
+
+def create_llm_ocr_prompt(image_width: int, image_height: int) -> str:
+    """LLMによるOCR（テキスト+座標の読み取り）用のプロンプトを作成"""
+
+    prompt = f"""この画像は幅{image_width}px・高さ{image_height}pxです。画像に含まれるすべてのテキストを、視覚的な行単位で上から下、左から右の順に読み取ってください。各行について、テキストとその外接矩形の座標を出力してください。
+
+<output_format>
+以下のJSON形式のみで出力してください:
+{{"words": [{{"text": "行のテキスト", "box": [x_min, y_min, x_max, y_max]}}, ...]}}
+</output_format>
+
+座標の仕様:
+- この画像のピクセル座標（左上が原点(0, 0)、右下が({image_width}, {image_height})）で出力してください
+- boxはテキスト行の外接矩形で、[左端x, 上端y, 右端x, 下端y] の順です
+
+注意事項:
+- 表はセルごとに1行として読み取ってください
+- 翻訳・要約・修正はせず、書かれている文字をそのまま転記してください
+- テキストがない場合は {{"words": []}} を返してください
+- JSONのみを出力し、余計な説明は不要です
+"""
+
+    return prompt
+
+
 def create_multi_without_ocr_prompt(extraction_fields, field_names, custom_prompt=""):
     """OCRなし複数画像モード用のプロンプトを作成"""
 

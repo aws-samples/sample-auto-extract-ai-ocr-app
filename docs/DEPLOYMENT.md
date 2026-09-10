@@ -87,14 +87,16 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 
 | パラメータ | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `modelId` | string | `us.anthropic.claude-sonnet-4-6` | 情報抽出とスキーマ生成に使う Bedrock モデル ID |
+| `modelId` | string | `us.anthropic.claude-sonnet-4-6` | 情報抽出とスキーマ生成に使う Bedrock モデル ID（`ocrEngine: "bedrock"` のときは OCR にも使う） |
 | `modelRegion` | string | `us-east-1` | Bedrock を呼び出すリージョン |
 | `enableOcr` | boolean | `true` | OCR を有効化するか |
-| `ocrEngine` | `"paddle"` \| `"deepseek"` \| `"yomitoku-mp"` | `paddle` | 使用する OCR エンジン（後述） |
+| `ocrEngine` | `"paddle"` \| `"deepseek"` \| `"yomitoku-mp"` \| `"bedrock"` | `paddle` | 使用する OCR エンジン（後述） |
 | `sagemakerZeroScale` | boolean | `true` | アクセスがないとき OCR インスタンスを 0 台まで縮小するか |
 | `sagemakerScaleInCooldownSeconds` | number | `3600` | 縮小するまでの待機時間（秒） |
 | `marketplaceModelPackageArn` | string? | （未設定） | `yomitoku-mp` を使うときの Marketplace モデルパッケージ ARN |
 | `enableAgentDemo` | boolean | `true` | エージェント検証のデモ用ユースケースとツールを自動登録するか（[ARCHITECTURE.md](ARCHITECTURE.md) を参照） |
+| `agentModelId` | string? | （未設定 = `modelId`） | エージェント検証に使う Bedrock モデル ID |
+| `agentModelRegion` | string? | （未設定 = `modelRegion`） | エージェント検証で Bedrock を呼び出すリージョン |
 | `selfSignUpEnabled` | boolean | `true` | Cognito のセルフサインアップを許可するか |
 | `allowedSignUpEmailDomains` | string[] | `[]`（制限なし） | サインアップを許可するメールドメイン |
 | `waf` | WafOptions | `{ enabled: false }` | CloudFront への WAF 設定（後述） |
@@ -112,6 +114,8 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 
 `modelId` と `modelRegion` を変更します。モデル ID は [Amazon Bedrock でサポートされている基盤モデル](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/models-supported.html) を参照してください。使用するモデルは、事前にモデルアクセスを有効化しておく必要があります。
 
+エージェント検証だけ別のモデルを使いたい場合は、`agentModelId` / `agentModelRegion` を設定します。未設定のときは `modelId` / `modelRegion` がそのまま使われます。
+
 ### OCR エンジンの変更
 
 `ocrEngine` で、使用する OCR エンジンを選択します。
@@ -119,6 +123,19 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 - `paddle`: PaddleOCR（デフォルト）。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `deepseek`: DeepSeek OCR。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `yomitoku-mp`: Yomitoku Pro（AWS Marketplace 版）。高精度な日本語 OCR です。
+- `bedrock`: Bedrock 上の LLM による OCR。SageMaker エンドポイントを作成しません（後述）。
+
+#### LLM による OCR（`ocrEngine: "bedrock"`）
+
+vision 対応の高性能モデルを使う場合、OCR エンジンを別に立てずに LLM だけで OCR（テキストと座標の読み取り）と情報抽出の両方を行えます。このモードでは SageMaker エンドポイントが作成されないため、GPU インスタンスのコストやウォームアップ待ちが発生しません（`sagemakerZeroScale` などの SageMaker 関連パラメータは無視されます）。OCR と抽出の両方に `modelId` のモデルが使われます。
+
+```typescript
+modelId: "us.openai.gpt-6-astra",
+modelRegion: "us-east-1",
+ocrEngine: "bedrock",
+```
+
+- **このモードで動作確認済みのモデルは GPT-6 Astra のみです。** 仕組み上は vision 対応の他モデルでも動作しますが、座標出力の精度や推論パラメータの互換性はモデルごとに異なるため、別のモデルを使う場合はご自身で動作確認してください。
 
 #### Yomitoku Pro（AWS Marketplace 版）
 

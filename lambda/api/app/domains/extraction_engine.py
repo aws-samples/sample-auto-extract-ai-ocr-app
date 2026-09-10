@@ -8,6 +8,7 @@ from domains.prompts import (
 )
 from domains.template import generate_unified_template
 from exceptions import ResponseParseError
+from utils.helpers import detect_image_format
 import json
 import re
 
@@ -74,15 +75,6 @@ def _generate_extraction_fields(fields, prefix=""):
             if items.get("type") == "map" and "fields" in items:
                 result.extend(_generate_extraction_fields(items["fields"], f"{display_name} (各項目)"))
     return result
-
-
-def _detect_image_format(image_bytes: bytes) -> str:
-    """画像バイトからフォーマットを判定"""
-    if image_bytes.startswith(b"\xff\xd8"):
-        return "jpeg"
-    elif image_bytes.startswith(b"\x89PNG"):
-        return "png"
-    return "jpeg"
 
 
 # ============================================================
@@ -221,7 +213,7 @@ def build_single_image_without_ocr_request(
         app_extraction_fields.get("fields", []), field_names, custom_prompt
     )
 
-    image_format = _detect_image_format(image_bytes)
+    image_format = detect_image_format(image_bytes) or "jpeg"
 
     messages = [{"role": "user", "content": [
         {"image": {"format": image_format, "source": {"bytes": image_bytes}}},

@@ -19,7 +19,10 @@ from clients.bedrock import call_bedrock_and_parse
 from schemas import OcrResult, OcrResultResponse
 from config import settings
 from clients import s3_client, sagemaker_runtime_client, sfn_client
-from domains.ocr_engine import parse_ocr_response, parse_yomitoku_mp_response, parse_llm_ocr_response
+from domains.ocr_engine import (
+    parse_ocr_response, parse_yomitoku_mp_response, parse_llm_ocr_response,
+    resolve_bedrock_ocr_model,
+)
 from domains.prompts import LLM_OCR_SYSTEM_PROMPT, create_llm_ocr_prompt
 from domains.image_status import ImageStatus, AgentStatus, PageProcessingMode
 from services.pdf_conversion_service import sync_parent_status
@@ -96,8 +99,19 @@ class OcrService:
             logger.error(f"SageMaker OCR 呼び出しエラー: {str(e)}")
             return {"error": f"SageMaker endpoint error: {str(e)}", "text": "", "words": [], "word_count": 0}
 
+    @staticmethod
+    def _bedrock_ocr_model() -> tuple[str, str]:
+        """設定から Bedrock OCR のモデルとリージョンを決める（許可リスト外なら例外）"""
+        return resolve_bedrock_ocr_model(settings.OCR_MODEL_ID, settings.OCR_MODEL_REGION)
+
     def _invoke_bedrock_ocr(self, image_data: bytes) -> dict:
-        """Bedrock 上の LLM で OCR（テキスト+座標の読み取り）を実行する"""
+        """Bedrock 上の LLM で OCR（テキスト+座標の読み取り）を実行する
+
+        Raises:
+            UnsupportedOcrModelError: OCR 用モデルが許可リスト外のとき。設定誤りは
+                呼び出しエラーと違い再試行しても直らないため、エラー dict にせず投げる。
+        """
+        model_id, model_region = self._bedrock_ocr_model()
         try:
             # Converse API の画像サイズ上限に収める（プロンプトの寸法は送信画像に合わせる）
             image_data = compress_image_for_payload(image_data, max_bytes=BEDROCK_IMAGE_MAX_BYTES)
@@ -129,7 +143,10 @@ class OcrService:
                 return parse_llm_ocr_response(response_text, image_width, image_height)
 
             try:
-                return call_bedrock_and_parse(messages, system_prompts, parse_fn)
+                return call_bedrock_and_parse(
+                    messages, system_prompts, parse_fn,
+                    model_id=model_id, model_region=model_region,
+                )
             except ResponseParseError:
                 stripped_text = last_response_text.strip()
                 # 壊れた JSON（トークン上限での切断等）を転記テキストとして誤保存しない
@@ -362,8 +379,10 @@ class OcrService:
         """OCR エンドポイントが処理可能か確認する。未起動なら wakeup を促し例外を投げる。"""
         if skip_ocr or not self.enable_ocr:
             return
-        # bedrock エンジンは SageMaker エンドポイントを使わないため確認不要
+        # bedrock エンジンは SageMaker エンドポイントを使わないため確認不要。
+        # 代わりに OCR 用モデルを検証し、許可リスト外なら画像のステータスを触る前に止める。
         if settings.OCR_ENGINE == "bedrock":
+            self._bedrock_ocr_model()
             return
         status = self.get_endpoint_status()
         if not status['ready']:

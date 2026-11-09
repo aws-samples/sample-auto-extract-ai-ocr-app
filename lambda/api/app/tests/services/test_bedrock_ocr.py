@@ -9,6 +9,9 @@
   改行分割（座標なし）で回復し、JSON 断片や空応答はエラー dict にする。
 - Bedrock 例外時は SageMaker パスと同じエラー dict 形状を返す。
 - get_endpoint_status / _check_endpoint_ready は bedrock のとき SageMaker を確認しない。
+- Bedrock OCR は抽出用の MODEL_ID ではなく OCR_MODEL_ID / OCR_MODEL_REGION のモデルを呼ぶ。
+- OCR 用モデルが許可リスト外なら、_check_endpoint_ready（パイプライン開始前）と
+  _invoke_bedrock_ocr の両方で UnsupportedOcrModelError を投げ、Bedrock を呼ばない。
 """
 import os
 import sys
@@ -21,7 +24,7 @@ from PIL import Image
 
 import services.ocr_service as ocr_module
 from services.ocr_service import OcrService
-from exceptions import ResponseParseError
+from exceptions import ResponseParseError, UnsupportedOcrModelError
 
 
 def _image_bytes(fmt="JPEG", size=(200, 100)):
@@ -34,6 +37,8 @@ def _make_bedrock_service(monkeypatch):
     monkeypatch.setattr(ocr_module.settings, "ENABLE_OCR", True)
     monkeypatch.setattr(ocr_module.settings, "OCR_ENGINE", "bedrock")
     monkeypatch.setattr(ocr_module.settings, "SAGEMAKER_ENDPOINT_NAME", "")
+    monkeypatch.setattr(ocr_module.settings, "OCR_MODEL_ID", "us.openai.gpt-6-astra")
+    monkeypatch.setattr(ocr_module.settings, "OCR_MODEL_REGION", "us-east-1")
     return OcrService()
 
 
@@ -198,3 +203,57 @@ class TestEndpointStatusBypass:
         monkeypatch.setattr(svc, "get_endpoint_status", fail)
         # 例外なく通ること
         svc._check_endpoint_ready(skip_ocr=False)
+
+
+class TestOcrModelSeparation:
+    def test_calls_ocr_model_not_extraction_model(self, monkeypatch):
+        svc = _make_bedrock_service(monkeypatch)
+        monkeypatch.setattr(ocr_module.settings, "MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+        monkeypatch.setattr(ocr_module.settings, "MODEL_REGION", "us-west-2")
+        monkeypatch.setattr(ocr_module.settings, "OCR_MODEL_ID", "global.openai.gpt-6-astra")
+        monkeypatch.setattr(ocr_module.settings, "OCR_MODEL_REGION", "ap-northeast-1")
+        captured = _install_call(monkeypatch, '{"words": []}')
+
+        svc._invoke_bedrock_ocr(_image_bytes())
+
+        assert captured["kwargs"] == {
+            "model_id": "global.openai.gpt-6-astra", "model_region": "ap-northeast-1",
+        }
+
+    def test_unset_ocr_model_uses_astra(self, monkeypatch):
+        svc = _make_bedrock_service(monkeypatch)
+        monkeypatch.setattr(ocr_module.settings, "OCR_MODEL_ID", "")
+        captured = _install_call(monkeypatch, '{"words": []}')
+
+        svc._invoke_bedrock_ocr(_image_bytes())
+
+        assert captured["kwargs"]["model_id"] == "us.openai.gpt-6-astra"
+
+
+class TestUnsupportedOcrModelBlocked:
+    def _set_unsupported(self, monkeypatch):
+        svc = _make_bedrock_service(monkeypatch)
+        monkeypatch.setattr(ocr_module.settings, "OCR_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+        return svc
+
+    def test_invoke_raises_without_calling_bedrock(self, monkeypatch):
+        svc = self._set_unsupported(monkeypatch)
+
+        def fail(*args, **kwargs):
+            raise AssertionError("Bedrock should not be called")
+
+        monkeypatch.setattr(ocr_module, "call_bedrock_and_parse", fail)
+
+        with pytest.raises(UnsupportedOcrModelError):
+            svc._invoke_bedrock_ocr(_image_bytes())
+
+    def test_pipeline_start_check_raises(self, monkeypatch):
+        svc = self._set_unsupported(monkeypatch)
+
+        with pytest.raises(UnsupportedOcrModelError):
+            svc._check_endpoint_ready(skip_ocr=False)
+
+    def test_skip_ocr_does_not_check_model(self, monkeypatch):
+        svc = self._set_unsupported(monkeypatch)
+        # OCR を飛ばす再抽出は OCR 用モデルを使わないため止めない
+        svc._check_endpoint_ready(skip_ocr=True)

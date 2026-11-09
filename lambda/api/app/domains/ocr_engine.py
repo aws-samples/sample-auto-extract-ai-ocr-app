@@ -7,10 +7,56 @@ import logging
 import math
 from typing import Any
 
-from exceptions import ResponseParseError
+from exceptions import ResponseParseError, UnsupportedOcrModelError
 from utils.bedrock import extract_json_from_response
 
 logger = logging.getLogger(__name__)
+
+
+# Bedrock OCR で使ってよいモデル ID → 呼び出せるソースリージョン。
+# 座標付き転記の精度を動作確認できたモデルに限る。CDK 側の同じ許可リスト
+# （lib/bedrock-ocr-models.ts）と内容を揃えること。こちらは Lambda の環境変数を
+# 直接書き換えられた場合の実行時の止め。
+# GPT-6 Astra は bedrock-runtime で in-region 推論できず、推論プロファイル経由でしか
+# Converse を呼べない（素の openai.gpt-6-astra は失敗する）。
+_ASTRA_US_REGIONS = frozenset({
+    "us-east-1", "us-east-2", "us-west-1", "us-west-2", "ca-central-1", "ca-west-1",
+})
+BEDROCK_OCR_MODELS: dict[str, frozenset[str]] = {
+    "us.openai.gpt-6-astra": _ASTRA_US_REGIONS,
+    "global.openai.gpt-6-astra": _ASTRA_US_REGIONS | {
+        "eu-central-1", "eu-north-1", "eu-west-1", "eu-west-2", "eu-west-3",
+        "ap-northeast-1", "ap-northeast-2", "ap-northeast-3", "ap-south-1",
+        "ap-southeast-1", "ap-southeast-2", "sa-east-1",
+    },
+}
+
+DEFAULT_BEDROCK_OCR_MODEL_ID = "us.openai.gpt-6-astra"
+
+
+def resolve_bedrock_ocr_model(model_id: str, region: str) -> tuple[str, str]:
+    """Bedrock OCR に使うモデルを決め、許可リストで検証する。
+
+    Args:
+        model_id: 設定された OCR 用モデル ID。空なら DEFAULT_BEDROCK_OCR_MODEL_ID。
+        region: Bedrock を呼び出すリージョン。
+
+    Returns:
+        (model_id, region)
+
+    Raises:
+        UnsupportedOcrModelError: 許可リスト外のモデル、またはそのリージョンから呼べないとき。
+    """
+    model_id = model_id or DEFAULT_BEDROCK_OCR_MODEL_ID
+    regions = BEDROCK_OCR_MODELS.get(model_id)
+    if regions is None:
+        raise UnsupportedOcrModelError(
+            f"モデル {model_id} は Bedrock OCR に使えません。"
+            f"使えるモデル: {', '.join(BEDROCK_OCR_MODELS)}")
+    if region not in regions:
+        raise UnsupportedOcrModelError(
+            f"モデル {model_id} はリージョン {region} から呼び出せません。")
+    return model_id, region
 
 
 def _normalize_points(points):

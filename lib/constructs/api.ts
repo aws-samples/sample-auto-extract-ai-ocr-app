@@ -36,6 +36,9 @@ export interface ApiProps {
   userPoolClientId: string;
   enableOcr: boolean;
   ocrEngine?: string;
+  /** ocrEngine が "bedrock" のときの OCR 用モデル（lib/parameters.ts で解決・検証済み） */
+  ocrModelId?: string;
+  ocrModelRegion?: string;
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
   agentRuntimeArn?: string;
@@ -181,6 +184,8 @@ export class Api extends Construct {
         SAGEMAKER_INFERENCE_COMPONENT_NAME:
           props.sagemakerInferenceComponentName || "",
         OCR_ENGINE: props.ocrEngine || "paddle",
+        OCR_MODEL_ID: props.ocrModelId || "",
+        OCR_MODEL_REGION: props.ocrModelRegion || "",
         MODEL_ID: modelId,
         MODEL_REGION: modelRegion,
         AGENT_MODEL_ID: props.agentModelId || "",

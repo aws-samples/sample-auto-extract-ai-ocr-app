@@ -19,10 +19,15 @@ export interface StepFunctionsProps {
   documentBucket: cdk.aws_s3.Bucket;
   enableOcr: boolean;
   ocrEngine?: string;
+  /** ocrEngine が "bedrock" のときの OCR 用モデル（lib/parameters.ts で解決・検証済み） */
+  ocrModelId?: string;
+  ocrModelRegion?: string;
   sagemakerEndpointName?: string;
   sagemakerInferenceComponentName?: string;
   modelId: string;
   modelRegion: string;
+  agentModelId?: string;
+  agentModelRegion?: string;
   agentRuntimeArn?: string;
   dsqlEndpoint?: string;
   dsqlRegion?: string;
@@ -57,6 +62,8 @@ export class StepFunctions extends Construct {
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || '',
         SAGEMAKER_INFERENCE_COMPONENT_NAME: props.sagemakerInferenceComponentName || '',
         OCR_ENGINE: props.ocrEngine || 'paddle',
+        OCR_MODEL_ID: props.ocrModelId || '',
+        OCR_MODEL_REGION: props.ocrModelRegion || '',
       },
     });
     
@@ -104,6 +111,8 @@ export class StepFunctions extends Construct {
           DSQL_REGION: props.dsqlRegion || '',
           MODEL_ID: props.modelId,
           MODEL_REGION: props.modelRegion,
+          AGENT_MODEL_ID: props.agentModelId || '',
+          AGENT_MODEL_REGION: props.agentModelRegion || '',
         },
       });
 

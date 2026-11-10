@@ -13,11 +13,13 @@ def parse_converse_response(response):
     """Converse API レスポンスからテキストを抽出する"""
     try:
         content = response["output"]["message"]["content"]
-        if content and len(content) > 0:
-            return content[0]["text"]
-        else:
-            logger.warning("レスポンスにテキストコンテンツが含まれていません")
-            return ""
+        # reasoningContent などテキスト以外のブロックが先頭に来るモデルがあるため、
+        # text ブロックを探して返す
+        for block in content or []:
+            if "text" in block:
+                return block["text"]
+        logger.warning("レスポンスにテキストコンテンツが含まれていません")
+        return ""
     except KeyError as e:
         logger.error(f"レスポンス解析エラー: {str(e)}")
         return ""

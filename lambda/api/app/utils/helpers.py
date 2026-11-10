@@ -9,6 +9,22 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 
+def detect_image_format(image_bytes: bytes) -> str | None:
+    """画像バイトのマジックバイトからフォーマット（jpeg/png/gif/webp）を判定する。
+
+    判定できない場合は None を返す。
+    """
+    if image_bytes.startswith(b"\xff\xd8"):
+        return "jpeg"
+    if image_bytes.startswith(b"\x89PNG"):
+        return "png"
+    if image_bytes.startswith(b"GIF8"):
+        return "gif"
+    if image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
 def decimal_to_float(obj):
     """Decimal型をfloat型に変換してJSON serializable にする"""
     if isinstance(obj, dict):

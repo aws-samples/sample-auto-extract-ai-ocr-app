@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 import pytest
 
 import clients.bedrock as bedrock_module
-from clients.bedrock import call_bedrock_and_parse
+from clients.bedrock import call_bedrock, call_bedrock_and_parse
 from exceptions import ResponseParseError
 
 MESSAGES = [{"role": "user", "content": [{"text": "抽出してください"}]}]
@@ -116,3 +116,83 @@ class TestCallBedrockAndParse:
 
         call_bedrock_and_parse(MESSAGES, SYSTEM, _needs_ok, model_id="other-model")
         assert received == {"model_id": "other-model"}
+
+
+class _ConverseClient:
+    """converse の引数を記録するフェイク Bedrock クライアント。
+
+    reject_temperature=True の間は temperature 付きリクエストを
+    ValidationException で拒否する。
+    """
+
+    def __init__(self, reject_temperature=False):
+        self.calls = []
+        self.reject_temperature = reject_temperature
+
+    def converse(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.reject_temperature and "temperature" in kwargs["inferenceConfig"]:
+            from botocore.exceptions import ClientError
+            raise ClientError(
+                {"Error": {"Code": "ValidationException",
+                           "Message": "This model does not support the temperature parameter"}},
+                "Converse",
+            )
+        return _converse("ok")
+
+
+class TestCallBedrockTemperature:
+    """call_bedrock の推論パラメータ。
+
+    想定している正しい挙動: temperature 0.2 と maxTokens を送る。
+    temperature を受け付けないモデル（ValidationException）に対しては
+    temperature なしで再試行し、そのモデルを記憶して以後の呼び出しでは送らない。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_memo(self, monkeypatch):
+        monkeypatch.setattr(bedrock_module, "_temperature_unsupported_models", set())
+
+    def test_sends_temperature_by_default(self, monkeypatch):
+        client = _ConverseClient()
+        monkeypatch.setattr(bedrock_module, "create_bedrock_client", lambda region: client)
+
+        call_bedrock(MESSAGES, SYSTEM)
+
+        assert client.calls[0]["inferenceConfig"] == {"temperature": 0.2, "maxTokens": 40000}
+
+    def test_retries_without_temperature_on_rejection(self, monkeypatch):
+        client = _ConverseClient(reject_temperature=True)
+        monkeypatch.setattr(bedrock_module, "create_bedrock_client", lambda region: client)
+
+        call_bedrock(MESSAGES, SYSTEM, model_id="no-temp-model")
+
+        assert len(client.calls) == 2
+        assert client.calls[1]["inferenceConfig"] == {"maxTokens": 40000}
+
+    def test_rejecting_model_is_remembered(self, monkeypatch):
+        client = _ConverseClient(reject_temperature=True)
+        monkeypatch.setattr(bedrock_module, "create_bedrock_client", lambda region: client)
+
+        call_bedrock(MESSAGES, SYSTEM, model_id="no-temp-model")
+        call_bedrock(MESSAGES, SYSTEM, model_id="no-temp-model")
+
+        # 2 回目の call_bedrock は最初から temperature なし（拒否→再試行が起きない）
+        assert len(client.calls) == 3
+        assert "temperature" not in client.calls[2]["inferenceConfig"]
+
+    def test_unrelated_validation_error_is_raised(self, monkeypatch):
+        from botocore.exceptions import ClientError
+
+        class _Broken:
+            def converse(self, **kwargs):
+                raise ClientError(
+                    {"Error": {"Code": "ValidationException",
+                               "Message": "image exceeds maximum size"}},
+                    "Converse",
+                )
+
+        monkeypatch.setattr(bedrock_module, "create_bedrock_client", lambda region: _Broken())
+
+        with pytest.raises(ClientError):
+            call_bedrock(MESSAGES, SYSTEM)

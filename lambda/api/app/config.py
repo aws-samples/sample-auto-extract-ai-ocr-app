@@ -28,12 +28,21 @@ class Settings:
         "SAGEMAKER_INFERENCE_COMPONENT_NAME", "")
     OCR_ENGINE: str = os.getenv("OCR_ENGINE", "paddle")
 
+    # Bedrock OCR（OCR_ENGINE=bedrock）用モデル。抽出用 MODEL_ID とは別に指定する。
+    # 未指定時のモデルと許可リストの検証は domains/ocr_engine.py が担う。
+    OCR_MODEL_ID: str = os.getenv("OCR_MODEL_ID", "")
+    OCR_MODEL_REGION: str = os.getenv("OCR_MODEL_REGION") or MODEL_REGION
+
     # API設定
     API_BASE_URL: str = os.getenv("API_BASE_URL", "")
     
     # Agent設定
     AGENT_RUNTIME_ARN: str = os.getenv("AGENT_RUNTIME_ARN", "")
     AGENT_KICK_FUNCTION_NAME: str = os.getenv("AGENT_KICK_FUNCTION_NAME", "")
+
+    # エージェント検証用モデル（未指定時はMODEL_ID/MODEL_REGIONにフォールバック）
+    AGENT_MODEL_ID: str = os.getenv("AGENT_MODEL_ID") or MODEL_ID
+    AGENT_MODEL_REGION: str = os.getenv("AGENT_MODEL_REGION") or MODEL_REGION
 
     # Schema Generation Worker Lambda
     SCHEMA_GENERATE_FUNCTION_NAME: str = os.getenv("SCHEMA_GENERATE_FUNCTION_NAME", "")

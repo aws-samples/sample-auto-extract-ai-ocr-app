@@ -47,6 +47,11 @@ class LastOwnerError(AppError):
     code = "last_owner"
 
 
+class UnsupportedOcrModelError(BadRequestError):
+    """Bedrock OCR に許可されていないモデル・リージョンが設定されている。"""
+    code = "unsupported_ocr_model"
+
+
 class EndpointNotReadyError(AppError):
     """OCR エンドポイントが起動中。"""
     status_code = 503

@@ -48,8 +48,9 @@ export class OcrAppStack extends cdk.Stack {
       })
     );
 
+    // bedrock エンジンは LLM で OCR を行うため SageMaker エンドポイント不要
     let ocrEndpoint = undefined;
-    if (p.enableOcr) {
+    if (p.enableOcr && p.ocrEngine !== "bedrock") {
       const ocr = new Ocr(this, "OcrEndpoint", {
         enableZeroScale: p.sagemakerZeroScale,
         scaleInCooldownSeconds: p.sagemakerScaleInCooldownSeconds,
@@ -82,11 +83,15 @@ export class OcrAppStack extends cdk.Stack {
       userPoolClientId: auth.client.userPoolClientId,
       enableOcr: p.enableOcr,
       ocrEngine: p.ocrEngine,
+      ocrModelId: p.ocrModelId,
+      ocrModelRegion: p.ocrModelRegion,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
       agentRuntimeArn: agent.runtimeArn,
       modelId: p.modelId,
       modelRegion: p.modelRegion,
+      agentModelId: p.agentModelId,
+      agentModelRegion: p.agentModelRegion,
       dsqlEndpoint: dsql.clusterEndpoint,
       dsqlRegion: this.region,
       dsqlClusterArn: dsql.clusterArn,
@@ -99,10 +104,14 @@ export class OcrAppStack extends cdk.Stack {
       documentBucket: api.documentBucket,
       enableOcr: p.enableOcr,
       ocrEngine: p.ocrEngine,
+      ocrModelId: p.ocrModelId,
+      ocrModelRegion: p.ocrModelRegion,
       sagemakerEndpointName: ocrEndpoint?.endpointName,
       sagemakerInferenceComponentName: ocrEndpoint?.inferenceComponentName,
       modelId: p.modelId,
       modelRegion: p.modelRegion,
+      agentModelId: p.agentModelId,
+      agentModelRegion: p.agentModelRegion,
       agentRuntimeArn: agent.runtimeArn,
       dsqlEndpoint: dsql.clusterEndpoint,
       dsqlRegion: this.region,

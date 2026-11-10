@@ -90,11 +90,15 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 | `modelId` | string | `us.anthropic.claude-sonnet-4-6` | 情報抽出とスキーマ生成に使う Bedrock モデル ID |
 | `modelRegion` | string | `us-east-1` | Bedrock を呼び出すリージョン |
 | `enableOcr` | boolean | `true` | OCR を有効化するか |
-| `ocrEngine` | `"paddle"` \| `"deepseek"` \| `"yomitoku-mp"` | `paddle` | 使用する OCR エンジン（後述） |
+| `ocrEngine` | `"paddle"` \| `"deepseek"` \| `"yomitoku-mp"` \| `"bedrock"` | `paddle` | 使用する OCR エンジン（後述） |
+| `ocrModelId` | string? | （未設定 = `us.openai.gpt-6-astra`） | `ocrEngine: "bedrock"` のとき OCR に使う Bedrock モデル ID。許可されたモデル以外はデプロイ時にエラー（後述） |
+| `ocrModelRegion` | string? | （未設定 = `modelRegion`） | `ocrEngine: "bedrock"` のとき OCR で Bedrock を呼び出すリージョン |
 | `sagemakerZeroScale` | boolean | `true` | アクセスがないとき OCR インスタンスを 0 台まで縮小するか |
 | `sagemakerScaleInCooldownSeconds` | number | `3600` | 縮小するまでの待機時間（秒） |
 | `marketplaceModelPackageArn` | string? | （未設定） | `yomitoku-mp` を使うときの Marketplace モデルパッケージ ARN |
 | `enableAgentDemo` | boolean | `true` | エージェント検証のデモ用ユースケースとツールを自動登録するか（[ARCHITECTURE.md](ARCHITECTURE.md) を参照） |
+| `agentModelId` | string? | （未設定 = `modelId`） | エージェント検証に使う Bedrock モデル ID |
+| `agentModelRegion` | string? | （未設定 = `modelRegion`） | エージェント検証で Bedrock を呼び出すリージョン |
 | `selfSignUpEnabled` | boolean | `true` | Cognito のセルフサインアップを許可するか |
 | `allowedSignUpEmailDomains` | string[] | `[]`（制限なし） | サインアップを許可するメールドメイン |
 | `waf` | WafOptions | `{ enabled: false }` | CloudFront への WAF 設定（後述） |
@@ -112,6 +116,8 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 
 `modelId` と `modelRegion` を変更します。モデル ID は [Amazon Bedrock でサポートされている基盤モデル](https://docs.aws.amazon.com/ja_jp/bedrock/latest/userguide/models-supported.html) を参照してください。使用するモデルは、事前にモデルアクセスを有効化しておく必要があります。
 
+エージェント検証だけ別のモデルを使いたい場合は、`agentModelId` / `agentModelRegion` を設定します。未設定のときは `modelId` / `modelRegion` がそのまま使われます。
+
 ### OCR エンジンの変更
 
 `ocrEngine` で、使用する OCR エンジンを選択します。
@@ -119,6 +125,29 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 - `paddle`: PaddleOCR（デフォルト）。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `deepseek`: DeepSeek OCR。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `yomitoku-mp`: Yomitoku Pro（AWS Marketplace 版）。高精度な日本語 OCR です。
+- `bedrock`: Bedrock 上の LLM による OCR。SageMaker エンドポイントを作成しません（後述）。
+
+#### LLM による OCR（`ocrEngine: "bedrock"`）
+
+OCR エンジンを別に立てずに、Bedrock 上の LLM で OCR（テキストと座標の読み取り）を行えます。このモードでは SageMaker エンドポイントが作成されないため、GPU インスタンスのコストやウォームアップ待ちが発生しません（`sagemakerZeroScale` などの SageMaker 関連パラメータは無視されます）。
+
+OCR には `ocrModelId` のモデル、OCR 後の情報抽出とスキーマ生成には `modelId` のモデルが使われます。抽出用のモデルは自由に選べます。
+
+```typescript
+ocrEngine: "bedrock",
+ocrModelId: "us.openai.gpt-6-astra",
+ocrModelRegion: "us-east-1",
+modelId: "us.anthropic.claude-sonnet-4-6", // 抽出用。任意のモデル
+```
+
+`ocrModelId` に指定できるのは、座標出力の精度を確認できた GPT-6 Astra の推論プロファイルだけです。それ以外のモデルや、そのモデルを呼び出せないリージョンを指定すると、`cdk deploy` / `cdk synth` の時点でエラーになります。Lambda の環境変数（`OCR_MODEL_ID` / `OCR_MODEL_REGION`）を直接書き換えた場合も、OCR の開始時に拒否されます。
+
+| `ocrModelId` | 呼び出せる `ocrModelRegion` |
+|---|---|
+| `us.openai.gpt-6-astra` | `us-east-1` `us-east-2` `us-west-1` `us-west-2` `ca-central-1` `ca-west-1` |
+| `global.openai.gpt-6-astra` | 上記に加えて `eu-central-1` `eu-north-1` `eu-west-1` `eu-west-2` `eu-west-3` `ap-northeast-1` `ap-northeast-2` `ap-northeast-3` `ap-south-1` `ap-southeast-1` `ap-southeast-2` `sa-east-1` |
+
+`global.` は処理リージョンが世界中のいずれかになります。データの処理場所を限りたい場合は `us.` を使ってください。推論プロファイルのない `openai.gpt-6-astra` は Converse API で呼び出せないため指定できません。対応リージョンは [GPT-6 Astra のモデルカード](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html) に基づいています。許可するモデルを変えるときは、`lib/bedrock-ocr-models.ts` と `lambda/api/app/domains/ocr_engine.py` の両方を更新してください。
 
 #### Yomitoku Pro（AWS Marketplace 版）
 

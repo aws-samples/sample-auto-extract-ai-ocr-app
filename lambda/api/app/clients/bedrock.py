@@ -2,6 +2,8 @@
 import logging
 from typing import Any, Callable
 
+from botocore.exceptions import ClientError
+
 from config import settings
 from exceptions import ResponseParseError
 from utils.bedrock import parse_converse_response
@@ -15,6 +17,26 @@ RETRYABLE_STOP_REASONS = ("end_turn", "stop_sequence")
 # 応答を読み取れなかったときの試行回数（初回 + 再試行）
 PARSE_ATTEMPTS = 2
 
+# temperature を受け付けないモデル ID（実行時に ValidationException で判明したもの）。
+# OpenAI 系の reasoning モデルなど、temperature 指定を拒否するモデルがある。
+_temperature_unsupported_models: set = set()
+
+
+def _build_inference_config(model_id: str) -> dict:
+    config = {"temperature": 0.2, "maxTokens": 40000}
+    if model_id in _temperature_unsupported_models:
+        del config["temperature"]
+    return config
+
+
+def _is_temperature_rejection(error: Exception) -> bool:
+    """temperature 非対応モデルによる ValidationException か判定する"""
+    if not isinstance(error, ClientError):
+        return False
+    if error.response.get("Error", {}).get("Code") != "ValidationException":
+        return False
+    return "temperature" in str(error).lower()
+
 
 def call_bedrock(
     messages: list,
@@ -22,21 +44,29 @@ def call_bedrock(
     model_id: str | None = None,
     model_region: str | None = None,
 ) -> dict:
-    """Bedrock Converse API 呼び出し"""
+    """Bedrock Converse API 呼び出し
+
+    temperature を受け付けないモデルに対しては、初回の ValidationException を機に
+    そのモデルを記憶し、temperature なしで再試行・以後の呼び出しでも送らない。
+    """
     model_id = model_id or settings.MODEL_ID
     model_region = model_region or settings.MODEL_REGION
     bedrock = create_bedrock_client(model_region)
-    inference_config = {"temperature": 0.2, "maxTokens": 40000}
 
     try:
         response = bedrock.converse(
             modelId=model_id,
             messages=messages,
             system=system_prompts,
-            inferenceConfig=inference_config,
+            inferenceConfig=_build_inference_config(model_id),
         )
         return response
     except Exception as e:
+        if _is_temperature_rejection(e) and model_id not in _temperature_unsupported_models:
+            logger.warning(
+                f"モデル {model_id} が temperature を受け付けないため、temperature なしで再試行します")
+            _temperature_unsupported_models.add(model_id)
+            return call_bedrock(messages, system_prompts, model_id, model_region)
         logger.error(f"Bedrock API呼び出しエラー: {str(e)}")
         raise
 

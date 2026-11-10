@@ -18,16 +18,24 @@ _ROLE_RANK = {"reader": 1, "author": 2, "admin": 3}     # システムロール
 # 低レベルヘルパー（Depends 以外からも利用可能）
 # ============================================================
 
-def get_cognito_sub(request: Request) -> str:
-    """LWA の x-amzn-request-context ヘッダーから cognito_sub を取得"""
+def get_id_token_claims(request: Request) -> dict:
+    """LWA の x-amzn-request-context ヘッダーから ID トークンのクレームを取得する。
+
+    API Gateway の Cognito Authorizer が検証済みのクレームを渡す。取れなければ空 dict。
+    """
     ctx = request.headers.get("x-amzn-request-context", "")
     if ctx:
         try:
-            data = json.loads(ctx)
-            return data.get("authorizer", {}).get("claims", {}).get("sub", "")
+            claims = json.loads(ctx).get("authorizer", {}).get("claims", {})
+            return claims if isinstance(claims, dict) else {}
         except (json.JSONDecodeError, AttributeError):
             pass
-    return ""
+    return {}
+
+
+def get_cognito_sub(request: Request) -> str:
+    """LWA の x-amzn-request-context ヘッダーから cognito_sub を取得"""
+    return get_id_token_claims(request).get("sub", "")
 
 
 def get_current_user(request: Request) -> dict | None:
@@ -63,6 +71,18 @@ def check_usecase_permission(user: dict, app_name: str, min_level: str = "viewer
 # ============================================================
 # Depends ベースの認証認可
 # ============================================================
+
+def require_id_token_claims(request: Request) -> dict:
+    """認証済みの ID トークンのクレームを返す。sub が無ければ 401。
+
+    users テーブルへの登録を問わない。未登録ユーザーを登録する POST /user/sync 専用で、
+    それ以外のルートは require_user を使うこと。
+    """
+    claims = get_id_token_claims(request)
+    if not claims.get("sub"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return claims
+
 
 def require_user(request: Request) -> dict:
     """アプリ登録済みユーザーを解決する。未登録なら 401。"""

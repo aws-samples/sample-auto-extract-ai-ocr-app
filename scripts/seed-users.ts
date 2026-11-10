@@ -703,7 +703,7 @@ async function upsertGroups(
 
 /**
  * users テーブルに upsert。cognito_sub をキーに INSERT、既存なら role / display_name を更新。
- * post-auth Lambda の SQL は role を保護するので競合しない。
+ * API の POST /user/sync は role / display_name を更新しないので競合しない。
  */
 async function upsertUser(
   pgClient: pg.Client,
@@ -730,7 +730,7 @@ async function upsertUser(
 
 /**
  * user_groups に紐付け。source='manual' で INSERT、既存も source='manual' に更新して
- * post-auth Lambda の IdP 同期削除ロジック (source='idp' のみ対象) から保護する。
+ * API の POST /user/sync による IdP 同期の削除処理 (source='idp' のみ対象) から保護する。
  * 戻り値: 追加された件数 (既存を更新した場合も 1 としてカウント)。
  */
 async function linkUserGroup(

@@ -1,5 +1,54 @@
 """ユーザー Repository（DSQL）"""
 from clients.dsql import query, query_one, with_retry
+from domains.user_profile import IdpUserProfile, needs_profile_update
+
+
+def sync_user_from_idp(profile: IdpUserProfile) -> str:
+    """IdP の属性で users を同期し、user_id を返す。
+
+    - 新規: INSERT し、`all` グループに source='auto' で追加する
+    - 既存: email / department に差分があるときだけ UPDATE する。
+      ページロードのたびに呼ばれるため、変化が無いときは書き込まない（無駄な書き込みと OCC 競合を避ける）
+    """
+    def _do(conn):
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, email, department FROM users WHERE cognito_sub = %s",
+                (profile.cognito_sub,),
+            )
+            existing = cur.fetchone()
+            if existing:
+                if needs_profile_update(existing, profile):
+                    cur.execute(
+                        "UPDATE users SET email = %s, department = %s, updated_at = now() WHERE id = %s",
+                        (profile.email, profile.department, existing["id"]),
+                    )
+                return str(existing["id"])
+
+            # 複数タブから同時に初回 sync が来ても落ちないよう ON CONFLICT で冪等にする。
+            # DSQL は SERIAL 非推奨のため PK は gen_random_uuid()（DDL 側で設定）。
+            cur.execute("""
+                INSERT INTO users (cognito_sub, email, display_name, department)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (cognito_sub) DO UPDATE SET
+                    email = EXCLUDED.email,
+                    department = EXCLUDED.department,
+                    updated_at = now()
+                RETURNING id
+            """, (profile.cognito_sub, profile.email, profile.display_name, profile.department))
+            user_id = cur.fetchone()["id"]
+
+            # all グループは dsql-admin seed で作成済み前提。seed 未実行なら追加をスキップする
+            cur.execute("SELECT id FROM groups WHERE name = 'all'")
+            row = cur.fetchone()
+            if row:
+                cur.execute("""
+                    INSERT INTO user_groups (user_id, group_id, source)
+                    VALUES (%s, %s, 'auto')
+                    ON CONFLICT (user_id, group_id) DO NOTHING
+                """, (user_id, row["id"]))
+            return str(user_id)
+    return with_retry(_do)
 
 
 def get_user_by_cognito_sub(cognito_sub: str) -> dict | None:

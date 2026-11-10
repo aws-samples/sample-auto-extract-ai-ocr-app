@@ -1,9 +1,8 @@
 import { CfnOutput, Duration, RemovalPolicy } from "aws-cdk-lib";
 import { Mfa, UserPool, UserPoolClient, UserPoolOperation } from "aws-cdk-lib/aws-cognito";
-import { DockerImageCode, DockerImageFunction, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -15,7 +14,6 @@ export interface AuthProps {
 export class Auth extends Construct {
   readonly userPool: UserPool;
   readonly client: UserPoolClient;
-  readonly postAuthFunction: DockerImageFunction;
   constructor(scope: Construct, id: string, props: AuthProps) {
     super(scope, id);
 
@@ -49,15 +47,8 @@ export class Auth extends Construct {
       userPool.addTrigger(UserPoolOperation.PRE_SIGN_UP, preSignUp);
     }
 
-    // Post Authentication Trigger（Cognito → DSQL 同期）
-    const postAuth = new DockerImageFunction(this, "PostAuthFunction", {
-      code: DockerImageCode.fromImageAsset("lambda/post-auth", {
-        platform: Platform.LINUX_AMD64,
-      }),
-      timeout: Duration.seconds(30),
-    });
-    userPool.addTrigger(UserPoolOperation.POST_AUTHENTICATION, postAuth);
-    this.postAuthFunction = postAuth;
+    // DSQL へのユーザー同期は Post Authentication トリガーでは行わず、API の POST /user/sync で行う。
+    // Cognito はトリガーの応答を 5 秒しか待たず、DSQL への接続とトランザクションが間に合わないとログイン自体が失敗するため。
 
     const client = userPool.addClient("UserPoolClient", {
       idTokenValidity: Duration.days(1),

@@ -1,6 +1,7 @@
 """ユーザー情報サービス"""
 import logging
 
+from domains.user_profile import profile_from_claims
 from repositories import user_repository, group_repository
 from repositories import user_preferences_repository
 
@@ -13,6 +14,15 @@ class UserService:
 
     def get_me(self, cognito_sub: str) -> dict | None:
         return user_repository.get_user_detail_by_cognito_sub(cognito_sub)
+
+    def sync_from_claims(self, claims: dict) -> dict | None:
+        """ID トークンのクレームでログインユーザーを DSQL に同期し、最新のユーザー詳細を返す。"""
+        profile = profile_from_claims(claims)
+        user_id = user_repository.sync_user_from_idp(profile)
+        # custom:idp_group を持たない（IdP 連携していない）ユーザーは IdP グループ同期の対象外
+        if profile.idp_groups:
+            group_repository.sync_idp_groups(user_id, list(profile.idp_groups))
+        return user_repository.get_user_detail_by_cognito_sub(profile.cognito_sub)
 
     def get_stars(self, cognito_sub: str) -> list[str]:
         return user_preferences_repository.get_stars(cognito_sub)

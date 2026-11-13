@@ -50,6 +50,14 @@ export interface AppParameters {
   /** 空配列 = 制限なし */
   allowedSignUpEmailDomains: string[];
 
+  // SAML 認証（手順は docs/SAML_WITH_ENTRA_ID.md）
+  /** true にするとログイン画面を SAML 専用にし、メールアドレス・パスワードのログインとセルフサインアップを無効にする */
+  samlAuthEnabled: boolean;
+  /** Cognito ドメイン。スキームなしで指定する（例: your-preferred-name.auth.ap-northeast-1.amazoncognito.com） */
+  samlCognitoDomainName?: string;
+  /** UserPool に登録した SAML IdP のプロバイダ名（例: EntraID） */
+  samlCognitoFederatedIdentityProviderName?: string;
+
   // WAF
   waf: WafOptions;
 }
@@ -79,6 +87,7 @@ const defaultParameters: AppParameters = {
   enableAgentDemo: true,
   selfSignUpEnabled: true,
   allowedSignUpEmailDomains: [],
+  samlAuthEnabled: false,
   waf: {
     enabled: false,
   },
@@ -109,7 +118,29 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 
 export function getParameters(env?: string): AppParameters {
   const target = envOverrides[env || "base"] ?? {};
-  return resolveOcrModel({ ...defaultParameters, ...target });
+  const params = resolveOcrModel({ ...defaultParameters, ...target });
+  validateSamlAuth(params);
+  return params;
+}
+
+/**
+ * samlAuthEnabled のとき Cognito ドメインと IdP 名を検証する。欠けていると誰もログインできないため synth で止める。
+ *
+ * @throws ドメインか IdP 名が空、またはドメインにスキームやパスが付いているとき
+ */
+export function validateSamlAuth(params: AppParameters): void {
+  if (!params.samlAuthEnabled) return;
+  const domain = params.samlCognitoDomainName ?? "";
+  if (!domain || !params.samlCognitoFederatedIdentityProviderName) {
+    throw new Error(
+      "samlAuthEnabled が true のときは samlCognitoDomainName と samlCognitoFederatedIdentityProviderName を指定してください",
+    );
+  }
+  if (domain.includes("://") || domain.includes("/")) {
+    throw new Error(
+      `samlCognitoDomainName はスキームなしのホスト名で指定してください（例: your-preferred-name.auth.ap-northeast-1.amazoncognito.com）: ${domain}`,
+    );
+  }
 }
 
 /**

@@ -9,6 +9,7 @@ import * as path from "path";
 export interface AuthProps {
   selfSignUpEnabled: boolean;
   allowedSignUpEmailDomains: string[];
+  samlAuthEnabled: boolean;
 }
 
 export class Auth extends Construct {
@@ -26,7 +27,8 @@ export class Auth extends Construct {
         requireDigits: true,
         requireSymbols: true,
       },
-      selfSignUpEnabled: props.selfSignUpEnabled,
+      // SAML ではログインできるユーザーを IdP 側で決めるため塞ぐ
+      selfSignUpEnabled: props.samlAuthEnabled ? false : props.selfSignUpEnabled,
       signInAliases: {
         username: false,
         email: true,

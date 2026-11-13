@@ -30,6 +30,7 @@ export class OcrAppStack extends cdk.Stack {
     const auth = new Auth(this, "Auth", {
       selfSignUpEnabled: p.selfSignUpEnabled,
       allowedSignUpEmailDomains: p.allowedSignUpEmailDomains,
+      samlAuthEnabled: p.samlAuthEnabled,
     });
 
     const dsql = new Dsql(this, "Dsql", {
@@ -142,7 +143,10 @@ export class OcrAppStack extends cdk.Stack {
       syncBucketName: api.syncBucket.bucketName,
       webAclArn: props.webAclArn,
       websocketUrl: websocket.apiEndpoint,
-      selfSignUpEnabled: p.selfSignUpEnabled,
+      selfSignUpEnabled: p.samlAuthEnabled ? false : p.selfSignUpEnabled,
+      samlAuthEnabled: p.samlAuthEnabled,
+      samlCognitoDomainName: p.samlCognitoDomainName,
+      samlCognitoFederatedIdentityProviderName: p.samlCognitoFederatedIdentityProviderName,
     });
 
     new cdk.CfnOutput(this, "StateMachineArn", {

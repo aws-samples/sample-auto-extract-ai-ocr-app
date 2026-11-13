@@ -57,6 +57,9 @@ def with_retry(fn):
     for attempt in range(MAX_RETRIES):
         conn = get_connection()
         try:
+            # 再利用した接続にトランザクションが残っていると autocommit を変更できないため先に閉じる
+            if conn.status != psycopg2.extensions.STATUS_READY:
+                conn.rollback()
             conn.autocommit = False
             result = fn(conn)
             conn.commit()

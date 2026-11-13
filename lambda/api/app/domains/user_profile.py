@@ -1,5 +1,6 @@
 """ID トークンのクレームからユーザー同期用のプロフィールを組み立てるドメインロジック"""
 from dataclasses import dataclass
+from urllib.parse import unquote_plus
 
 
 @dataclass(frozen=True)
@@ -12,20 +13,28 @@ class IdpUserProfile:
     idp_groups: tuple[str, ...]
 
 
-def profile_from_claims(claims: dict) -> IdpUserProfile:
-    """ID トークンのクレームから IdpUserProfile を作る。
+def parse_idp_groups(raw: str) -> tuple[str, ...]:
+    """`custom:idp_group` の値をグループ名の列にする（空要素・重複は除き、順序は保つ）。
 
-    `custom:idp_group` はカンマ区切りの文字列で届く。空要素と重複は落とす。
+    Cognito は複数の値を URL エンコードした `[a, b]` 形式で渡すため、その形式のときだけデコードする。
     """
+    value = (raw or "").strip()
+    if value.startswith("[") and value.endswith("]"):
+        items = (unquote_plus(v.strip()) for v in value[1:-1].split(","))
+    else:
+        items = (v for v in value.split(","))
+    return tuple(dict.fromkeys(g.strip() for g in items if g.strip()))
+
+
+def profile_from_claims(claims: dict) -> IdpUserProfile:
+    """ID トークンのクレームから IdpUserProfile を作る。"""
     email = claims.get("email", "") or ""
-    raw_groups = claims.get("custom:idp_group", "") or ""
-    groups = (g.strip() for g in raw_groups.split(","))
     return IdpUserProfile(
         cognito_sub=claims.get("sub", "") or "",
         email=email,
         display_name=claims.get("name") or email,
         department=claims.get("custom:department", "") or "",
-        idp_groups=tuple(dict.fromkeys(g for g in groups if g)),
+        idp_groups=parse_idp_groups(claims.get("custom:idp_group", "") or ""),
     )
 
 

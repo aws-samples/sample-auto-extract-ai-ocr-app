@@ -77,7 +77,8 @@ export const useAppContext = () => useContext(AppContext);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [apps, setApps] = useState<AppSchema[]>([]);
-  const [loading, setLoading] = useState(false);
+  // /apps はマウント時に必ず取得する。/user/sync の完了を待つ間に「アプリなし」と表示しないよう true で始める
+  const [loading, setLoading] = useState(true);
   const [appsLoaded, setAppsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => readUserCache());
@@ -127,9 +128,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    fetchApps();
-    // SWR: キャッシュがあっても毎回 /user/me で再検証し、state とキャッシュを最新化する
-    api.get('/user/me')
+    const fetchStars = () =>
+      api.get('/user/stars')
+        .then(r => setStars(r.data.stars || []))
+        .catch(() => {});
+
+    // SWR: キャッシュがあっても毎回 /user/sync で IdP 属性を DSQL に反映し、state とキャッシュを最新化する。
+    // 新規ユーザーは sync が終わるまで DSQL に存在せず他の API が 401 になるため、/apps と /user/stars は sync の後に呼ぶ。
+    api.post('/user/sync')
       .then(r => {
         const user: CurrentUser | null = r.data.user || null;
         setCurrentUser(user);
@@ -144,10 +150,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           setCurrentUser(null);
         }
       })
-      .finally(() => setUserLoaded(true));
-    api.get('/user/stars')
-      .then(r => setStars(r.data.stars || []))
-      .catch(() => {});
+      .finally(() => {
+        setUserLoaded(true);
+        fetchApps();
+        fetchStars();
+      });
   }, []);
 
   // クロスタブ同期: 別タブでキャッシュキーが削除されたら（= ログアウト）、
@@ -167,7 +174,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   if (!userLoaded) {
     // ※ AppProvider は Authenticator の内側にあるため、未認証時はここに到達しない
     //   （未認証ユーザーには Amplify のログイン画面が表示される）。
-    //   この分岐はキャッシュ無しでの初回ログイン直後など、/user/me 解決待ちの瞬間のみ。
+    //   この分岐はキャッシュ無しでの初回ログイン直後など、/user/sync 解決待ちの瞬間のみ。
     return <FullPageLoader />;
   }
 

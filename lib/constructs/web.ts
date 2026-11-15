@@ -19,12 +19,21 @@ export interface WebProps {
   websocketUrl: string;
   /** Cognito のセルフサインアップ許可（Authenticator UI 側の hideSignUp と連動させる） */
   selfSignUpEnabled: boolean;
+  /** SAML IdP へのリダイレクト専用のログイン画面にするか */
+  samlAuthEnabled: boolean;
+  /** SAML ログインで使う Cognito ドメイン（スキームなし） */
+  samlCognitoDomainName?: string;
+  /** SAML ログインで使う UserPool の IdP 名 */
+  samlCognitoFederatedIdentityProviderName?: string;
 }
 export class Web extends Construct {
   constructor(scope: Construct, id: string, props: WebProps) {
     super(scope, id);
 
-    const { buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, syncBucketName, webAclArn, websocketUrl, selfSignUpEnabled } = props;
+    const {
+      buildFolder, userPoolId, userPoolClientId, apiUrl, enableOcr, syncBucketName, webAclArn, websocketUrl,
+      selfSignUpEnabled, samlAuthEnabled, samlCognitoDomainName, samlCognitoFederatedIdentityProviderName,
+    } = props;
 
     const bucketProps: s3.BucketProps = {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -115,6 +124,9 @@ export class Web extends Construct {
         VITE_SYNC_BUCKET_NAME: syncBucketName,
         VITE_WEBSOCKET_URL: websocketUrl,
         VITE_SELF_SIGN_UP_ENABLED: selfSignUpEnabled.toString(),
+        VITE_APP_SAMLAUTH_ENABLED: samlAuthEnabled.toString(),
+        VITE_APP_SAML_COGNITO_DOMAIN_NAME: samlCognitoDomainName ?? "",
+        VITE_APP_SAML_COGNITO_FEDERATED_IDENTITY_PROVIDER_NAME: samlCognitoFederatedIdentityProviderName ?? "",
       },
     });
 

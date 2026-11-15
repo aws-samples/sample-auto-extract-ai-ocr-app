@@ -1,5 +1,4 @@
 import * as cdk from "aws-cdk-lib";
-import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 import { Auth } from "./constructs/auth";
@@ -31,22 +30,13 @@ export class OcrAppStack extends cdk.Stack {
     const auth = new Auth(this, "Auth", {
       selfSignUpEnabled: p.selfSignUpEnabled,
       allowedSignUpEmailDomains: p.allowedSignUpEmailDomains,
+      samlAuthEnabled: p.samlAuthEnabled,
     });
 
     const dsql = new Dsql(this, "Dsql", {
       userPoolId: auth.userPool.userPoolId,
       schemasTable: database.schemasTable,
     });
-
-    // Post Auth Trigger に DSQL 接続情報を注入
-    auth.postAuthFunction.addEnvironment("DSQL_ENDPOINT", dsql.clusterEndpoint);
-    auth.postAuthFunction.addEnvironment("DSQL_REGION", this.region);
-    auth.postAuthFunction.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["dsql:DbConnectAdmin"],
-        resources: [dsql.clusterArn],
-      })
-    );
 
     // bedrock エンジンは LLM で OCR を行うため SageMaker エンドポイント不要
     let ocrEndpoint = undefined;
@@ -153,7 +143,10 @@ export class OcrAppStack extends cdk.Stack {
       syncBucketName: api.syncBucket.bucketName,
       webAclArn: props.webAclArn,
       websocketUrl: websocket.apiEndpoint,
-      selfSignUpEnabled: p.selfSignUpEnabled,
+      selfSignUpEnabled: p.samlAuthEnabled ? false : p.selfSignUpEnabled,
+      samlAuthEnabled: p.samlAuthEnabled,
+      samlCognitoDomainName: p.samlCognitoDomainName,
+      samlCognitoFederatedIdentityProviderName: p.samlCognitoFederatedIdentityProviderName,
     });
 
     new cdk.CfnOutput(this, "StateMachineArn", {

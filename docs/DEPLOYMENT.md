@@ -101,6 +101,9 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 | `agentModelRegion` | string? | （未設定 = `modelRegion`） | エージェント検証で Bedrock を呼び出すリージョン |
 | `selfSignUpEnabled` | boolean | `true` | Cognito のセルフサインアップを許可するか |
 | `allowedSignUpEmailDomains` | string[] | `[]`（制限なし） | サインアップを許可するメールドメイン |
+| `samlAuthEnabled` | boolean | `false` | SAML IdP へのリダイレクト専用のログイン画面にするか。`true` のときはメールアドレス・パスワードでのログインとセルフサインアップが無効になる（[SAML_WITH_ENTRA_ID.md](SAML_WITH_ENTRA_ID.md) を参照） |
+| `samlCognitoDomainName` | string? | （未設定） | SAML ログインで使う Cognito ドメイン。`https://` を付けずに指定する。`samlAuthEnabled: true` のとき必須 |
+| `samlCognitoFederatedIdentityProviderName` | string? | （未設定） | UserPool に登録した SAML IdP のプロバイダ名。`samlAuthEnabled: true` のとき必須 |
 | `waf` | WafOptions | `{ enabled: false }` | CloudFront への WAF 設定（後述） |
 
 `waf` は以下のフィールドを持ちます。

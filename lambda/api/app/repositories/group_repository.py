@@ -128,3 +128,50 @@ def get_user_group_names(user_ids: list[str]) -> dict[str, list[dict]]:
 def get_group_by_name(name: str) -> dict | None:
     """名前でグループを取得"""
     return query_one("SELECT id FROM groups WHERE name = %s", (name,))
+
+
+def sync_idp_groups(user_id: str, idp_groups: list[str]) -> None:
+    """IdP グループ所属の差分同期。
+
+    IdP 由来のグループ・所属は source='idp' で持ち、手動追加分（source='manual'）とは独立に管理する。
+    同名の manual グループがある場合、そのグループは IdP 同期の対象にしない。
+    """
+    def _do(conn):
+        with conn.cursor() as cur:
+            # まだ無いグループだけ作る。ページロードごとに呼ばれるため、既存分への INSERT は投げない
+            cur.execute("SELECT name FROM groups WHERE name = ANY(%s)", (idp_groups,))
+            known = {r["name"] for r in cur.fetchall()}
+            for name in idp_groups:
+                if name not in known:
+                    cur.execute("""
+                        INSERT INTO groups (name, source) VALUES (%s, 'idp')
+                        ON CONFLICT (name) DO NOTHING
+                    """, (name,))
+
+            cur.execute(
+                "SELECT id FROM groups WHERE name = ANY(%s) AND source = 'idp'",
+                (idp_groups,),
+            )
+            desired_ids = {r["id"] for r in cur.fetchall()}
+
+            cur.execute(
+                "SELECT group_id FROM user_groups WHERE user_id = %s AND source = 'idp'",
+                (user_id,),
+            )
+            current_ids = {r["group_id"] for r in cur.fetchall()}
+
+            for gid in desired_ids - current_ids:
+                cur.execute("""
+                    INSERT INTO user_groups (user_id, group_id, source, synced_at)
+                    VALUES (%s, %s, 'idp', now())
+                    ON CONFLICT (user_id, group_id) DO UPDATE SET
+                        source = 'idp', synced_at = now()
+                """, (user_id, gid))
+
+            # IdP から外れた所属を削除（source='idp' のみ。manual / auto は残す）
+            for gid in current_ids - desired_ids:
+                cur.execute("""
+                    DELETE FROM user_groups
+                    WHERE user_id = %s AND group_id = %s AND source = 'idp'
+                """, (user_id, gid))
+    with_retry(_do)

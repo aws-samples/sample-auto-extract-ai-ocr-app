@@ -1,11 +1,23 @@
 """ユーザー API"""
 from fastapi import APIRouter, Depends, HTTPException, Request
-from dependencies.auth import require_user, get_cognito_sub
+from dependencies.auth import require_user, require_id_token_claims, get_cognito_sub
 from schemas.user import UpdateProfileRequest
 from services.user_service import UserService
 from dependencies.services import get_user_service
 
 router = APIRouter(prefix="/user", tags=["User"])
+
+
+@router.post("/sync")
+async def sync_me(claims: dict = Depends(require_id_token_claims), service: UserService = Depends(get_user_service)):
+    """ログインユーザーを IdP 属性で DSQL に同期し、GET /me と同じ形でユーザー情報を返す。
+
+    users 未登録の新規ユーザーが最初に呼ぶため require_user は使わない。
+    同期を Cognito の Post Authentication トリガーで行うと、トリガーの 5 秒制限に
+    DSQL への接続とトランザクションが間に合わずログインが失敗するため API で行う。
+    """
+    detail = service.sync_from_claims(claims)
+    return {"user": dict(detail) if detail else None}
 
 
 @router.get("/me")

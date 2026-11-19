@@ -183,7 +183,7 @@ export class Api extends Construct {
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || "",
         SAGEMAKER_INFERENCE_COMPONENT_NAME:
           props.sagemakerInferenceComponentName || "",
-        OCR_ENGINE: props.ocrEngine || "paddle",
+        OCR_ENGINE: props.ocrEngine || "textract",
         OCR_MODEL_ID: props.ocrModelId || "",
         OCR_MODEL_REGION: props.ocrModelRegion || "",
         MODEL_ID: modelId,

@@ -8,6 +8,7 @@
  * - ocrEngine が "bedrock" 以外、または OCR 無効なら ocrModelId / ocrModelRegion を外し、
  *   許可リスト外の値が残っていても例外にしない。
  * - 定義済みの全環境（base / dev / stg / prod）が検証を通る。
+ * - 既定の OCR エンジンは textract。
  */
 import { AppParameters, getParameters, resolveOcrModel } from '../lib/parameters';
 
@@ -71,5 +72,9 @@ describe('resolveOcrModel', () => {
 describe('getParameters', () => {
   test.each(['base', 'dev', 'stg', 'prod'])('%s passes OCR model validation', (env) => {
     expect(() => getParameters(env)).not.toThrow();
+  });
+
+  test('defaults the OCR engine to textract', () => {
+    expect(getParameters('base').ocrEngine).toBe('textract');
   });
 });

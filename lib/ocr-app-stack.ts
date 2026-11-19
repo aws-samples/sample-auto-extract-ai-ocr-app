@@ -38,9 +38,9 @@ export class OcrAppStack extends cdk.Stack {
       schemasTable: database.schemasTable,
     });
 
-    // bedrock エンジンは LLM で OCR を行うため SageMaker エンドポイント不要
+    // textract / bedrock エンジンはマネージドサービスで OCR を行うため SageMaker エンドポイント不要
     let ocrEndpoint = undefined;
-    if (p.enableOcr && p.ocrEngine !== "bedrock") {
+    if (p.enableOcr && p.ocrEngine !== "bedrock" && p.ocrEngine !== "textract") {
       const ocr = new Ocr(this, "OcrEndpoint", {
         enableZeroScale: p.sagemakerZeroScale,
         scaleInCooldownSeconds: p.sagemakerScaleInCooldownSeconds,

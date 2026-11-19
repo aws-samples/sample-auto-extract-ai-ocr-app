@@ -124,7 +124,7 @@ def parse_ocr_response(response_body: dict) -> dict:
 
 
 def _box_to_points(box: Any, image_width: int, image_height: int) -> list | None:
-    """LLM が出力した外接矩形 [x_min, y_min, x_max, y_max] を四隅の points に変換する。
+    """ピクセル座標の外接矩形 [x_min, y_min, x_max, y_max] を四隅の points に変換する。
 
     座標は画像範囲 (0〜幅, 0〜高さ) にクランプし int に丸める。
     有限数 4 要素でない場合や、クランプ後に矩形が成立しない（反転・面積ゼロ）場合は
@@ -176,6 +176,58 @@ def parse_llm_ocr_response(response_text: str, image_width: int, image_height: i
 
         word = {"id": len(words), "content": content}
         points = _box_to_points(raw_word.get("box"), image_width, image_height)
+        if points:
+            word["points"] = points
+        words.append(word)
+
+    full_text = " ".join(word["content"] for word in words)
+    return {"text": full_text, "words": words, "word_count": len(words)}
+
+
+def _textract_box_to_points(box: Any, image_width: int, image_height: int) -> list | None:
+    """Textract の BoundingBox（画像に対する 0〜1 の比率）を四隅の points に変換する。
+
+    BoundingBox が欠けている・不正な場合は None を返す。
+    """
+    if not isinstance(box, dict):
+        return None
+    try:
+        left = float(box["Left"]) * image_width
+        top = float(box["Top"]) * image_height
+        right = left + float(box["Width"]) * image_width
+        bottom = top + float(box["Height"]) * image_height
+    except (KeyError, TypeError, ValueError):
+        return None
+    return _box_to_points([left, top, right, bottom], image_width, image_height)
+
+
+def parse_textract_response(response: dict, image_width: int, image_height: int) -> dict:
+    """Textract DetectDocumentText のレスポンスを既存 OCR 結果形式に変換する（純粋関数）
+
+    LINE ブロックを 1 word にする。WORD ブロックは使わない（PaddleOCR と同じ行単位に揃え、
+    日本語の単語の区切り方に依存しないため）。
+
+    Args:
+        response: DetectDocumentText のレスポンス
+        image_width: 保存済みページ画像の幅（px）
+        image_height: 保存済みページ画像の高さ（px）。フロントはこの画像に枠を描くため、
+            送信前に縮小した場合も元画像の寸法を渡す（Textract の座標は比率なので一致する）。
+
+    Returns:
+        {"text": str, "words": list, "word_count": int}
+    """
+    words = []
+    for block in response.get("Blocks", []):
+        if block.get("BlockType") != "LINE":
+            continue
+        content = str(block.get("Text", "")).strip()
+        if not content:
+            continue
+
+        word = {"id": len(words), "content": content}
+        geometry = block.get("Geometry")
+        box = geometry.get("BoundingBox") if isinstance(geometry, dict) else None
+        points = _textract_box_to_points(box, image_width, image_height)
         if points:
             word["points"] = points
         words.append(word)

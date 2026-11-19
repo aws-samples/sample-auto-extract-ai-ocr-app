@@ -61,7 +61,7 @@ export class StepFunctions extends Construct {
         ENABLE_OCR: props.enableOcr.toString(),
         SAGEMAKER_ENDPOINT_NAME: props.sagemakerEndpointName || '',
         SAGEMAKER_INFERENCE_COMPONENT_NAME: props.sagemakerInferenceComponentName || '',
-        OCR_ENGINE: props.ocrEngine || 'paddle',
+        OCR_ENGINE: props.ocrEngine || 'textract',
         OCR_MODEL_ID: props.ocrModelId || '',
         OCR_MODEL_REGION: props.ocrModelRegion || '',
       },
@@ -80,6 +80,14 @@ export class StepFunctions extends Construct {
     if (props.enableOcr && props.sagemakerEndpointName) {
       processImage.addToRolePolicy(new PolicyStatement({
         actions: ['sagemaker:InvokeEndpoint'],
+        resources: ['*'],
+      }));
+    }
+
+    // Textract はリソースレベルの権限指定に対応しないため resources は '*'
+    if (props.enableOcr && props.ocrEngine === 'textract') {
+      processImage.addToRolePolicy(new PolicyStatement({
+        actions: ['textract:DetectDocumentText'],
         resources: ['*'],
       }));
     }

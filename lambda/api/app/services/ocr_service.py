@@ -18,9 +18,10 @@ from clients import get_inference_component_status, get_endpoint_status_direct, 
 from clients.bedrock import call_bedrock_and_parse
 from schemas import OcrResult, OcrResultResponse
 from config import settings
-from clients import s3_client, sagemaker_runtime_client, sfn_client
+from clients import s3_client, sagemaker_runtime_client, sfn_client, textract_client
 from domains.ocr_engine import (
     parse_ocr_response, parse_yomitoku_mp_response, parse_llm_ocr_response,
+    parse_textract_response,
     resolve_bedrock_ocr_model,
 )
 from domains.prompts import LLM_OCR_SYSTEM_PROMPT, create_llm_ocr_prompt
@@ -40,6 +41,12 @@ BEDROCK_IMAGE_MAX_BYTES = int(3.5 * 1024 * 1024)
 
 # Converse API の image ブロックが受け付けるフォーマット
 CONVERSE_IMAGE_FORMATS = ("jpeg", "png", "gif", "webp")
+
+# Textract 同期 API（DetectDocumentText）の入力バイト上限は 10MB。
+TEXTRACT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+
+# 同期 API は JPEG / PNG / TIFF / PDF のみ受け付けるため、判定できる JPEG / PNG 以外は JPEG に変換して送る
+TEXTRACT_IMAGE_FORMATS = ("jpeg", "png")
 
 
 def _guess_image_content_type(image_data: bytes) -> str:
@@ -63,7 +70,9 @@ class OcrService:
         """OCR エンドポイントの状態を返す"""
         if not self.enable_ocr:
             return {"ready": True, "status": "ocr_disabled"}
-        # bedrock エンジンは SageMaker エンドポイントを使わないため常に ready
+        # textract / bedrock エンジンは SageMaker エンドポイントを使わないため常に ready
+        if settings.OCR_ENGINE == "textract":
+            return {"ready": True, "status": "textract"}
         if settings.OCR_ENGINE == "bedrock":
             return {"ready": True, "status": "llm_ocr"}
         if settings.OCR_ENGINE == "yomitoku-mp":
@@ -74,6 +83,9 @@ class OcrService:
         """OCR エンジンを呼び出し、整形済み結果を返す"""
         if not self.enable_ocr:
             raise BadRequestError("この環境では OCR が無効です")
+
+        if settings.OCR_ENGINE == "textract":
+            return self._invoke_textract_ocr(image_data)
 
         if settings.OCR_ENGINE == "bedrock":
             return self._invoke_bedrock_ocr(image_data)
@@ -176,6 +188,23 @@ class OcrService:
             output = BytesIO()
             img.save(output, format="JPEG")
             return output.getvalue()
+
+    def _invoke_textract_ocr(self, image_data: bytes) -> dict:
+        """Amazon Textract（DetectDocumentText）で OCR を実行する"""
+        try:
+            # 座標は比率で返るため、縮小・変換前の寸法でピクセルに戻す
+            with Image.open(BytesIO(image_data)) as img:
+                image_width, image_height = img.size
+
+            if detect_image_format(image_data) not in TEXTRACT_IMAGE_FORMATS:
+                image_data = self._convert_to_jpeg(image_data)
+            image_data = compress_image_for_payload(image_data, max_bytes=TEXTRACT_IMAGE_MAX_BYTES)
+
+            response = textract_client.detect_document_text(Document={"Bytes": image_data})
+            return parse_textract_response(response, image_width, image_height)
+        except Exception as e:
+            logger.error(f"Textract OCR 呼び出しエラー: {str(e)}")
+            return {"error": f"Textract OCR error: {str(e)}", "text": "", "words": [], "word_count": 0}
 
     def _invoke_yomitoku_mp(self, image_data: bytes) -> dict:
         """Yomitoku Marketplace エンドポイントを呼び出す"""
@@ -378,6 +407,9 @@ class OcrService:
     def _check_endpoint_ready(self, skip_ocr: bool) -> None:
         """OCR エンドポイントが処理可能か確認する。未起動なら wakeup を促し例外を投げる。"""
         if skip_ocr or not self.enable_ocr:
+            return
+        # textract エンジンは SageMaker エンドポイントを使わないため確認不要
+        if settings.OCR_ENGINE == "textract":
             return
         # bedrock エンジンは SageMaker エンドポイントを使わないため確認不要。
         # 代わりに OCR 用モデルを検証し、許可リスト外なら画像のステータスを触る前に止める。

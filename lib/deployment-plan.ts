@@ -3,6 +3,7 @@ import {
   getParameters,
   getStackName,
 } from './parameters';
+import { validateTextractRegion } from './textract-regions';
 
 export const DEFAULT_APPLICATION_REGION = 'ap-northeast-1';
 
@@ -26,6 +27,11 @@ export function resolveDeploymentPlan(
   stackName: string,
   applicationRegion: string,
 ): DeploymentPlan {
+  // OCR ワーカーはスタックのリージョンで Textract を呼ぶため、ここでリージョンを検証する
+  if (params.enableOcr && params.ocrEngine === 'textract') {
+    validateTextractRegion(applicationRegion);
+  }
+
   const applicationStack: DeploymentStackPlan = {
     kind: 'application',
     name: stackName,

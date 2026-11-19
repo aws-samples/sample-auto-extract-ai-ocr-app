@@ -6,7 +6,7 @@ AutoExtract は OCR + Bedrock を活用した帳票読み取りの AI-OCR ソリ
 
 ## 主な機能
 
-- **OCR と情報抽出**：SageMaker 上の OCR エンジン（PaddleOCR / Yomitoku / DeepSeek）または Bedrock 上の LLM で読み取り、Bedrock でスキーマに沿った情報を抽出します。
+- **OCR と情報抽出**：Amazon Textract、SageMaker 上の OCR エンジン（PaddleOCR / Yomitoku / DeepSeek）、Bedrock 上の LLM のいずれかで読み取り、Bedrock でスキーマに沿った情報を抽出します。
 - **ユースケース管理**：帳票の種類ごとにスキーマを定義し、そのスキーマに沿って OCR と情報抽出を行えます。スキーマは LLM で自動生成・編集でき、複数ページ PDF は全ページ統合とページ別個別を選べます。
 - **エージェント検証**：Bedrock AgentCore が、登録したツールを活用して抽出結果を検証し、修正候補を提案します。
 - **権限管理と共有**：複数ユーザーでの利用を前提に、ユースケースをユーザーやグループ単位で共有でき、管理画面から一元管理できます。同じ帳票を閲覧中のユーザーは、WebSocket でお互いにリアルタイムで表示されます。
@@ -15,7 +15,7 @@ AutoExtract は OCR + Bedrock を活用した帳票読み取りの AI-OCR ソリ
 
 ![architecture](docs/imgs/architecture.drawio.png)
 
-フロントエンドは React（CloudFront + S3）、バックエンドは FastAPI（Lambda）で構成し、これらを AWS CDK でデプロイします。OCR は SageMaker、情報抽出は Bedrock、エージェント検証は Bedrock AgentCore を利用し、権限管理を Aurora DSQL、帳票データを DynamoDB で管理します。詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照してください。
+フロントエンドは React（CloudFront + S3）、バックエンドは FastAPI（Lambda）で構成し、これらを AWS CDK でデプロイします。OCR は Amazon Textract（設定で SageMaker 上の OCR エンジンや Bedrock 上の LLM に変更可能）、情報抽出は Bedrock、エージェント検証は Bedrock AgentCore を利用し、権限管理を Aurora DSQL、帳票データを DynamoDB で管理します。詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照してください。
 
 ## クイックスタート
 

@@ -10,6 +10,7 @@ from domains.ocr_engine import (
     _normalize_points,
     parse_llm_ocr_response,
     parse_ocr_response,
+    parse_textract_response,
     parse_yomitoku_mp_response,
 )
 from exceptions import ResponseParseError
@@ -166,3 +167,60 @@ class TestParseYomitokuResponse:
         assert word["points"] == [[6, 6]]
         assert word["content"] == "xyz"
         assert result["word_count"] == 1
+
+
+def _textract_block(text, left, top, width, height, block_type="LINE"):
+    return {
+        "BlockType": block_type,
+        "Text": text,
+        "Geometry": {"BoundingBox": {"Left": left, "Top": top, "Width": width, "Height": height}},
+    }
+
+
+class TestParseTextractResponse:
+    """LINE ブロックだけを、比率座標 × 画像寸法のピクセル points を持つ word にする。"""
+
+    def test_lines_become_words_with_pixel_points(self):
+        response = {"Blocks": [
+            {"BlockType": "PAGE"},
+            _textract_block("請求書", 0.1, 0.2, 0.3, 0.1),
+            _textract_block("請求", 0.1, 0.2, 0.1, 0.1, block_type="WORD"),
+        ]}
+
+        result = parse_textract_response(response, 1000, 500)
+
+        assert result == {
+            "text": "請求書",
+            "words": [{"id": 0, "content": "請求書",
+                       "points": [[100, 100], [400, 100], [400, 150], [100, 150]]}],
+            "word_count": 1,
+        }
+
+    def test_empty_lines_are_skipped_and_ids_stay_sequential(self):
+        response = {"Blocks": [
+            _textract_block("株式会社A", 0.1, 0.1, 0.2, 0.05),
+            _textract_block("  ", 0.1, 0.2, 0.2, 0.05),
+            _textract_block("合計 1,000円", 0.1, 0.3, 0.2, 0.05),
+        ]}
+
+        result = parse_textract_response(response, 100, 100)
+
+        assert [(w["id"], w["content"]) for w in result["words"]] == [(0, "株式会社A"), (1, "合計 1,000円")]
+        assert result["text"] == "株式会社A 合計 1,000円"
+
+    def test_line_without_geometry_has_no_points(self):
+        response = {"Blocks": [{"BlockType": "LINE", "Text": "座標なし"}]}
+
+        result = parse_textract_response(response, 100, 100)
+
+        assert result["words"] == [{"id": 0, "content": "座標なし"}]
+
+    def test_box_outside_the_image_is_clamped(self):
+        response = {"Blocks": [_textract_block("はみ出し", -0.05, 0.9, 0.2, 0.2)]}
+
+        result = parse_textract_response(response, 100, 100)
+
+        assert result["words"][0]["points"] == [[0, 90], [15, 90], [15, 100], [0, 100]]
+
+    def test_no_blocks_returns_empty_result(self):
+        assert parse_textract_response({}, 100, 100) == {"text": "", "words": [], "word_count": 0}

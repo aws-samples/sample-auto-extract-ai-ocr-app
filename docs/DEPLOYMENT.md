@@ -69,7 +69,7 @@ npm run cdk:destroy # リソースの削除
 const defaultParameters: AppParameters = {
   modelId: "us.anthropic.claude-sonnet-4-6",
   modelRegion: "us-east-1",
-  ocrEngine: "paddle",
+  ocrEngine: "textract",
   // ...
 };
 
@@ -90,7 +90,7 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 | `modelId` | string | `us.anthropic.claude-sonnet-4-6` | 情報抽出とスキーマ生成に使う Bedrock モデル ID |
 | `modelRegion` | string | `us-east-1` | Bedrock を呼び出すリージョン |
 | `enableOcr` | boolean | `true` | OCR を有効化するか |
-| `ocrEngine` | `"paddle"` \| `"deepseek"` \| `"yomitoku-mp"` \| `"bedrock"` | `paddle` | 使用する OCR エンジン（後述） |
+| `ocrEngine` | `"textract"` \| `"paddle"` \| `"deepseek"` \| `"yomitoku-mp"` \| `"bedrock"` | `textract` | 使用する OCR エンジン（後述） |
 | `ocrModelId` | string? | （未設定 = `us.openai.gpt-6-astra`） | `ocrEngine: "bedrock"` のとき OCR に使う Bedrock モデル ID。許可されたモデル以外はデプロイ時にエラー（後述） |
 | `ocrModelRegion` | string? | （未設定 = `modelRegion`） | `ocrEngine: "bedrock"` のとき OCR で Bedrock を呼び出すリージョン |
 | `sagemakerZeroScale` | boolean | `true` | アクセスがないとき OCR インスタンスを 0 台まで縮小するか |
@@ -125,10 +125,17 @@ const envOverrides: Record<string, Partial<AppParameters>> = {
 
 `ocrEngine` で、使用する OCR エンジンを選択します。
 
-- `paddle`: PaddleOCR（デフォルト）。自前のコンテナで動作し、ゼロスケーリングに対応します。
+- `textract`: Amazon Textract（デフォルト）。SageMaker エンドポイントを作成しません（後述）。
+- `paddle`: PaddleOCR。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `deepseek`: DeepSeek OCR。自前のコンテナで動作し、ゼロスケーリングに対応します。
 - `yomitoku-mp`: Yomitoku Pro（AWS Marketplace 版）。高精度な日本語 OCR です。
 - `bedrock`: Bedrock 上の LLM による OCR。SageMaker エンドポイントを作成しません（後述）。
+
+#### Amazon Textract（`ocrEngine: "textract"`）
+
+Amazon Textract のテキスト検出（`DetectDocumentText`）で OCR を行います。日本語を含む 40 以上の言語に対応しています（[対応言語](https://docs.aws.amazon.com/ja_jp/textract/latest/dg/supported-languages.html)）。SageMaker エンドポイントを作成しないため、GPU インスタンスのコストやウォームアップ待ちが発生しません（`sagemakerZeroScale` などの SageMaker 関連パラメータは無視されます）。料金は処理したページ数に応じてかかります（[料金](https://aws.amazon.com/jp/textract/pricing/)）。
+
+OCR 結果は行単位で保存されます。Textract はスタックをデプロイしたリージョンで呼び出すため、Textract が提供されていないリージョン（例: `ap-northeast-3`）を指定すると、`cdk deploy` / `cdk synth` の時点でエラーになります。使えるリージョンは `lib/textract-regions.ts` を参照してください。
 
 #### LLM による OCR（`ocrEngine: "bedrock"`）
 
@@ -166,7 +173,7 @@ Marketplace 版はゼロスケーリングに対応しないため、エンド�
 
 ### OCR インスタンスのゼロスケーリング
 
-OCR に使う GPU インスタンスのコストを抑えるため、一定時間アクセスがないと、インスタンス数を自動的に 0 まで縮小します。再び OCR が必要になった際は、インスタンスの起動に 10 分ほどかかる点にご注意ください。
+SageMaker 上の OCR エンジン（`paddle` / `deepseek`）では、OCR に使う GPU インスタンスのコストを抑えるため、一定時間アクセスがないと、インスタンス数を自動的に 0 まで縮小します。再び OCR が必要になった際は、インスタンスの起動に 10 分ほどかかる点にご注意ください。
 
 - `sagemakerZeroScale`: ゼロスケーリングの有効と無効（デフォルトは有効）
 - `sagemakerScaleInCooldownSeconds`: 縮小するまでの待機時間（秒。デフォルトは `3600`、つまり 1 時間）

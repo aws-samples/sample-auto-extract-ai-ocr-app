@@ -26,7 +26,7 @@ class Settings:
         "SAGEMAKER_ENDPOINT_NAME", "")
     SAGEMAKER_INFERENCE_COMPONENT_NAME: str = os.getenv(
         "SAGEMAKER_INFERENCE_COMPONENT_NAME", "")
-    OCR_ENGINE: str = os.getenv("OCR_ENGINE", "paddle")
+    OCR_ENGINE: str = os.getenv("OCR_ENGINE", "textract")
 
     # Bedrock OCR（OCR_ENGINE=bedrock）用モデル。抽出用 MODEL_ID とは別に指定する。
     # 未指定時のモデルと許可リストの検証は domains/ocr_engine.py が担う。

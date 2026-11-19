@@ -45,6 +45,15 @@ def create_sagemaker_runtime_client():
     return boto3.client("runtime.sagemaker", region_name=settings.AWS_REGION)
 
 
+def create_textract_client():
+    """Textract クライアントを作成（並列実行でスロットリングされても再試行で待って通す）"""
+    return boto3.client(
+        "textract",
+        region_name=settings.AWS_REGION,
+        config=Config(retries={"max_attempts": 5, "mode": "standard"}),
+    )
+
+
 def create_sagemaker_client():
     """SageMaker クライアントを作成（エンドポイント管理用）"""
     return boto3.client("sagemaker", region_name=settings.AWS_REGION)
@@ -83,6 +92,7 @@ dynamodb_client = create_dynamodb_client()
 dynamodb_resource = create_dynamodb_resource()
 sagemaker_runtime_client = create_sagemaker_runtime_client()
 sagemaker_client = create_sagemaker_client()
+textract_client = create_textract_client()
 bedrock_agentcore_client = create_bedrock_agentcore_client()
 sfn_client = create_sfn_client()
 lambda_client = create_lambda_client()

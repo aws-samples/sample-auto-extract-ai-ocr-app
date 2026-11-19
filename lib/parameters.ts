@@ -22,10 +22,12 @@ export interface AppParameters {
   // OCR
   enableOcr: boolean;
   /**
-   * "bedrock" は Bedrock 上の LLM（ocrModelId のモデル）で OCR を行う。
-   * SageMaker エンドポイントは作成されず、sagemakerZeroScale 等は無視される。
+   * "textract" は Amazon Textract、"bedrock" は Bedrock 上の LLM（ocrModelId のモデル）で
+   * OCR を行う。どちらも SageMaker エンドポイントは作成されず、sagemakerZeroScale 等は無視される。
+   * "textract" は Textract の提供リージョン以外にデプロイすると synth 時にエラーになる
+   * （lib/textract-regions.ts）。
    */
-  ocrEngine: "paddle" | "deepseek" | "yomitoku-mp" | "bedrock";
+  ocrEngine: "textract" | "paddle" | "deepseek" | "yomitoku-mp" | "bedrock";
   /**
    * ocrEngine が "bedrock" のときに OCR に使うモデル。lib/bedrock-ocr-models.ts の
    * 許可リスト外を指定すると synth 時にエラーになる。未指定時は DEFAULT_BEDROCK_OCR_MODEL_ID。
@@ -81,7 +83,7 @@ const defaultParameters: AppParameters = {
   modelId: "us.anthropic.claude-sonnet-4-6",
   modelRegion: "us-east-1",
   enableOcr: true,
-  ocrEngine: "paddle",
+  ocrEngine: "textract",
   sagemakerZeroScale: true,
   sagemakerScaleInCooldownSeconds: 3600,
   enableAgentDemo: true,
